@@ -1,0 +1,16 @@
+{
+  "name": "Soulcard",
+  "short_name": "Soulcard",
+  "start_url": "./",
+  "display": "fullscreen",
+  "background_color": "#110c25",
+  "theme_color": "#110c25",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
