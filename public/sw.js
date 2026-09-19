@@ -1,5 +1,6 @@
 const CACHE_PREFIX = 'soulcard-'
-const CACHE_NAME = `${CACHE_PREFIX}v1`
+const BUILD_REVISION = /* INJECT_BUILD_REVISION */ 'dev'
+const CACHE_NAME = `${CACHE_PREFIX}${BUILD_REVISION}`
 const BUILD_ASSETS = /* INJECT_BUILD_ASSETS */ []
 const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg', ...BUILD_ASSETS]
 
