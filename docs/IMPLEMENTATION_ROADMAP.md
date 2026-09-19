@@ -371,6 +371,32 @@ seed tests exercise mixed draws, shuffles, and JSON resume equivalence without
 probabilistic thresholds. Browser tests, card/deck setup, and persistence remain
 later milestones.
 
+### Card, deck, and zone contract (milestone 3)
+
+The classic card registry contains exactly 52 immutable identities. Suits use the
+canonical order `S`, `H`, `D`, `C` (spades, hearts, diamonds, clubs), and each suit
+uses rank order `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`, `J`, `Q`, `K`, `A`.
+The canonical pre-shuffle deck is suit-major in those orders. IDs are
+`c-<rank><suit>` (for example, `c-2S`, `c-10H`, and `c-AC`), numeric ranks retain
+their number, Jack through King have values 11 through 13, and Ace has value 14.
+Suit does not affect comparison.
+
+The ID format and canonical pre-shuffle order are deterministic compatibility
+contracts because they define seeded source-deck permutations. New-game setup makes
+a fresh copy by applying the milestone 2 shuffle exactly once to the complete
+canonical order, consuming 51 RNG draws without mutating the registry.
+
+Zone state has eight ordered locations: `sourceDeck`, both sides' `drawPile` and
+`wonPile`, `contestedPile`, `burnPile`, and `inPlay`. Ordinary piles contain card
+IDs; `contestedPile` and `inPlay` contain exact `{ cardId, suppliedBy }` records,
+where `suppliedBy` is `player` or `opponent`. Invariant validation accepts no
+unknown, missing, or duplicate identity and counts record zones by `cardId`, without
+sorting or mutating any pile. Ownership is derived only from location: side piles
+are owned by that side, source and burn piles are unowned, and contested/in-play
+records are unsettled. A stable boundary additionally requires empty `inPlay`;
+machine-state-specific terminal-draw validation remains with the milestone 5 state
+machine.
+
 ### State-machine transitions
 
 | Current machine state | Action/condition | Next machine state | Atomic commit |
@@ -625,6 +651,15 @@ reviewable PR.
 - **Acceptance:** Exactly 52 unique immutable identities, source shuffle deterministic,
   ordered zones validate conservation and ownership.
 - **Checks/risks:** Unit duplicate/missing-card and setup tests; reject malformed zones.
+- **Acceptance evidence:** `src/domain/cards.js` defines the frozen classic registry and
+  guarded lookup; `src/domain/deck.js` applies the milestone 2 shuffle to its documented
+  canonical order; `src/domain/zones.js` creates fresh ordered setup state; and
+  `src/domain/invariants.js` validates structure, provenance, conservation, ownership,
+  and stable boundaries without browser or Three.js dependencies. Focused card, deck,
+  zone, and invariant unit tests lock the complete matrix, seed `12345` permutation/RNG
+  state, 51-draw setup contract, fresh references, all-zone ownership, and malformed,
+  sparse, duplicate, missing, unknown, and unstable fixtures.
+- **Validation:** All 42 unit tests and the production build pass locally on Node 24.
 
 ### 4. Configurable burn-enabled/disabled rules
 - **Goal/files:** Add `ruleset.js`, `burn-evaluator.js`, fixtures/tests; depends on 3.
