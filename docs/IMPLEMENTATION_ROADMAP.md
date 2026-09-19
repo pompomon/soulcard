@@ -331,10 +331,12 @@ recreate renderer resources from the current snapshot on restoration.
 | `new` | start with seed/rules | `ready` | source stage and shuffled 52-card `sourceDeck` |
 | `ready` | reveal/continue | `resolving` | first reveal round enters `contestedPile` through `inPlay` |
 | `resolving` | values tie and both can reveal in the current stage | `resolving` | contest retained; next player-then-opponent reveal round |
-| `resolving` | values tie and source is empty | `stageTransition` | contest retained |
+| `resolving` | values tie in the source stage and source is empty | `stageTransition` | contest retained |
 | `resolving` | unequal values settle while source remains | `ready` | ordered settlement, burn result, and committed event |
 | `resolving` | unequal values settle as source becomes empty | `stageTransition` | ordered settlement and burn result retained for final commit |
-| `stageTransition` | source empty with unresolved contest | `resolving` | player then opponent piles shuffled, stage set to personal, next reveal round |
+| `stageTransition` | source empty with unresolved contest; both can reveal after nonempty won piles are shuffled | `resolving` | nonempty won piles shuffled player then opponent, stage set to personal, next reveal round |
+| `stageTransition` | source empty with unresolved contest; exactly one side can reveal after nonempty won piles are shuffled | `ended` | nonempty won pile shuffled, stage set to personal, available reveal, ordered settlement, and terminal winner |
+| `stageTransition` | source empty with unresolved contest; neither side can reveal because both won piles are empty | `ended` | stage set to personal; terminal draw with unresolved contest retained |
 | `stageTransition` | source empty after settlement | `ready` | player then opponent piles shuffled, stage set to personal, and settlement event committed |
 | `resolving` | personal draw pile empty and won pile nonempty before a required reveal | `resolving` | complete won pile recycled into draw pile |
 | `resolving` | exactly one side cannot supply a required card after recycling | `ended` | available reveal, ordered settlement, and terminal winner |
