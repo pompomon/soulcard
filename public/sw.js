@@ -1,4 +1,5 @@
-const CACHE_NAME = 'soulcard-v1'
+const CACHE_PREFIX = 'soulcard-'
+const CACHE_NAME = `${CACHE_PREFIX}v1`
 const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg']
 
 self.addEventListener('install', (event) => {
@@ -9,7 +10,11 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
+      Promise.all(
+        keys
+          .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+          .map((key) => caches.delete(key)),
+      ),
     ),
   )
   self.clients.claim()
@@ -18,14 +23,29 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
 
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then(async (response) => {
+          if (response.ok) {
+            const cache = await caches.open(CACHE_NAME)
+            await cache.put('./index.html', response.clone())
+          }
+          return response
+        })
+        .catch(() => caches.match('./index.html')),
+    )
+    return
+  }
+
   event.respondWith(
     caches.match(event.request).then(
       (cached) =>
         cached ||
-        fetch(event.request).then((response) => {
+        fetch(event.request).then(async (response) => {
           if (response.ok && new URL(event.request.url).origin === self.location.origin) {
-            const copy = response.clone()
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy))
+            const cache = await caches.open(CACHE_NAME)
+            await cache.put(event.request, response.clone())
           }
           return response
         }),
