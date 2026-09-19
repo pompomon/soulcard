@@ -3,6 +3,8 @@
 **Date:** September 19, 2026
 **Status:** implementation plan; this document makes no application changes.
 
+Track milestone completion in [`MILESTONES.md`](./MILESTONES.md).
+
 ## Product decision record and scope
 
 Soulcard remains a framework-light, plain-JavaScript Vite PWA. The current single
