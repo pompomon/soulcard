@@ -1,23 +1,123 @@
 # Soulcard implementation roadmap
 
 **Date:** September 19, 2026
-**Status:** implementation plan; this document makes no application changes.
+**Status:** accepted MVP decision record and implementation plan; this document makes
+no application changes.
 
 Track milestone completion in [`MILESTONES.md`](./MILESTONES.md).
 
-## Product decision record and scope
+## Accepted product decision record and scope
 
-Soulcard remains a framework-light, plain-JavaScript Vite PWA. The current single
-Three.js scene/render loop is an appropriate visual starting point, not a reason to
-move authoritative rules into Three.js or to rewrite the application around a UI
-framework. Evolve the existing relative Vite base, manifest, service worker/app-shell
-cache, and GitHub Pages workflow incrementally.
+Every decision in this section has status **Accepted for MVP**. An implementation must
+not silently reinterpret one. A later roadmap revision may supersede a decision, but a
+rules-semantic change also requires a new ruleset ID and `gameRulesVersion`; a persisted
+shape change requires a new `saveSchemaVersion` plus a migration; and a committed-event
+shape change requires a new `eventVersion`.
 
-The MVP is a single-player, player-versus-AI, fast-burning War-style match. The
-micro-loop is: read the HUD and next action, tap/click **Reveal/Continue**, resolve
-the paired reveal (and any ties) in a pure engine, commit deterministic ownership and
-burn results, show concise cause-and-effect feedback, autosave at a stable boundary,
-and continue until a side cannot reveal. There is no forced choice on every reveal.
+### Current implementation baseline
+
+The repository currently contains a framework-light, plain-JavaScript Vite PWA that
+renders one rotating glass pyramid in one Three.js scene. It is a visual prototype, not
+an implementation of the match, screens, domain model, persistence, or settings
+described below. The existing baseline uses relative Vite and asset paths, registers
+`./sw.js` only in production, injects a build-derived app-shell revision, and deploys
+`dist` to GitHub Pages. Those constraints are preserved and evolved incrementally.
+
+The baseline review establishes:
+
+- `src/main.js` owns the prototype scene, render loop, resize listener, and
+  production-only relative service-worker registration.
+- `public/sw.js` owns immediate activation, versioned app-shell/runtime caching, and old
+  Soulcard-cache cleanup; `vite.config.js` injects emitted assets and a content-derived
+  revision at build time.
+- `.github/workflows/deploy.yml` builds with `npm ci`/`npm run build` and publishes
+  `dist` to GitHub Pages from `main`.
+
+The current service worker calls `skipWaiting()` and `clients.claim()`, so an installed
+update activates immediately. That is documented current behavior, not the safe-update
+behavior promised by the MVP. Milestone 17 replaces it with update availability and
+stable-save-boundary deferral.
+
+### ADR-001: Product and delivery shape
+
+- **Context:** The prototype proves the Vite, Three.js, PWA, and Pages delivery path,
+  but it does not establish game architecture.
+- **Decision:** Build the MVP incrementally in the existing plain-JavaScript project.
+  Do not add a UI framework or treat the pyramid scene as authoritative game logic.
+  The MVP is one deterministic, single-player, player-versus-AI, fast-burning
+  War-style match.
+- **Consequences:** Existing deployment behavior remains usable while domain, UI, and
+  presentation modules replace the prototype in reviewable milestones. A framework
+  rewrite and expanded game systems remain outside MVP.
+- **Revisit trigger:** A separately approved post-MVP architecture decision that
+  demonstrates a requirement the current stack cannot satisfy.
+
+### ADR-002: Deterministic authority and presentation
+
+- **Context:** Exact save/resume and reproducible matches are incompatible with rules
+  that depend on frame time, animation callbacks, or hidden randomness.
+- **Decision:** A pure domain state machine and one serializable domain RNG are the
+  only authorities for rules and match state. Presentation receives snapshots and
+  already-committed events; it cannot settle rules or consume domain RNG.
+- **Consequences:** Domain behavior can run without WebGL. Animation may replay,
+  shorten, or skip a committed result without changing it.
+- **Revisit trigger:** Any domain semantic change requires rules versioning; serialized
+  or event contract changes additionally use their respective schema versions.
+
+### ADR-003: Match and burn rules
+
+- **Context:** “War” and “burning” have incompatible variants, especially around ties,
+  exhaustion, and which cards survive settlement.
+- **Decision:** Use the source-stage and personal-stage rules, ordering, terminal
+  outcomes, and baseline burn settlement defined in this document. In particular, if
+  neither side can supply a required tie reveal, the match ends in a terminal draw and
+  the unresolved `contestedPile` remains intact.
+- **Consequences:** No implementation-specific fallback, anti-stalemate rule, or random
+  burn behavior may change a result. Enabled and disabled burning are both deterministic
+  ruleset configurations.
+- **Revisit trigger:** A new ruleset ID and `gameRulesVersion`, with deterministic
+  migration/rejection behavior for saved runs.
+
+### ADR-004: Screen and interaction model
+
+- **Context:** Menus, pauses, and end summaries can otherwise drift into an unbounded
+  set of navigation states.
+- **Decision:** Main, Settings, and Game are the only top-level screens. Pause and end
+  summary are overlays within Game. MVP primary actions support mouse, touch, and pen
+  through semantic DOM controls; full keyboard gameplay is post-MVP.
+- **Consequences:** Overlays never increase the screen count. Visible focus styles and
+  semantic controls remain even though keyboard navigation and gameplay are not an MVP
+  acceptance surface.
+- **Revisit trigger:** A dedicated post-MVP interaction/accessibility milestone.
+
+### ADR-005: Persistence ownership
+
+- **Context:** Active runs are structured, versioned records, while graphics settings
+  are small independent preferences and cached assets are replaceable.
+- **Decision:** Store the single active run in IndexedDB, versioned settings in
+  localStorage, and only application assets in Cache Storage. Save a run only at a
+  stable boundary and retain the committed pending presentation event.
+- **Consequences:** Storage failure degrades safely; corrupt or unknown saves cannot
+  enter a resume crash loop. Clearing application caches does not delete a run.
+- **Revisit trigger:** A stored-shape change increments `saveSchemaVersion` and adds a
+  tested migration; a rules-semantic change also increments `gameRulesVersion`.
+
+### ADR-006: PWA and deployment continuity
+
+- **Context:** Relative paths are required for the current GitHub Pages repository
+  subpath, and the build already revisions its service-worker app shell.
+- **Decision:** Preserve relative URLs, production service-worker registration, the
+  generated app-shell revision, and the GitHub Pages workflow. Harden them in place
+  rather than replacing the delivery system.
+- **Consequences:** Every routing, asset, manifest, cache, and update change must work
+  from a repository subpath as well as a local development origin.
+- **Revisit trigger:** A separately approved hosting or distribution change.
+
+The MVP micro-loop is: read the HUD and next action, tap/click **Reveal/Continue**,
+resolve the paired reveal and all resulting ties in the pure engine, commit
+deterministic ownership and burn results, save at the resulting stable boundary, show
+concise cause-and-effect feedback, and continue until a terminal result. There is no
+forced choice on every reveal.
 
 ### MVP scope
 
@@ -38,33 +138,73 @@ and continue until a side cannot reveal. There is no forced choice on every reve
 - A framework rewrite, third-party card artwork, and a duration-enforcing override of
   disabled burning.
 
-## Rules and terminology
+## Canonical rules and terminology
 
-`Card` is immutable game identity: `{ id, suit, rank, value }`, where `id` is unique
-across the classic 52-card set, `value` makes Ace (14) high, and suits never affect
-comparison. Presentation does not own cards: it receives `frontThemeId` and
-`backThemeId`, not image data.
+The terms below are normative:
 
-At new-game setup, seedable RNG shuffles one `sourceDeck`. For each clash, reveal one
-card for player and one for opponent from the source while it remains; during this
-**source phase**, resolved cards establish ownership in each side's `wonPile`. After
-the source is exhausted, shuffle each owned/won pile into that side's `drawPile`
-using the saved RNG, player first and then opponent, then enter **personal phase**.
-Thereafter each side reveals from its own draw pile. Before any required reveal, an
-empty draw pile recycles that side's complete nonempty `wonPile` by shuffling it into
-`drawPile`; when both recycle at the same boundary, process player then opponent. A
-side unable to reveal after this recycling loses.
+| Term | Meaning |
+|---|---|
+| **Card** | Immutable identity `{ id, suit, rank, value }`; `id` is unique in the classic 52-card set, Ace has value 14, and suit never affects comparison. |
+| **Match stage** | Card-source progression: exactly `source` or `personal`; it is distinct from machine state. |
+| **Machine state** | Control state such as `new`, `ready`, `resolving`, `stageTransition`, `paused`, or `ended`. |
+| **Clash** | One contest beginning with a paired reveal and ending in one settlement or a terminal draw. |
+| **Reveal round** | The player reveal followed by the opponent reveal within a clash. |
+| **Tie** | A reveal round whose two supplied cards have equal values; it retains the contest and requires another reveal round. |
+| **Stable boundary** | The point after an action has fully committed, `inPlay` is empty, conservation passes, RNG state is captured, and the machine is `ready`, `paused`, or `ended`. No save or event emission occurs before it. |
+| **Committed event** | Immutable description of a result emitted only after authoritative zones, machine state, match stage, and RNG state have committed. Presentation may consume it but cannot alter it. |
+| **Ownership** | Settled control represented by a card being in a player's or opponent's `drawPile` or `wonPile`. Source and burned cards are unowned; contested cards are unsettled and retain `suppliedBy` provenance. |
 
-If a tied reveal exhausts the source, retain `contestedPile`, perform the same
-player-first source-to-personal shuffles, remain in `resolving`, and continue the tie
-with the next required reveal from the personal draw piles.
+Presentation does not own cards: it receives `frontThemeId` and `backThemeId`, not
+image data.
 
-A clash keeps every revealed card, in reveal order, in `contestedPile`. Equal ranks
-add another pair to that same pile. If a side cannot supply a required tie card, the
-other side wins the whole unresolved contest according to the same settlement rule;
-if neither can supply it, resolve deterministically as a draw/end condition documented
-by the engine (the recommended MVP choice is both fail -> terminal draw), never by
-discarding cards implicitly.
+### Ordered zones and provenance
+
+Every pile is ordered. Index `0` is the next card to reveal; drawing removes index `0`;
+settlement appends to a destination pile. A shuffle replaces the complete input pile
+with a deterministic order whose index `0` is drawn next. Within every reveal round,
+the player is processed before the opponent. Reveal rounds append to a contest in
+chronological order.
+
+| Zone | Contents and authority |
+|---|---|
+| `sourceDeck` | Unowned card IDs not yet assigned during the source stage. |
+| `player.drawPile`, `opponent.drawPile` | Settled, side-owned card IDs available to reveal, with index `0` next. |
+| `player.wonPile`, `opponent.wonPile` | Settled, side-owned card IDs awaiting the next personal-stage recycle. |
+| `contestedPile` | Ordered reveal records `{ cardId, suppliedBy }`. Cards are unsettled, while `suppliedBy` (`player` or `opponent`) preserves the side that supplied each card for settlement. |
+| `burnPile` | Unowned card IDs removed from further reveals but retained for conservation and display. |
+| `inPlay` | Ephemeral ordered reveal records moved during one atomic transition. It must be empty at every stable boundary. |
+
+For enabled burning, filter `contestedPile` in reveal order: append winner-supplied
+cards to the winner's `wonPile` and append loser-supplied cards to `burnPile`. For
+disabled burning, append every contested card to the winner's `wonPile` in reveal
+order. The terminal-draw path performs no settlement and retains the ordered
+`contestedPile`; no card is discarded or duplicated.
+
+### Deterministic match flow
+
+At new-game setup, the domain RNG shuffles one 52-card `sourceDeck`. During the
+**source stage**, each reveal round removes the player card first and the opponent card
+second from `sourceDeck`. Resolved cards establish ownership only through settlement.
+When a settled clash exhausts the source, shuffle the player's complete `wonPile` into
+`player.drawPile`, then the opponent's complete `wonPile` into
+`opponent.drawPile`, consuming RNG in that order, and enter the **personal stage**.
+
+During the personal stage, each side reveals from its own `drawPile`. Before a required
+reveal, an empty draw pile recycles that side's complete nonempty `wonPile` through the
+domain RNG. Prepare and reveal for the player before the opponent, so simultaneous
+recycles consume RNG player first. A side that remains unable to reveal loses the
+clash and match; if it is a tie continuation, the available side-supplied card joins
+the contest before normal settlement.
+
+If a tied reveal exhausts `sourceDeck`, retain `contestedPile`, perform the same
+player-first source-to-personal-stage shuffles, remain in machine state `resolving`,
+and continue the tie from the personal draw piles.
+
+A clash keeps every reveal record in `contestedPile`. Equal values require another
+reveal round. If one side cannot supply a required tie card after personal-stage
+recycling, the other side wins the whole unresolved contest under the configured burn
+settlement and the match ends. If neither side can supply it, the match ends in a
+terminal draw, `contestedPile` remains intact, and no settlement or RNG call occurs.
 
 ### Baseline burning decision
 
@@ -72,36 +212,39 @@ The baseline data-driven ruleset has `burn.enabled: true`. On a resolved clash:
 
 1. Identify the decisive pair: the final unequal reveal, or the available card(s)
    when inability resolves the contest.
-2. Every winner-side card in the contested pile, including the decisive winning card,
+2. Every winner-supplied card in the contested pile, including the decisive winning card,
    moves to the winner's `wonPile`.
-3. Each eligible card owned by the losing side in the complete contested pile moves to
+3. Each eligible loser-supplied card in the complete contested pile moves to
    `burnPile`; this includes losing-side cards from earlier tie rounds and the
    decisive losing card.
-4. If `burn.enabled: false`, **all** contested cards (including eligible losing cards)
-   transfer to the winner's `wonPile`. No burn random decision is evaluated or
-   consumed.
+4. Preserve the filtered reveal order when appending to `wonPile` and `burnPile`.
+5. If `burn.enabled: false`, **all** contested cards (including eligible losing cards)
+   transfer to the winner's `wonPile` in reveal order. No burn random decision is
+   evaluated or consumed.
 
 This preserves the premise that the winner retains its decisive card, while the
-baseline removes losing ownership and accelerates ordinary play. The evaluator must
+baseline removes loser-supplied cards and accelerates ordinary play. The evaluator must
 be pure and return a committed list of transfers/burns before any animation begins.
 Later rules may add ordered predicates (explicit card ID, rank, suit, percentage),
 with schema validation and unambiguous precedence, but the MVP UI does not expose an
 editor. A percentage predicate consumes the domain RNG only when enabled and reached.
-Optional anti-stalemate rules, if ever wanted, must be separate, explicit,
-deterministic, configurable, and must not silently alter a disabled-burn match.
+Anti-stalemate rules are excluded from MVP. Any future anti-stalemate rules must be
+separate, explicit, deterministic, configurable, and must not silently alter a
+disabled-burn match.
 
 ### Conservation invariant and shuffle timing
 
-At every stable transition, every one of the 52 unique IDs exists in exactly one
+Throughout every atomic transition, each of the 52 unique IDs exists in exactly one
 authoritative zone: `sourceDeck`, `player.drawPile`, `player.wonPile`,
-`opponent.drawPile`, `opponent.wonPile`, `contestedPile`, `burnPile`, or an explicitly
-named ephemeral `inPlay` zone during an atomic engine transition. Counts total 52,
-zones have no duplicate IDs, and a card's owner/zone agrees with the ordered zone
-array. A transition may use `inPlay`, but its committed result must restore the
-stable invariant before it emits an event or permits a save. Do not reshuffle on every
-reveal: shuffle source only at setup; shuffle each side's `wonPile` at the
-source-to-personal boundary and whenever its personal-phase `drawPile` is empty before
-a required reveal.
+`opponent.drawPile`, `opponent.wonPile`, `contestedPile`, `burnPile`, or the ephemeral
+`inPlay`. Counts total 52, zones have no duplicate IDs, settled ownership agrees with
+the ordered zone array, and record zones are counted by `cardId`. At every stable
+boundary, `inPlay` is empty and the invariant passes before an event is emitted or a
+save is permitted. The one exception to an empty contest at a stable boundary is a
+terminal draw, which retains unresolved cards in `contestedPile`. Do not reshuffle on
+every reveal: shuffle source only at setup; shuffle each side's `wonPile` at the
+source-to-personal-stage boundary and whenever its personal-stage `drawPile` is empty
+before a required reveal.
 
 ### Example rulesets
 
@@ -169,12 +312,12 @@ tests/
 ```
 
 `bootstrap` owns lifecycle and wires the coordinator. The coordinator alone switches
-Main, Settings, and Game. `match-machine` owns phases/actions; cards/deck/zones own
-validation; `rng` exposes seed plus serializable internal state; `burn-evaluator`
-validates rules and returns settlements; `ai-controller` chooses deterministic
-encounter advancement. The event queue contains committed domain events. Persistence
-serializes snapshots/events. Renderer, responsive layout, theme cache, input, and DOM
-UI are replaceable consumers.
+Main, Settings, and Game. `match-machine` owns machine states, match stages, and
+actions; cards/deck/zones own validation; `rng` exposes seed plus serializable internal
+state; `burn-evaluator` validates rules and returns settlements; `ai-controller`
+chooses deterministic encounter advancement. The event queue contains committed
+domain events. Persistence serializes snapshots/events. Renderer, responsive layout,
+theme cache, input, and DOM UI are replaceable consumers.
 
 The renderer owns geometries, materials, and textures and disposes them on theme
 replacement, screen teardown, and cache eviction. Handle `webglcontextlost` by
@@ -183,23 +326,29 @@ recreate renderer resources from the current snapshot on restoration.
 
 ### State-machine transitions
 
-| Phase | Action/condition | Next phase | Commit |
+| Current machine state | Action/condition | Next machine state | Atomic commit |
 |---|---|---|---|
-| `new` | start with seed/rules | `ready` | shuffled source |
-| `ready` | reveal/continue | `resolving` | pair in contested/in-play |
-| `resolving` | ranks tie and both can reveal | `resolving` | contested retained; next pair revealed atomically |
-| `resolving` | ranks tie and source is empty | `phaseTransition` | contested retained |
-| `resolving` | winner or inability resolves | `ready` / `phaseTransition` | settlement event, zones, burn |
-| `phaseTransition` | source empty with unresolved contest | `resolving` | owned piles shuffled to personal draw piles; next pair revealed atomically |
-| `phaseTransition` | source empty after settlement | `ready` | each owned pile shuffled to draw pile |
-| `resolving` | personal draw empty and won pile nonempty before a required reveal | `resolving` | won pile recycled into draw pile |
-| any nonterminal stable phase | required card absent | `ended` | terminal result |
+| `new` | start with seed/rules | `ready` | source stage and shuffled 52-card `sourceDeck` |
+| `ready` | reveal/continue | `resolving` | first reveal round enters `contestedPile` through `inPlay` |
+| `resolving` | values tie and both can reveal in the current stage | `resolving` | contest retained; next player-then-opponent reveal round |
+| `resolving` | values tie in the source stage and source is empty | `stageTransition` | contest retained |
+| `resolving` | unequal values settle while source remains | `ready` | ordered settlement, burn result, and committed event |
+| `resolving` | unequal values settle as source becomes empty | `stageTransition` | ordered settlement and burn result retained for final commit |
+| `stageTransition` | source empty with unresolved contest; both can reveal after nonempty won piles are shuffled | `resolving` | nonempty won piles shuffled player then opponent, stage set to personal, next reveal round |
+| `stageTransition` | source empty with unresolved contest; exactly one side can reveal after nonempty won piles are shuffled | `ended` | nonempty won pile shuffled, stage set to personal, available reveal, ordered settlement, and terminal winner |
+| `stageTransition` | source empty with unresolved contest; neither side can reveal because both won piles are empty | `ended` | stage set to personal; terminal draw with unresolved contest retained |
+| `stageTransition` | source empty after settlement | `ready` | player then opponent piles shuffled, stage set to personal, and settlement event committed |
+| `resolving` | personal draw pile empty and won pile nonempty before a required reveal | `resolving` | complete won pile recycled into draw pile |
+| `resolving` | exactly one side cannot supply a required card after recycling | `ended` | available reveal, ordered settlement, and terminal winner |
+| `resolving` | neither side can supply a required tie card | `ended` | terminal draw with unresolved contest retained |
 | `ready` | pause/save | `paused` overlay | atomic snapshot |
 | `paused` | resume | prior `ready` | no recalculation |
 
-Internally, tie reveal can loop through an atomic `resolving` substate; it must not be
-persistent halfway through a random settlement. The end overlay is Game state, not a
-fourth screen.
+`resolving` and `stageTransition` are internal to one dispatched domain action and are
+never save points. The action may loop through ties, recycling, and a stage transition,
+but it returns only at a stable `ready` or `ended` boundary with `inPlay` empty and all
+RNG consumption captured. The `paused` machine state is represented by a Game overlay;
+the end overlay likewise remains within Game rather than becoming a fourth screen.
 
 ### Committed event example
 
@@ -209,9 +358,14 @@ fourth screen.
   "id": "run-42:clash-17",
   "type": "clashSettled",
   "turn": 17,
-  "phase": "personal",
+  "stage": "personal",
   "winner": "player",
-  "reveals": ["c-10H", "c-10C", "c-AS", "c-KD"],
+  "reveals": [
+    { "cardId": "c-10H", "suppliedBy": "player" },
+    { "cardId": "c-10C", "suppliedBy": "opponent" },
+    { "cardId": "c-AS", "suppliedBy": "player" },
+    { "cardId": "c-KD", "suppliedBy": "opponent" }
+  ],
   "transfers": [{ "cardId": "c-10H", "to": "player.wonPile" },
                 { "cardId": "c-AS", "to": "player.wonPile" }],
   "burned": ["c-10C", "c-KD"],
@@ -232,46 +386,47 @@ Persist settings separately from active-run data. Burning is a rules/test
 configuration concern, not a graphics/animation setting.
 
 **Game** is a responsive Three.js battlefield under semantic DOM HUD/controls. Display
-source deck/phase, both zones and counts, reveal/comparison area, tie pile, burn
-pile/count, status, and pause. Pause is an overlay with Resume, Save & Main Menu,
-restart confirmation, save status, and optionally a safe settings subset/link. End
-summary is another Game overlay.
+source deck and match stage, both sides' zones and counts, reveal/comparison area,
+contested pile, burn pile/count, status, and pause. Pause is an overlay with Resume,
+Save & Main Menu, restart confirmation, and save status. Graphics settings remain on
+the Settings screen. End summary is another Game overlay.
 
 Define battlefield positions in logical coordinates, layout modes for phone portrait,
 phone landscape, tablet, and desktop, reserved HUD rectangles, safe-area insets, and
-camera fitting rather than device-specific scattered coordinates. Specify a minimum
-supported viewport (for example 320×480 CSS px); below it, retain primary controls,
-compact counts, and scroll/letterbox gracefully. Use `ResizeObserver` plus resize and
-orientation events to recompute layout, camera projection, renderer size, and capped
-pixel ratio.
+camera fitting rather than device-specific scattered coordinates. The minimum supported
+viewport is 320×480 CSS px; below it, retain primary controls and compact counts while
+scrolling or letterboxing gracefully. Use `ResizeObserver` plus resize and orientation
+events to recompute layout, camera projection, renderer size, and capped pixel ratio.
 
 Pointer Events unify mouse, touch, and pen. Primary actions are semantic DOM buttons
-at roughly 44 CSS px minimum, work by click/tap, never require gestures or hover, keep
-visible focus styles, use pointer capture only where a battlefield gesture needs it,
-define `touch-action` deliberately, handle `pointercancel`, and suppress synthetic
-duplicate click/tap activation. Gestures can later enhance, not replace, actions.
+with targets at least 44×44 CSS px, work by click/tap, never require gestures or hover,
+keep visible focus styles, define `touch-action` deliberately, handle `pointercancel`,
+and suppress synthetic duplicate click/tap activation. Battlefield gestures and their
+pointer-capture behavior are post-MVP.
 
 ## Persistence
 
 Use IndexedDB for structured active-run snapshots: it supports atomic record writes,
-larger ordered data, and evolution better than localStorage. Settings can use
-localStorage initially because they are small, independent primitives and are safe to
-read before UI boot; namespace and version them. Either store must fail gracefully.
-Cache Storage holds no save data.
+larger ordered data, and evolution better than localStorage. Settings use localStorage
+because they are small, independent primitives and are safe to read before UI boot;
+namespace and version them. Either store must fail gracefully. Cache Storage holds
+application assets only and never save or settings data.
 
 Snapshots are versioned with `saveSchemaVersion`, `gameRulesVersion`, ISO timestamp,
-and checksums/structural validation as appropriate. Migration functions are
-version-to-version, tested from fixtures, and reject unknown future versions. Invalid,
-incomplete, or corrupt runs are quarantined/discardable and leave Main with Resume
-disabled and a clear discard/start-new recovery path—never a resume crash loop.
+and complete structural validation. A checksum is not required for MVP. Migration
+functions are version-to-version, tested from fixtures, and reject unknown future
+versions. Invalid, incomplete, or corrupt runs are quarantined/discardable and leave
+Main with Resume disabled and a clear discard/start-new recovery path—never a resume
+crash loop.
 
 Save only at stable domain boundaries: after every committed clash, explicit pause,
-and best effort on `visibilitychange`, `pagehide`, and lifecycle freeze events; do not
-depend on `unload`. Serialize ordered zones, phase, contested/in-play state, burn
-pile, turn counters, ruleset including burn flag, seed and RNG state, run status,
-future modifier extension point, and committed pending visual event. Restore validates
-and migrates, reconstructs visuals from snapshot, and replays/skips the saved
-presentation without recalculating a domain result.
+and best effort on `visibilitychange`, `pagehide`, and lifecycle freeze events when the
+domain is already stable; do not depend on `unload` and never force a mid-resolution
+snapshot. Serialize ordered zones, match stage, machine state, contested/in-play state,
+burn pile, turn counters, ruleset including burn flag, seed and RNG state, run status,
+future modifier extension point, and committed pending presentation event. Restore
+validates and migrates, reconstructs visuals from the snapshot, and replays or marks
+the saved presentation skipped without recalculating a domain result or consuming RNG.
 
 The following is an abridged shape example: most of the 52 zone card IDs are omitted,
 so it is not a valid restorable fixture. `pendingEvent` shows the canonical complete
@@ -287,7 +442,8 @@ and pass the stated zone validation.
   "rng": { "algorithm": "mulberry32", "seed": 12345, "state": 3771268942 },
   "ruleset": { "id": "mvp-baseline-v1", "burn": { "enabled": true } },
   "match": {
-    "phase": "personal",
+    "stage": "personal",
+    "machineState": "ready",
     "turn": 17,
     "status": "active",
     "sourceDeck": [],
@@ -303,9 +459,14 @@ and pass the stated zone validation.
     "id": "run-42:clash-17",
     "type": "clashSettled",
     "turn": 17,
-    "phase": "personal",
+    "stage": "personal",
     "winner": "player",
-    "reveals": ["c-10H", "c-10C", "c-AS", "c-KD"],
+    "reveals": [
+      { "cardId": "c-10H", "suppliedBy": "player" },
+      { "cardId": "c-10C", "suppliedBy": "opponent" },
+      { "cardId": "c-AS", "suppliedBy": "player" },
+      { "cardId": "c-KD", "suppliedBy": "opponent" }
+    ],
     "transfers": [
       { "cardId": "c-10H", "to": "player.wonPile" },
       { "cardId": "c-AS", "to": "player.wonPile" }
@@ -336,14 +497,19 @@ texture generation, and context-loss recovery before setting release thresholds.
 
 ## PWA and updates
 
-Retain relative paths and GitHub Pages deployment. Extend the existing service worker
-to precache the versioned app shell and generated/local assets where applicable,
-remove obsolete versioned caches on activate, and keep runtime caching bounded.
-Generated card textures are recreated locally; IndexedDB saves remain independent of
-Cache Storage. Offer update availability, but defer reload while a resolution is
-uncommitted: first reach and save a stable boundary. Verify installability,
-standalone/fullscreen safe areas, manifest icons, offline launch/resume, cache upgrade,
-and update deferral.
+The baseline already retains relative paths, injects build assets and a content-derived
+revision into `sw.js`, removes obsolete Soulcard caches on activation, registers the
+worker in production, and deploys through GitHub Pages. Its immediate
+`skipWaiting()`/`clients.claim()` activation is intentionally not the final update
+policy.
+
+Milestone 17 extends that baseline to precache all required local app-shell assets and
+keep runtime caching bounded. Generated card textures are recreated locally; IndexedDB
+saves remain independent of Cache Storage. The application must report an available
+update and defer activation/reload while a resolution is uncommitted, first reaching
+and saving a stable boundary. Verify installability, standalone/fullscreen safe areas,
+manifest icons, offline launch/resume, cache upgrade, and update deferral on the
+relative GitHub Pages path.
 
 ## Dependency map and critical path
 
@@ -377,6 +543,12 @@ reviewable PR.
 - **Checks/risks:** Markdown review against current `src/main.js`, `public/sw.js`,
   `vite.config.js`, and deploy workflow. Revisit decisions only through versioned
   rules/schema changes.
+- **Acceptance evidence:** Product boundaries and the current prototype are recorded in
+  ADR-001 and the scope lists; exact match/burn behavior and zones are in ADR-003 and
+  Canonical rules and terminology; the three-screen constraint is in ADR-004 and
+  Screens, settings, and input; authority/rendering and storage boundaries are in
+  ADR-002, ADR-005, Architecture, and Persistence; relative PWA/Pages constraints and
+  current immediate service-worker activation are in ADR-006 and PWA and updates.
 
 ### 2. Test tooling and deterministic seeded RNG
 - **Goal/files:** Add existing-project-compatible test runner/config and
@@ -402,8 +574,9 @@ reviewable PR.
 
 ### 5. Pure clash/tie state machine and conservation
 - **Goal/files:** Add `match-machine.js`, `events.js`, transition tests; depends on 4.
-- **Acceptance:** Paired source/personal reveals, multi-ties, exhaustion, inability,
-  terminal states, events, and stable conservation all work without Three.js.
+- **Acceptance:** Paired source-stage/personal-stage reveals, multi-ties, exhaustion,
+  inability, terminal states, events, and stable conservation all work without
+  Three.js.
 - **Checks/risks:** Exhaustive targeted tie/inability tests plus property/fuzz tests
   over seeds; inspect event settlement before presentation.
 
@@ -476,7 +649,7 @@ reviewable PR.
 - **Checks/risks:** Playwright/device-emulation plus real touch manual checks; keyboard
   remains explicitly post-MVP.
 
-### 15. AI and complete source-to-personal match flow
+### 15. AI and complete source-to-personal-stage match flow
 - **Goal/files:** Add AI controller/encounter wiring and integration tests; depends on 5,
   13–14.
 - **Acceptance:** AI advances the automatic opponent; source ownership then one-time
@@ -531,14 +704,14 @@ representative seed set in CI and retain failing seeds as fixtures.
 Manual release checks cover current Chromium, Firefox, and Safari where available;
 phone portrait/landscape (including iOS Safari and Android Chrome), tablet, desktop
 mouse, touch, and pen; normal/reduced motion; online/offline/install/standalone;
-fresh run, tie, source transition, pause/background/refresh/resume, corrupt save,
+fresh run, tie, source-stage transition, pause/background/refresh/resume, corrupt save,
 update waiting at a stable boundary, and WebGL context restoration.
 
 ## MVP definition of done
 
 A clean install can launch offline after first load, start a seeded 52-card game,
 visibly and deterministically settle pairs/ties with the documented burn on/off
-behavior, preserve all cards, complete source and personal phases, and end correctly.
+behavior, preserve all cards, complete source and personal stages, and end correctly.
 It can save at stable boundaries, safely recover or discard bad saves, resume exactly
 without replaying randomness, render responsively with generated classic cards, and
 operate primary controls via mouse/touch/pen. Settings persist independently,

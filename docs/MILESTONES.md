@@ -6,7 +6,7 @@ only once its acceptance criteria in that document are met; keep this file's
 numbering and dependencies in sync with the roadmap's "Milestones" and
 dependency-map sections.
 
-- [ ] 1. Documentation baseline, terminology, and decisions (depends on: none)
+- [x] 1. Documentation baseline, terminology, and decisions (depends on: none)
 - [ ] 2. Test tooling and deterministic seeded RNG (depends on: 1)
 - [ ] 3. Card model, decks, zones, setup, and invariants (depends on: 2)
 - [ ] 4. Configurable burn-enabled/disabled rules (depends on: 3)
@@ -21,7 +21,7 @@ dependency-map sections.
 - [ ] 12. Generated classic fronts/back, registry, cache, disposal (depends on: 3, 11)
 - [ ] 13. Committed-event-to-animation pipeline (depends on: 5, 8, 11–12)
 - [ ] 14. Pointer interactions and responsive HUD (depends on: 7, 11, 13)
-- [ ] 15. AI and complete source-to-personal match flow (depends on: 5, 13–14)
+- [ ] 15. AI and complete source-to-personal-stage match flow (depends on: 5, 13–14)
 - [ ] 16. Main, pause, resume, overwrite, and end-state integration
       (depends on: 8–10, 15)
 - [ ] 17. PWA offline/update hardening (depends on: 9–10, 16)
