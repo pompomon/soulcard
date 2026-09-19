@@ -613,6 +613,11 @@ reviewable PR.
   Node 24 independently of the agent session; manual CI runs are also supported.
   Pushes to the generated `gh-pages` branch are excluded. Pages deployment runs
   tests before building without changing its relative-path behavior.
+- **Validation:** All 24 unit tests and the production build pass locally on Node 24.
+  The documented manual replay matches repeated and JSON-restored continuations,
+  ending with seed `12345` and state `1767636961`. A text-only headless Chrome smoke
+  check confirms the production page initializes its Three.js canvas without
+  requiring screenshot attachments.
 
 ### 3. Card model, decks, zones, setup, and invariants
 - **Goal/files:** Add `cards.js`, `deck.js`, `zones.js`, `invariants.js`, setup tests;
