@@ -47,11 +47,11 @@ At new-game setup, seedable RNG shuffles one `sourceDeck`. For each clash, revea
 card for player and one for opponent from the source while it remains; during this
 **source phase**, resolved cards establish ownership in each side's `wonPile`. After
 the source is exhausted, shuffle each owned/won pile into that side's `drawPile`
-using the saved RNG, then enter **personal phase**. Thereafter each side reveals from
-its own draw pile. Before any required reveal, an empty draw pile recycles that side's
-complete nonempty `wonPile` by shuffling it into `drawPile`; when both recycle at the
-same boundary, process player then opponent. A side unable to reveal after this
-recycling loses.
+using the saved RNG, player first and then opponent, then enter **personal phase**.
+Thereafter each side reveals from its own draw pile. Before any required reveal, an
+empty draw pile recycles that side's complete nonempty `wonPile` by shuffling it into
+`drawPile`; when both recycle at the same boundary, process player then opponent. A
+side unable to reveal after this recycling loses.
 
 A clash keeps every revealed card, in reveal order, in `contestedPile`. Equal ranks
 add another pair to that same pile. If a side cannot supply a required tie card, the
@@ -133,10 +133,10 @@ without adding an MVP editor:
 }
 ```
 
-Rules are evaluated top-to-bottom for each eligible card; the first match wins. The
-percentage rule uses the serializable domain RNG only after preceding rules fail and
-only when burning is enabled. This is a rules/test configuration surface, not a
-graphics settings feature.
+Eligible cards are evaluated in `contestedPile` reveal order. Rules are evaluated
+top-to-bottom for each card; the first match wins. The percentage rule uses the
+serializable domain RNG only after preceding rules fail and only when burning is
+enabled. This is a rules/test configuration surface, not a graphics settings feature.
 
 ## Architecture
 
@@ -340,12 +340,19 @@ and update deferral.
 ## Dependency map and critical path
 
 ```text
-1 decisions -> 2 RNG -> 3 cards/zones -> 4 burn -> 5 state machine -> 6 simulation
-                                      \-> 9 persistence -> 10 lifecycle -> 16 integration
-7 screen shell -> 8 settings ----------^                 -> 14 input/HUD ---^
-5 -> 11 battlefield -> 12 themes -> 13 event animation ---------------------^
-5 -> 15 AI/full match -------------------------------------------------------^
-16 -> 17 PWA hardening -> 18 QA -> 19 release gate
+1 -> 2 -> 3 -> 4 -> 5 -> 6
+1 -> 7 -> 8
+2–5 -> 9
+7 + 9 -> 10
+5 + 7–8 -> 11
+3 + 11 -> 12
+5 + 8 + 11–12 -> 13
+7 + 11 + 13 -> 14
+5 + 13–14 -> 15
+8–10 + 15 -> 16
+9–10 + 16 -> 17
+11–17 -> 18
+1–18 -> 19
 ```
 
 The critical path is decisions, deterministic domain, persistence, screen integration,
