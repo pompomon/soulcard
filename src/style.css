@@ -1,0 +1,27 @@
+:root {
+  background: radial-gradient(circle at 25% 20%, #3a145d 0%, #110c25 38%, #03040d 100%);
+  color: #fff;
+  font-family: system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app,
+canvas {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  min-width: 320px;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+}
