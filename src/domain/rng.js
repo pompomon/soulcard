@@ -63,7 +63,11 @@ export function shuffle(items, rng) {
   const result = items.slice()
   // Descending Fisher–Yates: exactly one draw per index, including self-swaps.
   for (let index = result.length - 1; index > 0; index -= 1) {
-    const target = Math.floor(rng.next() * (index + 1))
+    const draw = rng.next()
+    if (!Number.isFinite(draw) || draw < 0 || draw >= 1) {
+      throw new TypeError('RNG next() must return a finite number in [0, 1)')
+    }
+    const target = Math.floor(draw * (index + 1))
     const item = result[index]
     result[index] = result[target]
     result[target] = item

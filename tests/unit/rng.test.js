@@ -279,6 +279,17 @@ test('invalid shuffle inputs are rejected before consuming RNG state', () => {
   }
 })
 
+test('shuffle rejects invalid RNG outputs before calculating a target', () => {
+  const input = [0, 1]
+  const invalid = [undefined, null, false, '0.5', NaN, Infinity, -Infinity, -0.1, 1, 1.1]
+  for (const value of invalid) {
+    assert.throws(() => shuffle(input, { next: () => value }), {
+      name: 'TypeError', message: 'RNG next() must return a finite number in [0, 1)',
+    })
+    assert.deepEqual(input, [0, 1])
+  }
+})
+
 test('module initialization, generation, restoration, and shuffle never use Math.random', async (t) => {
   t.mock.method(Math, 'random', () => assert.fail('Hidden Math.random use'))
   const isolated = await import('../../src/domain/rng.js?no-hidden-randomness')
