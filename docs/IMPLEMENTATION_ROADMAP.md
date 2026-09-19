@@ -23,6 +23,16 @@ described below. The existing baseline uses relative Vite and asset paths, regis
 `./sw.js` only in production, injects a build-derived app-shell revision, and deploys
 `dist` to GitHub Pages. Those constraints are preserved and evolved incrementally.
 
+The baseline review establishes:
+
+- `src/main.js` owns the prototype scene, render loop, resize listener, and
+  production-only relative service-worker registration.
+- `public/sw.js` owns immediate activation, versioned app-shell/runtime caching, and old
+  Soulcard-cache cleanup; `vite.config.js` injects emitted assets and a content-derived
+  revision at build time.
+- `.github/workflows/deploy.yml` builds with `npm ci`/`npm run build` and publishes
+  `dist` to GitHub Pages from `main`.
+
 The current service worker calls `skipWaiting()` and `clients.claim()`, so an installed
 update activates immediately. That is documented current behavior, not the safe-update
 behavior promised by the MVP. Milestone 17 replaces it with update availability and
@@ -135,7 +145,7 @@ The terms below are normative:
 | Term | Meaning |
 |---|---|
 | **Card** | Immutable identity `{ id, suit, rank, value }`; `id` is unique in the classic 52-card set, Ace has value 14, and suit never affects comparison. |
-| **Match stage** | Card-source progression: exactly `source` or `personal`. This is never called a machine phase. |
+| **Match stage** | Card-source progression: exactly `source` or `personal`; it is distinct from machine state. |
 | **Machine state** | Control state such as `new`, `ready`, `resolving`, `stageTransition`, `paused`, or `ended`. |
 | **Clash** | One contest beginning with a paired reveal and ending in one settlement or a terminal draw. |
 | **Reveal round** | The player reveal followed by the opponent reveal within a clash. |
@@ -202,9 +212,9 @@ The baseline data-driven ruleset has `burn.enabled: true`. On a resolved clash:
 
 1. Identify the decisive pair: the final unequal reveal, or the available card(s)
    when inability resolves the contest.
-2. Every winner-side card in the contested pile, including the decisive winning card,
+2. Every winner-supplied card in the contested pile, including the decisive winning card,
    moves to the winner's `wonPile`.
-3. Each eligible card owned by the losing side in the complete contested pile moves to
+3. Each eligible loser-supplied card in the complete contested pile moves to
    `burnPile`; this includes losing-side cards from earlier tie rounds and the
    decisive losing card.
 4. Preserve the filtered reveal order when appending to `wonPile` and `burnPile`.
@@ -213,26 +223,26 @@ The baseline data-driven ruleset has `burn.enabled: true`. On a resolved clash:
    evaluated or consumed.
 
 This preserves the premise that the winner retains its decisive card, while the
-baseline removes losing ownership and accelerates ordinary play. The evaluator must
+baseline removes loser-supplied cards and accelerates ordinary play. The evaluator must
 be pure and return a committed list of transfers/burns before any animation begins.
 Later rules may add ordered predicates (explicit card ID, rank, suit, percentage),
 with schema validation and unambiguous precedence, but the MVP UI does not expose an
 editor. A percentage predicate consumes the domain RNG only when enabled and reached.
-Optional anti-stalemate rules, if ever wanted, must be separate, explicit,
-deterministic, configurable, and must not silently alter a disabled-burn match.
+Anti-stalemate rules are excluded from MVP. Any future anti-stalemate rules must be
+separate, explicit, deterministic, configurable, and must not silently alter a
+disabled-burn match.
 
 ### Conservation invariant and shuffle timing
 
-At every stable boundary, every one of the 52 unique IDs exists in exactly one
+Throughout every atomic transition, each of the 52 unique IDs exists in exactly one
 authoritative zone: `sourceDeck`, `player.drawPile`, `player.wonPile`,
-`opponent.drawPile`, `opponent.wonPile`, `contestedPile`, `burnPile`, or an explicitly
-named ephemeral `inPlay` zone during an atomic engine transition. Counts total 52,
-zones have no duplicate IDs, and settled ownership agrees with the ordered zone array;
-record zones are counted by `cardId`. A transition may use `inPlay`, but its committed
-result must empty it and restore the invariant before emitting an event or permitting
-a save. The one exception to an empty contest at a stable boundary is a terminal draw,
-which retains unresolved cards in `contestedPile`. Do not reshuffle on every reveal:
-shuffle source only at setup; shuffle each side's `wonPile` at the
+`opponent.drawPile`, `opponent.wonPile`, `contestedPile`, `burnPile`, or the ephemeral
+`inPlay`. Counts total 52, zones have no duplicate IDs, settled ownership agrees with
+the ordered zone array, and record zones are counted by `cardId`. At every stable
+boundary, `inPlay` is empty and the invariant passes before an event is emitted or a
+save is permitted. The one exception to an empty contest at a stable boundary is a
+terminal draw, which retains unresolved cards in `contestedPile`. Do not reshuffle on
+every reveal: shuffle source only at setup; shuffle each side's `wonPile` at the
 source-to-personal-stage boundary and whenever its personal-stage `drawPile` is empty
 before a required reveal.
 
@@ -323,9 +333,9 @@ recreate renderer resources from the current snapshot on restoration.
 | `resolving` | values tie and both can reveal in the current stage | `resolving` | contest retained; next player-then-opponent reveal round |
 | `resolving` | values tie and source is empty | `stageTransition` | contest retained |
 | `resolving` | unequal values settle while source remains | `ready` | ordered settlement, burn result, and committed event |
-| `resolving` | unequal values settle as source becomes empty | `stageTransition` | ordered settlement, burn result, and committed event |
+| `resolving` | unequal values settle as source becomes empty | `stageTransition` | ordered settlement and burn result retained for final commit |
 | `stageTransition` | source empty with unresolved contest | `resolving` | player then opponent piles shuffled, stage set to personal, next reveal round |
-| `stageTransition` | source empty after settlement | `ready` | player then opponent piles shuffled and stage set to personal |
+| `stageTransition` | source empty after settlement | `ready` | player then opponent piles shuffled, stage set to personal, and settlement event committed |
 | `resolving` | personal draw pile empty and won pile nonempty before a required reveal | `resolving` | complete won pile recycled into draw pile |
 | `resolving` | exactly one side cannot supply a required card after recycling | `ended` | available reveal, ordered settlement, and terminal winner |
 | `resolving` | neither side can supply a required tie card | `ended` | terminal draw with unresolved contest retained |
@@ -531,6 +541,12 @@ reviewable PR.
 - **Checks/risks:** Markdown review against current `src/main.js`, `public/sw.js`,
   `vite.config.js`, and deploy workflow. Revisit decisions only through versioned
   rules/schema changes.
+- **Acceptance evidence:** Product boundaries and the current prototype are recorded in
+  ADR-001 and the scope lists; exact match/burn behavior and zones are in ADR-003 and
+  Canonical rules and terminology; the three-screen constraint is in ADR-004 and
+  Screens, settings, and input; authority/rendering and storage boundaries are in
+  ADR-002, ADR-005, Architecture, and Persistence; relative PWA/Pages constraints and
+  current immediate service-worker activation are in ADR-006 and PWA and updates.
 
 ### 2. Test tooling and deterministic seeded RNG
 - **Goal/files:** Add existing-project-compatible test runner/config and
@@ -556,8 +572,9 @@ reviewable PR.
 
 ### 5. Pure clash/tie state machine and conservation
 - **Goal/files:** Add `match-machine.js`, `events.js`, transition tests; depends on 4.
-- **Acceptance:** Paired source/personal reveals, multi-ties, exhaustion, inability,
-  terminal states, events, and stable conservation all work without Three.js.
+- **Acceptance:** Paired source-stage/personal-stage reveals, multi-ties, exhaustion,
+  inability, terminal states, events, and stable conservation all work without
+  Three.js.
 - **Checks/risks:** Exhaustive targeted tie/inability tests plus property/fuzz tests
   over seeds; inspect event settlement before presentation.
 
@@ -630,7 +647,7 @@ reviewable PR.
 - **Checks/risks:** Playwright/device-emulation plus real touch manual checks; keyboard
   remains explicitly post-MVP.
 
-### 15. AI and complete source-to-personal match flow
+### 15. AI and complete source-to-personal-stage match flow
 - **Goal/files:** Add AI controller/encounter wiring and integration tests; depends on 5,
   13–14.
 - **Acceptance:** AI advances the automatic opponent; source ownership then one-time
@@ -685,14 +702,14 @@ representative seed set in CI and retain failing seeds as fixtures.
 Manual release checks cover current Chromium, Firefox, and Safari where available;
 phone portrait/landscape (including iOS Safari and Android Chrome), tablet, desktop
 mouse, touch, and pen; normal/reduced motion; online/offline/install/standalone;
-fresh run, tie, source transition, pause/background/refresh/resume, corrupt save,
+fresh run, tie, source-stage transition, pause/background/refresh/resume, corrupt save,
 update waiting at a stable boundary, and WebGL context restoration.
 
 ## MVP definition of done
 
 A clean install can launch offline after first load, start a seeded 52-card game,
 visibly and deterministically settle pairs/ties with the documented burn on/off
-behavior, preserve all cards, complete source and personal phases, and end correctly.
+behavior, preserve all cards, complete source and personal stages, and end correctly.
 It can save at stable boundaries, safely recover or discard bad saves, resume exactly
 without replaying randomness, render responsively with generated classic cards, and
 operate primary controls via mouse/touch/pen. Settings persist independently,
