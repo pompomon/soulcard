@@ -324,6 +324,53 @@ replacement, screen teardown, and cache eviction. Handle `webglcontextlost` by
 preventing default, pausing presentation without changing domain state, then
 recreate renderer resources from the current snapshot on restoration.
 
+### RNG contract (milestone 2)
+
+`src/domain/rng.js` implements Mulberry32 as the small, non-cryptographic domain
+generator. It has no dependency on Three.js, browser globals, clocks, or implicit
+entropy. `createRng(seed)` requires an explicit unsigned 32-bit integer; zero is
+valid, negative zero is canonicalized to zero, and invalid values throw `TypeError`
+without coercion or fallback. Each independent instance exposes `next()` and
+`snapshot()`.
+
+On each `next()`, add `0x6D2B79F5` to the accumulator modulo 2^32, apply the
+Mulberry32 integer mixing operations with `Math.imul` and unsigned right shifts,
+then divide the unsigned output by 2^32 to obtain a value in `[0, 1)`. The accumulator
+is kept unsigned on every draw, including after wraparound.
+
+A snapshot is a detached, JSON-compatible record with exactly `algorithm`, `seed`,
+and `state`. The algorithm identifier is `mulberry32`; seed records the original
+seed, and state is the current accumulator immediately before the next draw.
+`restoreRng(snapshot)` validates the complete record and resumes from state, not
+seed. Unknown algorithms, missing/extra fields, and invalid uint32 values are
+rejected rather than silently reseeded. Reading/restoring snapshots consumes no
+randomness and shares no mutable state with the original instance or input record.
+This standalone record does not implement storage or the active-run schema.
+
+`shuffle(items, rng)` is a card-agnostic, shallow-copy Fisher–Yates shuffle.
+It requires a dense array and an RNG whose `next()` returns a value in `[0, 1)`;
+non-arrays, sparse arrays, and missing/non-callable RNG methods are rejected before
+any draw. It visits indices `length - 1` down through `1`, uses one draw per index
+to select `floor(next() * (index + 1))`, and swaps even when the selected index
+equals the current one. Thus a nonempty array consumes exactly `length - 1` draws;
+empty and singleton arrays consume none. Inputs and their elements are not mutated,
+and duplicate values/references retain their multiplicities.
+
+The algorithm, mixing operations, output scaling, shuffle traversal, and draw
+consumption are deterministic compatibility contracts. Do not change their
+sequences under the existing algorithm identity or silently reinterpret snapshots.
+Changes require explicit algorithm/rules compatibility handling; changed saved
+shapes additionally require the save-schema versioning and migrations described
+under Persistence.
+
+Unit tests use Node's built-in test runner and strict assertions through `npm test`
+and `npm run test:watch`, discovering `tests/unit/**/*.test.js` without a DOM or
+WebGL. Fixed sequence/state and shuffle fixtures were independently checked with
+integer arithmetic modulo 2^32, including boundary seeds and wraparound. Bounded
+seed tests exercise mixed draws, shuffles, and JSON resume equivalence without
+probabilistic thresholds. Browser tests, card/deck setup, and persistence remain
+later milestones.
+
 ### State-machine transitions
 
 | Current machine state | Action/condition | Next machine state | Atomic commit |
@@ -557,6 +604,13 @@ reviewable PR.
   serializes/restores exactly; no hidden `Math.random`.
 - **Checks/risks:** Unit sequence/state tests and manual seed replay. Choose a small,
   documented algorithm before saves ship.
+- **Acceptance evidence:** `src/domain/rng.js` and the RNG contract above establish
+  the algorithm, snapshot, and shuffle semantics. `tests/unit/rng.test.js` covers
+  independent known-answer fixtures, seed boundaries/wraparound, isolation,
+  serialization/restoration, shuffle conservation/draw counts, invalid inputs, and
+  execution with `Math.random` disabled. `README.md` contains the manual JSON replay
+  check. PR CI runs `npm ci`, `npm test`, and `npm run build` on Node 24; Pages
+  deployment runs tests before building without changing its relative-path behavior.
 
 ### 3. Card model, decks, zones, setup, and invariants
 - **Goal/files:** Add `cards.js`, `deck.js`, `zones.js`, `invariants.js`, setup tests;

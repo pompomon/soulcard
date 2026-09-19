@@ -4,9 +4,79 @@ A fullscreen PWA featuring a rotating, gradient glass pyramid rendered with Thre
 
 ## Development
 
+Use Node 24 (the CI baseline). From the repository root:
+
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 
-Build the production site with `npm run build`.
+Build the production site with `npm run build`; serve it with `npm run preview`.
+
+## Tests
+
+```sh
+npm test
+npm run test:watch
+```
+
+These use Node's built-in test runner and strict assertions to discover
+`tests/unit/**/*.test.js`. No browser, DOM, WebGL, or test dependencies are needed.
+Pull requests run tests and a production build; deployment also runs tests before
+building. There is no configured lint command.
+
+## Deterministic RNG
+
+`src/domain/rng.js` exports `createRng(seed)`, `restoreRng(snapshot)`, and
+`shuffle(items, rng)`. An RNG exposes `next()` and `snapshot()`:
+
+- Seeds and states are integers from 0 through 4294967295; zero is valid. Negative
+  zero is canonicalized to zero. Invalid values throw `TypeError`, without coercion
+  or automatic seeding.
+- `next()` uses Mulberry32 and returns a number in `[0, 1)`. This is gameplay
+  randomness, **not cryptographic randomness**.
+- Snapshots contain exactly `algorithm`, `seed`, and `state`, with algorithm
+  `mulberry32`. State is the accumulator before the next draw, not a draw count.
+  JSON round-trips and restoration preserve the continuation exactly; exporting
+  or restoring a snapshot consumes no draws. Snapshots are independent copies.
+- `shuffle` returns a shallow copy of a dense array, using the supplied RNG's
+  `next()` method. It preserves element identity and multiplicity. It visits
+  indices from last to first (excluding index zero), drawing once per index and
+  swapping with an index from zero through the current index, inclusive.
+  Empty and singleton arrays consume no draws. Invalid arrays (including sparse
+  arrays) or missing/non-callable RNG methods throw before any draw.
+
+The algorithm and shuffle order are compatibility contracts; see the
+[roadmap's RNG contract](docs/IMPLEMENTATION_ROADMAP.md#rng-contract-milestone-2).
+The RNG is not yet wired into the visual prototype.
+
+### Manual seed replay
+
+Run this from the repository root to compare repeated execution with execution
+interrupted by a JSON snapshot. It asserts both subsequent results and final state;
+the final snapshot should have seed `12345` and state `1767636961`.
+
+```sh
+node --input-type=module <<'JS'
+import assert from 'node:assert/strict'
+import { createRng, restoreRng, shuffle } from './src/domain/rng.js'
+
+function continuation(rng) {
+  return {
+    value: rng.next(),
+    order: shuffle(['a', 'b', 'c', 'd'], rng),
+    snapshot: rng.snapshot(),
+  }
+}
+
+const uninterrupted = createRng(12345)
+const repeated = createRng(12345)
+assert.deepEqual(continuation(repeated), continuation(uninterrupted))
+const saved = JSON.parse(JSON.stringify(repeated.snapshot()))
+const resumed = restoreRng(saved)
+const expected = continuation(uninterrupted)
+assert.deepEqual(continuation(repeated), expected)
+assert.deepEqual(continuation(resumed), expected)
+console.log('Seed replay passed:', expected.snapshot)
+JS
+```
