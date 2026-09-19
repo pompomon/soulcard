@@ -7,7 +7,7 @@ numbering and dependencies in sync with the roadmap's "Milestones" and
 dependency-map sections.
 
 - [x] 1. Documentation baseline, terminology, and decisions (depends on: none)
-- [ ] 2. Test tooling and deterministic seeded RNG (depends on: 1)
+- [x] 2. Test tooling and deterministic seeded RNG (depends on: 1)
 - [ ] 3. Card model, decks, zones, setup, and invariants (depends on: 2)
 - [ ] 4. Configurable burn-enabled/disabled rules (depends on: 3)
 - [ ] 5. Pure clash/tie state machine and conservation (depends on: 4)
