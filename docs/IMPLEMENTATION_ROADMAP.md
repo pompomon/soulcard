@@ -53,6 +53,10 @@ empty draw pile recycles that side's complete nonempty `wonPile` by shuffling it
 `drawPile`; when both recycle at the same boundary, process player then opponent. A
 side unable to reveal after this recycling loses.
 
+If a tied reveal exhausts the source, retain `contestedPile`, perform the same
+player-first source-to-personal shuffles, remain in `resolving`, and continue the tie
+with the next required reveal from the personal draw piles.
+
 A clash keeps every revealed card, in reveal order, in `contestedPile`. Equal ranks
 add another pair to that same pile. If a side cannot supply a required tie card, the
 other side wins the whole unresolved contest according to the same settlement rule;
@@ -182,8 +186,10 @@ recreate renderer resources from the current snapshot on restoration.
 | `new` | start with seed/rules | `ready` | shuffled source |
 | `ready` | reveal/continue | `resolving` | pair in contested/in-play |
 | `resolving` | ranks tie and both can reveal | `resolving` | contested retained; next pair revealed atomically |
+| `resolving` | ranks tie and source is empty | `phaseTransition` | contested retained |
 | `resolving` | winner or inability resolves | `ready` / `phaseTransition` | settlement event, zones, burn |
-| `phaseTransition` | source empty | `ready` | each owned pile shuffled to draw pile |
+| `phaseTransition` | source empty with unresolved contest | `resolving` | owned piles shuffled to personal draw piles; next pair revealed atomically |
+| `phaseTransition` | source empty after settlement | `ready` | each owned pile shuffled to draw pile |
 | `resolving` | personal draw empty and won pile nonempty before a required reveal | `resolving` | won pile recycled into draw pile |
 | any nonterminal stable phase | required card absent | `ended` | terminal result |
 | `ready` | pause/save | `paused` overlay | atomic snapshot |
