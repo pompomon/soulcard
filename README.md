@@ -22,8 +22,10 @@ npm run test:watch
 
 These use Node's built-in test runner and strict assertions to discover
 `tests/unit/**/*.test.js`. No browser, DOM, WebGL, or test dependencies are needed.
-Pull requests run tests and a production build; deployment also runs tests before
-building. There is no configured lint command.
+Branch pushes (except the generated `gh-pages` branch) and pull requests run tests
+and a production build, independently of the Copilot agent session. CI also supports
+manual runs via Actions → CI → Run workflow once the workflow is on the default
+branch. Deployment runs tests before building. There is no configured lint command.
 
 ## Deterministic RNG
 

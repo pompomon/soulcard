@@ -609,8 +609,10 @@ reviewable PR.
   independent known-answer fixtures, seed boundaries/wraparound, isolation,
   serialization/restoration, shuffle conservation/draw counts, invalid inputs, and
   execution with `Math.random` disabled. `README.md` contains the manual JSON replay
-  check. PR CI runs `npm ci`, `npm test`, and `npm run build` on Node 24; Pages
-  deployment runs tests before building without changing its relative-path behavior.
+  check. Branch-push and PR CI run `npm ci`, `npm test`, and `npm run build` on
+  Node 24 independently of the agent session; manual CI runs are also supported.
+  Pushes to the generated `gh-pages` branch are excluded. Pages deployment runs
+  tests before building without changing its relative-path behavior.
 
 ### 3. Card model, decks, zones, setup, and invariants
 - **Goal/files:** Add `cards.js`, `deck.js`, `zones.js`, `invariants.js`, setup tests;
