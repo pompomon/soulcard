@@ -47,8 +47,11 @@ At new-game setup, seedable RNG shuffles one `sourceDeck`. For each clash, revea
 card for player and one for opponent from the source while it remains; during this
 **source phase**, resolved cards establish ownership in each side's `wonPile`. After
 the source is exhausted, shuffle each owned/won pile into that side's `drawPile`
-exactly once (using the saved RNG), then enter **personal phase**. Thereafter each
-side reveals from its own draw pile. A side unable to reveal a required card loses.
+using the saved RNG, then enter **personal phase**. Thereafter each side reveals from
+its own draw pile. Before any required reveal, an empty draw pile recycles that side's
+complete nonempty `wonPile` by shuffling it into `drawPile`; when both recycle at the
+same boundary, process player then opponent. A side unable to reveal after this
+recycling loses.
 
 A clash keeps every revealed card, in reveal order, in `contestedPile`. Equal ranks
 add another pair to that same pile. If a side cannot supply a required tie card, the
@@ -63,14 +66,14 @@ The baseline data-driven ruleset has `burn.enabled: true`. On a resolved clash:
 
 1. Identify the decisive pair: the final unequal reveal, or the available card(s)
    when inability resolves the contest.
-2. The decisive winning card stays with its current/winning side.
+2. Every winner-side card in the contested pile, including the decisive winning card,
+   moves to the winner's `wonPile`.
 3. Each eligible card owned by the losing side in the complete contested pile moves to
    `burnPile`; this includes losing-side cards from earlier tie rounds and the
-   decisive losing card. Winner-side cards in the contested pile transfer to the
-   winner's `wonPile`.
+   decisive losing card.
 4. If `burn.enabled: false`, **all** contested cards (including eligible losing cards)
-   transfer to the winner's `wonPile`, except the decisive winning card that remains
-   where it already is. No burn random decision is evaluated or consumed.
+   transfer to the winner's `wonPile`. No burn random decision is evaluated or
+   consumed.
 
 This preserves the premise that the winner retains its decisive card, while the
 baseline removes losing ownership and accelerates ordinary play. The evaluator must
@@ -89,10 +92,10 @@ authoritative zone: `sourceDeck`, `player.drawPile`, `player.wonPile`,
 named ephemeral `inPlay` zone during an atomic engine transition. Counts total 52,
 zones have no duplicate IDs, and a card's owner/zone agrees with the ordered zone
 array. A transition may use `inPlay`, but its committed result must restore the
-stable invariant before it emits an event or permits a save. Do not reshuffle on
-every reveal: shuffle source only at setup, and each side's owned pile only at the
-one source-to-personal boundary (unless a future ruleset explicitly defines another
-shuffle).
+stable invariant before it emits an event or permits a save. Do not reshuffle on every
+reveal: shuffle source only at setup; shuffle each side's `wonPile` at the
+source-to-personal boundary and whenever its personal-phase `drawPile` is empty before
+a required reveal.
 
 ### Example rulesets
 
@@ -102,7 +105,7 @@ shuffle).
   "burn": {
     "enabled": true,
     "eligibleScope": "all-losing-side-cards-in-resolved-contested-pile",
-    "decisiveWinningCard": "remains-with-winner"
+    "decisiveWinningCard": "winner.wonPile"
   }
 }
 ```
@@ -174,13 +177,14 @@ recreate renderer resources from the current snapshot on restoration.
 
 ### State-machine transitions
 
-| Stable phase | Action/condition | Next stable phase | Commit |
+| Phase | Action/condition | Next phase | Commit |
 |---|---|---|---|
 | `new` | start with seed/rules | `ready` | shuffled source |
 | `ready` | reveal/continue | `resolving` | pair in contested/in-play |
-| `resolving` | ranks tie and both can reveal | `ready` | contested retained |
+| `resolving` | ranks tie and both can reveal | `resolving` | contested retained; next pair revealed atomically |
 | `resolving` | winner or inability resolves | `ready` / `phaseTransition` | settlement event, zones, burn |
 | `phaseTransition` | source empty | `ready` | each owned pile shuffled to draw pile |
+| `resolving` | personal draw empty and won pile nonempty before a required reveal | `resolving` | won pile recycled into draw pile |
 | any nonterminal stable phase | required card absent | `ended` | terminal result |
 | `ready` | pause/save | `paused` overlay | atomic snapshot |
 | `paused` | resume | prior `ready` | no recalculation |
@@ -261,6 +265,11 @@ future modifier extension point, and committed pending visual event. Restore val
 and migrates, reconstructs visuals from snapshot, and replays/skips the saved
 presentation without recalculating a domain result.
 
+The following is an abridged shape example: most of the 52 zone card IDs are omitted,
+so it is not a valid restorable fixture. `pendingEvent` shows the canonical complete
+event shape that persistence stores; valid fixtures must contain all 52 unique card IDs
+and pass the stated zone validation.
+
 ```json
 {
   "saveSchemaVersion": 1,
@@ -274,14 +283,28 @@ presentation without recalculating a domain result.
     "turn": 17,
     "status": "active",
     "sourceDeck": [],
-    "player": { "drawPile": ["c-2S"], "wonPile": ["c-AS"] },
-    "opponent": { "drawPile": ["c-KD"], "wonPile": [] },
+    "player": { "drawPile": ["c-2S"], "wonPile": ["c-10H", "c-AS"] },
+    "opponent": { "drawPile": ["c-QD"], "wonPile": [] },
     "contestedPile": [],
     "inPlay": [],
-    "burnPile": ["c-10C"],
+    "burnPile": ["c-10C", "c-KD"],
     "futureModifiers": []
   },
-  "pendingEvent": { "id": "run-42:clash-17", "type": "clashSettled" }
+  "pendingEvent": {
+    "eventVersion": 1,
+    "id": "run-42:clash-17",
+    "type": "clashSettled",
+    "turn": 17,
+    "phase": "personal",
+    "winner": "player",
+    "reveals": ["c-10H", "c-10C", "c-AS", "c-KD"],
+    "transfers": [
+      { "cardId": "c-10H", "to": "player.wonPile" },
+      { "cardId": "c-AS", "to": "player.wonPile" }
+    ],
+    "burned": ["c-10C", "c-KD"],
+    "pendingPresentation": "settlement-v1"
+  }
 }
 ```
 
@@ -411,7 +434,7 @@ reviewable PR.
 
 ### 11. Three.js battlefield and responsive layout
 - **Goal/files:** Add battlefield/layout modules and refactor current scene; depends
-  on 7–8.
+  on 5 and 7–8.
 - **Acceptance:** Logical layout/camera/HUD reserves work across declared modes and
   capped DPR; domain works when rendering is paused.
 - **Checks/risks:** Resize/orientation browser tests and phone/tablet/desktop manual
