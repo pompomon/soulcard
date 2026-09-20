@@ -461,7 +461,7 @@ the end overlay likewise remains within Game rather than becoming a fourth scree
 
 ```json
 {
-  "eventVersion": 1,
+  "eventVersion": 2,
   "id": "run-42:clash-17",
   "type": "clashSettled",
   "turn": 17,
@@ -476,12 +476,53 @@ the end overlay likewise remains within Game rather than becoming a fourth scree
   "transfers": [{ "cardId": "c-10H", "to": "player.wonPile" },
                 { "cardId": "c-AS", "to": "player.wonPile" }],
   "burned": ["c-10C", "c-KD"],
+  "stateFingerprint": "[\"run-42\",{\"burn\":...},\"mulberry32\",12345,12345,...]",
   "pendingPresentation": "settlement-v1"
 }
 ```
 
 The event is committed and saved before animation. On restore, presentation replays it
 or marks it skipped; it never reruns settlement or RNG.
+
+### Match-machine and event contract (milestone 5)
+
+`src/domain/match-machine.js` exposes two deterministic operations.
+`createMatch({ runId, seed, ruleset })` requires all three caller-owned inputs, shuffles
+the source exactly once, and returns a deeply immutable `ready` snapshot.
+`revealOrContinue(match)` accepts only a validated stable `ready` snapshot and returns
+the next deeply immutable `{ match, event }` transition. It resolves the whole clash,
+including every tie, recycle, source-to-personal transition, settlement, or terminal
+inability, before returning. Callers never observe `resolving` or `stageTransition`,
+and an `ended` match rejects further actions.
+
+A public match snapshot contains exactly `runId`, the complete `ruleset`, the current
+RNG snapshot, `stage`, `machineState`, `turn`, `status`, `outcome`, `zones`, and
+`pendingEvent`. `turn` starts at zero and increments once per completed clash, including
+a terminal clash; it never counts individual reveal rounds. `status` is `active` or
+`ended`. A terminal win records its winner and the side-specific inability reason; a
+draw records `mutualInability`. At every returned boundary, `inPlay` is empty and
+conservation passes. A `ready` or won match has an empty `contestedPile`; only a terminal
+draw retains it.
+
+Source and personal reveal rounds process player before opponent. A source clash moves
+paired cards through `inPlay` into `contestedPile`. If settlement empties the source,
+the settled player pile and then opponent pile are shuffled before the event commits,
+and the event's stage is `personal`. If a tie empties the source, the unresolved contest
+survives that same player-first transition and continues from personal piles within the
+same action. In the personal stage, each side recycles its complete nonempty `wonPile`
+only when its `drawPile` is empty immediately before that side's required reveal.
+
+`src/domain/events.js` owns `eventVersion: 2` validation and factories. Settlements emit
+`clashSettled` with ID `<runId>:clash-<turn>`, the final committed stage, winner,
+chronological reveals, ordered transfers and burns, and
+an exact canonical `stateFingerprint` binding the event payload to the stable post-commit state, plus
+`pendingPresentation: "settlement-v1"`. Mutual inability emits the distinct
+`clashDrawn` event with the same deterministic identity/context, reason, retained
+reveals, and `pendingPresentation: "draw-v1"`; it intentionally has no winner,
+transfer, or burn fields because no settlement occurs. Events and their nested data are
+detached and deeply immutable. The returned event is also the match's `pendingEvent`,
+so persistence and presentation can consume the committed result without replaying
+rules or RNG.
 
 ## Screens, settings, and input
 
@@ -569,7 +610,7 @@ and pass the stated zone validation.
     "futureModifiers": []
   },
   "pendingEvent": {
-    "eventVersion": 1,
+    "eventVersion": 2,
     "id": "run-42:clash-17",
     "type": "clashSettled",
     "turn": 17,
@@ -586,6 +627,7 @@ and pass the stated zone validation.
       { "cardId": "c-AS", "to": "player.wonPile" }
     ],
     "burned": ["c-10C", "c-KD"],
+    "stateFingerprint": "[\"run-42\",{\"burn\":...},\"mulberry32\",12345,3771268942,...]",
     "pendingPresentation": "settlement-v1"
   }
 }
@@ -728,6 +770,18 @@ reviewable PR.
   Three.js.
 - **Checks/risks:** Exhaustive targeted tie/inability tests plus property/fuzz tests
   over seeds; inspect event settlement before presentation.
+- **Acceptance evidence:** `src/domain/match-machine.js` validates immutable stable
+  snapshots and resolves each complete clash atomically across ordered source reveals,
+  multi-ties, player-first stage shuffles, personal-pile recycling, one-sided inability,
+  and retained-contest terminal draws. It applies the milestone 4 evaluator exactly
+  once per settlement, captures RNG only after all ordered draws, and verifies
+  conservation before producing a result. `src/domain/events.js` validates and freezes
+  versioned `clashSettled` and distinct no-settlement `clashDrawn` events. Focused unit
+  tests cover both winners, burn-on/off/chance behavior, all exhaustion paths, exact
+  event/turn contracts, input atomicity, and deterministic bounded-seed replay.
+- **Validation:** All 80 unit tests and the production build pass locally on Node 24.
+  Browser validation is omitted because this milestone changes only pure domain code
+  and has no browser, rendering, or PWA behavior.
 
 ### 6. Seeded simulation harness
 - **Goal/files:** Add `simulation.js`, CLI/test harness, statistical report fixture;
