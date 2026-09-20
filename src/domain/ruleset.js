@@ -42,6 +42,14 @@ function assertPlainObject(value, name) {
   }
 }
 
+function assertDataProperty(value, key, name) {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key)
+  if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
+    throw new TypeError(`${name}.${key} must be JSON-compatible data`)
+  }
+  return descriptor.value
+}
+
 function assertExactKeys(value, expected, name) {
   const keys = Reflect.ownKeys(value)
   if (
@@ -52,10 +60,7 @@ function assertExactKeys(value, expected, name) {
     throw new TypeError(`${name} must contain only ${expected.join(', ')}`)
   }
   for (const key of keys) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key)
-    if (!descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
-      throw new TypeError(`${name}.${key} must be JSON-compatible data`)
-    }
+    assertDataProperty(value, key, name)
   }
 }
 
@@ -200,7 +205,8 @@ export function validateRuleset(ruleset) {
     return ruleset
   }
 
-  if (ruleset.burn.enabled === false) {
+  const enabled = assertDataProperty(ruleset.burn, 'enabled', 'ruleset.burn')
+  if (enabled === false) {
     assertExactKeys(ruleset.burn, ['enabled'], 'ruleset.burn')
     return ruleset
   }
@@ -209,7 +215,7 @@ export function validateRuleset(ruleset) {
     ['enabled', 'eligibleScope', 'decisiveWinningCard', 'rules', 'defaultOutcome'],
     'ruleset.burn',
   )
-  if (ruleset.burn.enabled !== true) {
+  if (enabled !== true) {
     throw new TypeError('ruleset.burn.enabled must be a boolean')
   }
   if (ruleset.burn.eligibleScope !== ELIGIBLE_SCOPE) {

@@ -133,6 +133,21 @@ test('disabled rules reject inert configuration fields', () => {
   }
 })
 
+test('rulesets reject a burn enabled accessor without invoking it', () => {
+  const ruleset = clone(PRECEDENCE_RULESET_FIXTURE)
+  let calls = 0
+  Object.defineProperty(ruleset.burn, 'enabled', {
+    enumerable: true,
+    get() {
+      calls += 1
+      return true
+    },
+  })
+
+  assert.throws(() => validateRuleset(ruleset), TypeError)
+  assert.equal(calls, 0)
+})
+
 test('deterministic selectors are nonempty, canonical, unique, and conjunctive-compatible', () => {
   const base = clone(PRECEDENCE_RULESET_FIXTURE)
   const invalidMatches = [
