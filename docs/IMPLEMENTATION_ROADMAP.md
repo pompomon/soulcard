@@ -273,6 +273,7 @@ without adding an MVP editor:
 {
   "enabled": true,
   "eligibleScope": "all-losing-side-cards-in-resolved-contested-pile",
+  "decisiveWinningCard": "winner.wonPile",
   "rules": [
     { "match": { "cardIds": ["c-AS"] }, "outcome": "transfer" },
     { "match": { "suits": ["H"], "ranks": ["K"] }, "outcome": "burn" },
@@ -397,6 +398,39 @@ records are unsettled. A stable boundary additionally requires empty `inPlay`;
 machine-state-specific terminal-draw validation remains with the milestone 5 state
 machine.
 
+### Ruleset and burn evaluator contract (milestone 4)
+
+`src/domain/ruleset.js` defines the deeply immutable built-ins
+`mvp-baseline-v1` and `debug-no-burn-v1`. Their IDs are bound to their complete
+canonical definitions: the baseline enables the fixed
+`all-losing-side-cards-in-resolved-contested-pile` scope and keeps decisive
+winner-supplied cards in `winner.wonPile`, while the no-burn ruleset contains only
+`burn.enabled: false`. Persistence stores those complete definitions rather than
+expanding a compact representation during restore.
+
+Ruleset validation accepts only plain JSON-compatible data with exact supported
+fields. A custom disabled ruleset cannot carry inert burn configuration. A custom
+enabled test ruleset requires the same eligible scope and winning-card destination,
+one or more ordered rules, and an explicit `burn` or `transfer` fallback. Deterministic
+match selectors may contain nonempty, duplicate-free canonical `cardIds`, `ranks`,
+and/or `suits`; multiple selector fields are conjunctive. A `chance` selector is a
+standalone finite probability from zero through one, so its RNG consumption cannot be
+confused with deterministic filtering. Built-in IDs cannot be reused for custom
+semantics.
+
+`src/domain/burn-evaluator.js` validates a resolved contest before settlement and
+returns detached `{ transfers, burned }` arrays without mutating the ruleset or reveal
+records. Winner-supplied cards always transfer to `<winner>.wonPile`. With burning
+disabled, every contested card transfers in reveal order and the evaluator never
+inspects RNG. With baseline burning enabled, every loser-supplied card burns. Custom
+rules evaluate eligible loser-supplied cards in contest order and rules top-to-bottom;
+the first match wins and otherwise the explicit fallback applies. A reached chance
+rule consumes exactly one validated domain RNG draw, including probabilities zero and
+one; deterministic matches and winner-supplied cards consume none. Invalid rules,
+winner/provenance data, duplicate or unknown cards, and contests without a
+winner-supplied card are rejected before any possible draw. A terminal draw has no
+winner and therefore never enters this settlement evaluator.
+
 ### State-machine transitions
 
 | Current machine state | Action/condition | Next machine state | Atomic commit |
@@ -513,7 +547,14 @@ and pass the stated zone validation.
   "savedAt": "2026-09-19T07:00:00.000Z",
   "runId": "run-42",
   "rng": { "algorithm": "mulberry32", "seed": 12345, "state": 3771268942 },
-  "ruleset": { "id": "mvp-baseline-v1", "burn": { "enabled": true } },
+  "ruleset": {
+    "id": "mvp-baseline-v1",
+    "burn": {
+      "enabled": true,
+      "eligibleScope": "all-losing-side-cards-in-resolved-contested-pile",
+      "decisiveWinningCard": "winner.wonPile"
+    }
+  },
   "match": {
     "stage": "personal",
     "machineState": "ready",
@@ -667,6 +708,18 @@ reviewable PR.
   zero burn RNG calls; validator rejects ambiguous future predicates.
 - **Checks/risks:** Unit enabled/disabled and card/rank/suit/percentage precedence
   fixtures; defer editor and duration policy.
+- **Acceptance evidence:** `src/domain/ruleset.js` defines immutable canonical baseline
+  and no-burn rulesets, locks their IDs to exact semantics, and validates custom
+  ordered predicates with conjunctive deterministic selectors and standalone chance
+  selectors. `src/domain/burn-evaluator.js` returns ordered detached transfers/burns,
+  retains every winner-supplied card, transfers the complete contest when disabled,
+  and consumes domain RNG only for reached chance predicates. Independent fixtures and
+  focused tests cover both winners, multi-round contests, disabled zero-draw behavior,
+  card/rank/suit/chance precedence, fallback and probability boundaries, exact draw
+  counts, malformed inputs, non-mutation, and one-to-one settlement conservation.
+- **Validation:** All 61 unit tests and the production build pass locally on Node 24.
+  Browser validation is omitted because this milestone changes only pure domain code
+  and has no browser, rendering, or PWA behavior.
 
 ### 5. Pure clash/tie state machine and conservation
 - **Goal/files:** Add `match-machine.js`, `events.js`, transition tests; depends on 4.
