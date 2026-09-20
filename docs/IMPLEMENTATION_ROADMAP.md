@@ -515,7 +515,7 @@ only when its `drawPile` is empty immediately before that side's required reveal
 `src/domain/events.js` owns `eventVersion: 1` validation and factories. Settlements emit
 `clashSettled` with ID `<runId>:clash-<turn>`, the final committed stage, winner,
 chronological reveals, ordered transfers and burns, and
-an exact canonical `stateFingerprint` of the stable post-commit state, plus
+an exact canonical `stateFingerprint` binding the event payload to the stable post-commit state, plus
 `pendingPresentation: "settlement-v1"`. Mutual inability emits the distinct
 `clashDrawn` event with the same deterministic identity/context, reason, retained
 reveals, and `pendingPresentation: "draw-v1"`; it intentionally has no winner,

@@ -519,6 +519,7 @@ test('validation rejects stale events and post-transition pile reordering', () =
     ...clone(first.event),
     id: second.event.id,
     turn: second.event.turn,
+    stateFingerprint: second.event.stateFingerprint,
   }
   assert.throws(
     () => validateMatchState(stale),

@@ -230,17 +230,30 @@ function assertPendingEvent(match) {
   ) {
     throw new Error('The terminal draw event must match the retained contest')
   }
-  if (pendingEvent.stateFingerprint !== createStateFingerprint(match)) {
+  if (pendingEvent.stateFingerprint !== createStateFingerprint(match, pendingEvent)) {
     throw new Error('The pending event must match the exact post-commit state')
   }
 }
 
-function createStateFingerprint(match) {
+function createStateFingerprint(match, event) {
   const outcome = match.outcome === null
     ? null
     : match.outcome.result === 'win'
       ? [match.outcome.result, match.outcome.winner, match.outcome.reason]
       : [match.outcome.result, match.outcome.reason]
+  const eventPayload = event.type === 'clashSettled'
+    ? [
+        event.type,
+        event.winner,
+        event.reveals.map(({ cardId, suppliedBy }) => [cardId, suppliedBy]),
+        event.transfers.map(({ cardId, to }) => [cardId, to]),
+        event.burned,
+      ]
+    : [
+        event.type,
+        event.reason,
+        event.reveals.map(({ cardId, suppliedBy }) => [cardId, suppliedBy]),
+      ]
   return JSON.stringify([
     match.runId,
     match.rng.algorithm,
@@ -259,6 +272,7 @@ function createStateFingerprint(match) {
     match.zones.contestedPile.map(({ cardId, suppliedBy }) => [cardId, suppliedBy]),
     match.zones.burnPile,
     match.zones.inPlay.map(({ cardId, suppliedBy }) => [cardId, suppliedBy]),
+    eventPayload,
   ])
 }
 
@@ -450,13 +464,19 @@ function commitSettled(match, rng, winner, settlement, terminal) {
   match.outcome = terminal ? winningOutcome(winner) : null
   assertStableMatch(match)
 
-  const event = createClashSettledEvent({
+  const eventData = {
     runId: match.runId,
     turn: match.turn,
     stage: match.stage,
     winner,
     ...settlement,
-    stateFingerprint: createStateFingerprint(match),
+  }
+  const event = createClashSettledEvent({
+    ...eventData,
+    stateFingerprint: createStateFingerprint(match, {
+      type: 'clashSettled',
+      ...eventData,
+    }),
   })
   match.pendingEvent = event
   validateMatchState(match)
@@ -471,13 +491,19 @@ function commitDraw(match, rng) {
   match.outcome = { result: 'draw', reason: DRAW_REASON }
   assertStableMatch(match)
 
-  const event = createClashDrawnEvent({
+  const eventData = {
     runId: match.runId,
     turn: match.turn,
     stage: match.stage,
     reason: DRAW_REASON,
     reveals: match.zones.contestedPile,
-    stateFingerprint: createStateFingerprint(match),
+  }
+  const event = createClashDrawnEvent({
+    ...eventData,
+    stateFingerprint: createStateFingerprint(match, {
+      type: 'clashDrawn',
+      ...eventData,
+    }),
   })
   match.pendingEvent = event
   validateMatchState(match)
