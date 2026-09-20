@@ -435,6 +435,73 @@ test('invalid and ended states fail atomically before any transition is exposed'
   const endedBefore = clone(ended)
   assert.throws(() => revealOrContinue(ended), /ended match/)
   assert.deepEqual(ended, endedBefore)
+
+  const contradictoryWinner = clone(revealOrContinue(createFixture({
+    stage: 'personal',
+    playerDraw: ['c-AS'],
+  })).match)
+  contradictoryWinner.outcome = {
+    result: 'win',
+    winner: 'opponent',
+    reason: 'playerUnableToReveal',
+  }
+  assert.throws(
+    () => validateMatchState(contradictoryWinner),
+    /terminal winner|event winner must match/,
+  )
+
+  const contradictoryDraw = clone(ended)
+  contradictoryDraw.zones.player.drawPile.push(contradictoryDraw.zones.burnPile.pop())
+  assert.throws(
+    () => validateMatchState(contradictoryDraw),
+    /both sides to be unable to reveal/,
+  )
+
+  const turnZeroEnded = createFixture({
+    stage: 'personal',
+    playerDraw: ['c-AS'],
+  })
+  turnZeroEnded.machineState = 'ended'
+  turnZeroEnded.status = 'ended'
+  turnZeroEnded.outcome = {
+    result: 'win',
+    winner: 'player',
+    reason: 'opponentUnableToReveal',
+  }
+  assert.throws(
+    () => validateMatchState(turnZeroEnded),
+    /completed terminal clash/,
+  )
+
+  const terminalAsReady = clone(revealOrContinue(createFixture({
+    stage: 'personal',
+    playerDraw: ['c-10S', 'c-AS'],
+    opponentDraw: ['c-10H'],
+  })).match)
+  terminalAsReady.machineState = 'ready'
+  terminalAsReady.status = 'active'
+  terminalAsReady.outcome = null
+  assert.throws(
+    () => validateMatchState(terminalAsReady),
+    /inability must agree/,
+  )
+
+  const readyAsTerminal = clone(revealOrContinue(createFixture({
+    stage: 'personal',
+    playerDraw: ['c-AS'],
+    opponentDraw: ['c-KH'],
+  })).match)
+  readyAsTerminal.machineState = 'ended'
+  readyAsTerminal.status = 'ended'
+  readyAsTerminal.outcome = {
+    result: 'win',
+    winner: 'player',
+    reason: 'opponentUnableToReveal',
+  }
+  assert.throws(
+    () => validateMatchState(readyAsTerminal),
+    /inability must agree/,
+  )
 })
 
 test('bounded seeded runs remain deterministic and conserve all cards at every boundary', () => {

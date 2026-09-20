@@ -131,6 +131,20 @@ function assertStageZones(match) {
     if (match.outcome.result === 'win' && zones.contestedPile.length !== 0) {
       throw new Error('A won match cannot retain a contested pile')
     }
+    if (match.outcome.result === 'draw') {
+      if (
+        SIDES.some(
+          (side) => zones[side].drawPile.length !== 0 || zones[side].wonPile.length !== 0,
+        )
+      ) {
+        throw new Error('A drawn match requires both sides to be unable to reveal')
+      }
+    } else {
+      const loser = match.outcome.winner === 'player' ? 'opponent' : 'player'
+      if (zones[loser].drawPile.length !== 0 || zones[loser].wonPile.length !== 0) {
+        throw new Error('A terminal winner requires the losing side to be unable to reveal')
+      }
+    }
   }
 
   if (
@@ -146,6 +160,9 @@ function assertStageZones(match) {
 
 function assertPendingEvent(match) {
   const { pendingEvent } = match
+  if (match.machineState === 'ended' && match.turn === 0) {
+    throw new Error('An ended match requires a completed terminal clash')
+  }
   if (match.turn === 0) {
     if (pendingEvent !== null) {
       throw new Error('A match without completed clashes cannot have a pending event')
@@ -174,6 +191,44 @@ function assertPendingEvent(match) {
       pendingEvent.type !== 'clashDrawn')
   ) {
     throw new Error('The pending event must agree with the stable match outcome')
+  }
+  if (
+    match.machineState === 'ended' &&
+    match.outcome.result === 'win' &&
+    pendingEvent.winner !== match.outcome.winner
+  ) {
+    throw new Error('The terminal event winner must match the match outcome')
+  }
+  if (pendingEvent.type === 'clashSettled') {
+    const endedByInability = pendingEvent.reveals.length % 2 === 1
+    if (
+      (match.machineState === 'ended' && !endedByInability) ||
+      (match.machineState === 'ready' && endedByInability)
+    ) {
+      throw new Error('One-sided inability must agree with the terminal machine state')
+    }
+    for (const { cardId } of pendingEvent.transfers) {
+      if (
+        !match.zones[pendingEvent.winner].drawPile.includes(cardId) &&
+        !match.zones[pendingEvent.winner].wonPile.includes(cardId)
+      ) {
+        throw new Error('Committed transfers must belong to the event winner')
+      }
+    }
+    for (const cardId of pendingEvent.burned) {
+      if (!match.zones.burnPile.includes(cardId)) {
+        throw new Error('Committed burns must be present in the burn pile')
+      }
+    }
+  } else if (
+    pendingEvent.reason !== match.outcome.reason ||
+    pendingEvent.reveals.length !== match.zones.contestedPile.length ||
+    pendingEvent.reveals.some(({ cardId, suppliedBy }, index) => (
+      match.zones.contestedPile[index].cardId !== cardId ||
+      match.zones.contestedPile[index].suppliedBy !== suppliedBy
+    ))
+  ) {
+    throw new Error('The terminal draw event must match the retained contest')
   }
 }
 

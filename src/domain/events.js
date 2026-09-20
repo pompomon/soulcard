@@ -192,6 +192,39 @@ function assertSettlementCoverage(reveals, transfers, burned, winner) {
   }
 }
 
+function assertTiedRound(reveals, index) {
+  if (getCard(reveals[index].cardId).value !== getCard(reveals[index + 1].cardId).value) {
+    throw new Error('Every reveal round before the decisive result must be tied')
+  }
+}
+
+function assertSettledRevealHistory(reveals, winner, stage) {
+  const hasAvailableWinnerCard = reveals.length % 2 === 1
+  const completeRounds = Math.floor(reveals.length / 2)
+  const tiedRounds = hasAvailableWinnerCard ? completeRounds : completeRounds - 1
+
+  for (let round = 0; round < tiedRounds; round += 1) {
+    assertTiedRound(reveals, round * 2)
+  }
+
+  if (hasAvailableWinnerCard) {
+    if (stage !== 'personal' || reveals.at(-1).suppliedBy !== winner) {
+      throw new Error('A single available winning card is valid only in the personal stage')
+    }
+    return
+  }
+
+  const playerCard = getCard(reveals.at(-2).cardId)
+  const opponentCard = getCard(reveals.at(-1).cardId)
+  if (playerCard.value === opponentCard.value) {
+    throw new Error('A settled clash must end with a decisive result')
+  }
+  const decisiveWinner = playerCard.value > opponentCard.value ? 'player' : 'opponent'
+  if (winner !== decisiveWinner) {
+    throw new Error('The event winner must match the decisive reveal round')
+  }
+}
+
 function assertBaseEvent(event, expectedType) {
   if (event.eventVersion !== EVENT_VERSION) {
     throw new TypeError(`eventVersion must be ${EVENT_VERSION}`)
@@ -229,7 +262,11 @@ function deepFreeze(value) {
 
 export function validateCommittedEvent(event) {
   assertPlainObject(event, 'event')
-  if (event.type === 'clashSettled') {
+  const typeDescriptor = Object.getOwnPropertyDescriptor(event, 'type')
+  if (!typeDescriptor?.enumerable || !Object.hasOwn(typeDescriptor, 'value')) {
+    throw new TypeError('event.type must be JSON-compatible data')
+  }
+  if (typeDescriptor.value === 'clashSettled') {
     assertExactKeys(event, [
       'eventVersion',
       'id',
@@ -250,10 +287,11 @@ export function validateCommittedEvent(event) {
       throw new TypeError(`pendingPresentation must be ${SETTLEMENT_PRESENTATION}`)
     }
     assertSettlementCoverage(event.reveals, event.transfers, event.burned, event.winner)
+    assertSettledRevealHistory(event.reveals, event.winner, event.stage)
     return event
   }
 
-  if (event.type === 'clashDrawn') {
+  if (typeDescriptor.value === 'clashDrawn') {
     assertExactKeys(event, [
       'eventVersion',
       'id',
@@ -272,11 +310,11 @@ export function validateCommittedEvent(event) {
       throw new TypeError(`pendingPresentation must be ${DRAW_PRESENTATION}`)
     }
     assertRevealRecords(event.reveals)
-    if (
-      event.reveals.length % 2 !== 0 ||
-      getCard(event.reveals.at(-2).cardId).value !== getCard(event.reveals.at(-1).cardId).value
-    ) {
+    if (event.stage !== 'personal' || event.reveals.length % 2 !== 0) {
       throw new Error('A drawn clash must end with a complete tied reveal round')
+    }
+    for (let index = 0; index < event.reveals.length; index += 2) {
+      assertTiedRound(event.reveals, index)
     }
     return event
   }
@@ -284,50 +322,48 @@ export function validateCommittedEvent(event) {
   throw new TypeError('event.type must be clashSettled or clashDrawn')
 }
 
-export function createClashSettledEvent({
-  runId,
-  turn,
-  stage,
-  winner,
-  reveals,
-  transfers,
-  burned,
-}) {
-  assertRunId(runId)
+export function createClashSettledEvent(options) {
+  assertPlainObject(options, 'options')
+  assertExactKeys(
+    options,
+    ['runId', 'turn', 'stage', 'winner', 'reveals', 'transfers', 'burned'],
+    'options',
+  )
+  assertRunId(options.runId)
   const event = {
     eventVersion: EVENT_VERSION,
-    id: `${runId}:clash-${turn}`,
+    id: `${options.runId}:clash-${options.turn}`,
     type: 'clashSettled',
-    turn,
-    stage,
-    winner,
-    reveals: cloneData(reveals),
-    transfers: cloneData(transfers),
-    burned: cloneData(burned),
+    turn: options.turn,
+    stage: options.stage,
+    winner: options.winner,
+    reveals: options.reveals,
+    transfers: options.transfers,
+    burned: options.burned,
     pendingPresentation: SETTLEMENT_PRESENTATION,
   }
   validateCommittedEvent(event)
-  return deepFreeze(event)
+  return deepFreeze(cloneData(event))
 }
 
-export function createClashDrawnEvent({
-  runId,
-  turn,
-  stage,
-  reason = DRAW_REASON,
-  reveals,
-}) {
-  assertRunId(runId)
+export function createClashDrawnEvent(options) {
+  assertPlainObject(options, 'options')
+  const keys = ['runId', 'turn', 'stage', 'reveals']
+  if (Object.hasOwn(options, 'reason')) {
+    keys.push('reason')
+  }
+  assertExactKeys(options, keys, 'options')
+  assertRunId(options.runId)
   const event = {
     eventVersion: EVENT_VERSION,
-    id: `${runId}:clash-${turn}`,
+    id: `${options.runId}:clash-${options.turn}`,
     type: 'clashDrawn',
-    turn,
-    stage,
-    reason,
-    reveals: cloneData(reveals),
+    turn: options.turn,
+    stage: options.stage,
+    reason: Object.hasOwn(options, 'reason') ? options.reason : DRAW_REASON,
+    reveals: options.reveals,
     pendingPresentation: DRAW_PRESENTATION,
   }
   validateCommittedEvent(event)
-  return deepFreeze(event)
+  return deepFreeze(cloneData(event))
 }

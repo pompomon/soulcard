@@ -152,11 +152,58 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
       { cardId: 'c-10S', suppliedBy: 'player' },
       { cardId: 'c-9H', suppliedBy: 'opponent' },
     ],
-  }), /tied reveal round/)
+  }), /tied/)
   assert.throws(() => createClashDrawnEvent({
     runId: 'draw-run',
     turn: 1,
     stage: 'personal',
     reveals: [{ cardId: 'c-10S', suppliedBy: 'player' }],
   }), /complete tied reveal round/)
+  assert.throws(() => createClashSettledEvent({
+    runId: 'source-singleton',
+    turn: 1,
+    stage: 'source',
+    winner: 'player',
+    reveals: [{ cardId: 'c-AS', suppliedBy: 'player' }],
+    transfers: [{ cardId: 'c-AS', to: 'player.wonPile' }],
+    burned: [],
+  }), /personal stage/)
+  assert.throws(() => createClashSettledEvent({
+    ...clone(SETTLED_INPUT),
+    winner: 'opponent',
+    transfers: SETTLED_INPUT.reveals.map(({ cardId }) => ({
+      cardId,
+      to: 'opponent.wonPile',
+    })),
+    burned: [],
+  }), /decisive reveal round/)
+  assert.throws(() => createClashDrawnEvent({
+    runId: 'late-draw',
+    turn: 1,
+    stage: 'personal',
+    reveals: [
+      { cardId: 'c-AS', suppliedBy: 'player' },
+      { cardId: 'c-KH', suppliedBy: 'opponent' },
+      { cardId: 'c-10S', suppliedBy: 'player' },
+      { cardId: 'c-10H', suppliedBy: 'opponent' },
+    ],
+  }), /before the decisive result/)
+})
+
+test('event factories reject accessors and extra fields before reading nested data', () => {
+  const input = clone(SETTLED_INPUT)
+  let calls = 0
+  Object.defineProperty(input, 'reveals', {
+    enumerable: true,
+    get() {
+      calls += 1
+      return SETTLED_INPUT.reveals
+    },
+  })
+  assert.throws(() => createClashSettledEvent(input), /JSON-compatible data/)
+  assert.equal(calls, 0)
+  assert.throws(
+    () => createClashSettledEvent({ ...clone(SETTLED_INPUT), extra: true }),
+    /must contain only/,
+  )
 })
