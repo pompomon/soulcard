@@ -526,6 +526,13 @@ test('validation rejects stale events and post-transition pile reordering', () =
     /exact post-commit state/,
   )
 
+  const changedRules = clone(second.match)
+  changedRules.ruleset = clone(BASELINE_RULESET)
+  assert.throws(
+    () => validateMatchState(changedRules),
+    /exact post-commit state/,
+  )
+
   const transitioned = clone(revealOrContinue(createFixture({
     runId: 'shuffled-order',
     ruleset: NO_BURN_RULESET,

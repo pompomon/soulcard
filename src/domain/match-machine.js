@@ -256,6 +256,7 @@ function createStateFingerprint(match, event) {
       ]
   return JSON.stringify([
     match.runId,
+    canonicalize(match.ruleset),
     match.rng.algorithm,
     match.rng.seed,
     match.rng.state,
@@ -288,6 +289,20 @@ function cloneData(value) {
   }
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, cloneData(child)]))
+  }
+  return value
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) {
+    return value.map(canonicalize)
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalize(value[key])]),
+    )
   }
   return value
 }
