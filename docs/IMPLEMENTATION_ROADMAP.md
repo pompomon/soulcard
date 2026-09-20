@@ -273,6 +273,7 @@ without adding an MVP editor:
 {
   "enabled": true,
   "eligibleScope": "all-losing-side-cards-in-resolved-contested-pile",
+  "decisiveWinningCard": "winner.wonPile",
   "rules": [
     { "match": { "cardIds": ["c-AS"] }, "outcome": "transfer" },
     { "match": { "suits": ["H"], "ranks": ["K"] }, "outcome": "burn" },
