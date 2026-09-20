@@ -146,7 +146,7 @@ export function simulateMatch(options) {
     throw new TypeError('options must contain seed')
   }
 
-  const { seed } = options
+  const requestedSeed = options.seed
   const ruleset = Object.hasOwn(options, 'ruleset')
     ? options.ruleset
     : BASELINE_RULESET
@@ -154,7 +154,8 @@ export function simulateMatch(options) {
     ? options.maxClashes
     : DEFAULT_MAX_CLASHES
 
-  assertSeed(seed)
+  assertSeed(requestedSeed)
+  const seed = requestedSeed >>> 0
   validateRuleset(ruleset)
   assertMaxClashes(maxClashes)
 
@@ -228,7 +229,10 @@ export function createSimulationReport(options) {
   validateRuleset(ruleset)
   assertMaxClashes(maxClashes)
 
-  const runs = seeds.map((seed) => simulateMatch({ seed, ruleset, maxClashes }))
+  const canonicalSeeds = seeds.map((seed) => seed >>> 0)
+  const runs = canonicalSeeds.map(
+    (seed) => simulateMatch({ seed, ruleset, maxClashes }),
+  )
   const results = {
     playerWin: 0,
     opponentWin: 0,
@@ -257,8 +261,8 @@ export function createSimulationReport(options) {
     rulesetId: ruleset.id,
     timingProfile: { ...DEFAULT_TIMING_PROFILE },
     maxClashesPerRun: maxClashes,
-    seedCount: seeds.length,
-    seeds: [...seeds],
+    seedCount: canonicalSeeds.length,
+    seeds: canonicalSeeds,
     runCounts: {
       completed,
       truncated: runs.length - completed,

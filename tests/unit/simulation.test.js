@@ -130,6 +130,11 @@ test('uint32 boundary seeds work without hidden Math.random calls', (t) => {
     assert.equal(result.status, 'truncated')
     assert.equal(result.clashCount, 1)
   }
+  assert.equal(simulateMatch({ seed: -0, maxClashes: 1 }).seed, 0)
+  assert.deepEqual(
+    createSimulationReport({ seeds: [-0], maxClashes: 1 }).seeds,
+    [0],
+  )
 })
 
 test('execution limits report truncation without inventing an outcome', () => {

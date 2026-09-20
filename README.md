@@ -27,6 +27,30 @@ and a production build, independently of the Copilot agent session. CI also supp
 manual runs via Actions → CI → Run workflow once the workflow is on the default
 branch. Deployment runs tests before building. There is no configured lint command.
 
+## Seeded simulations
+
+Run the deterministic baseline report for the canonical seed corpus 0 through 999:
+
+```sh
+npm run simulate
+```
+
+Select one seed or a contiguous corpus, and optionally lower the per-run clash guard:
+
+```sh
+npm run simulate -- --seed 12345
+npm run simulate -- --start 1000 --count 100
+npm run simulate -- --seed 7 --max-clashes 100
+```
+
+The JSON report contains no wall-clock or environment-derived data. Its versioned
+duration estimate is a content-planning metric, not measured runtime or a gameplay
+rule. Regenerate the canonical test fixture with:
+
+```sh
+npm run simulate --silent > tests/fixtures/simulation-report.json
+```
+
 ## Deterministic RNG
 
 `src/domain/rng.js` exports `createRng(seed)`, `restoreRng(snapshot)`, and
