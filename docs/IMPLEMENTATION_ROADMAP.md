@@ -476,7 +476,7 @@ the end overlay likewise remains within Game rather than becoming a fourth scree
   "transfers": [{ "cardId": "c-10H", "to": "player.wonPile" },
                 { "cardId": "c-AS", "to": "player.wonPile" }],
   "burned": ["c-10C", "c-KD"],
-  "stateFingerprint": "[\"run-42\",\"mulberry32\",12345,12345,...]",
+  "stateFingerprint": "[\"run-42\",{\"burn\":...},\"mulberry32\",12345,12345,...]",
   "pendingPresentation": "settlement-v1"
 }
 ```
