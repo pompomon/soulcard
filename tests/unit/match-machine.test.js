@@ -147,7 +147,7 @@ test('source-stage clashes resolve both winners and preserve the input snapshot'
     assert.equal(match.stage, 'source')
     assert.deepEqual(match.zones.sourceDeck, fixture.sourceDeck.slice(2))
     assert.deepEqual(event, {
-      eventVersion: 1,
+      eventVersion: 2,
       id: 'fixture-run:clash-1',
       type: 'clashSettled',
       turn: 1,
@@ -318,7 +318,7 @@ test('source-to-personal inability produces a terminal winner or retained draw',
     reason: 'mutualInability',
   })
   assert.deepEqual(neitherAvailable.event, {
-    eventVersion: 1,
+    eventVersion: 2,
     id: 'neither-available:clash-1',
     type: 'clashDrawn',
     turn: 1,

@@ -81,7 +81,7 @@ test('terminal draws use a distinct event without settlement fields', () => {
   })
 
   assert.deepEqual(event, {
-    eventVersion: 1,
+    eventVersion: EVENT_VERSION,
     id: 'draw-run:clash-3',
     type: 'clashDrawn',
     turn: 3,
@@ -128,7 +128,7 @@ test('settled events reject incomplete, duplicated, misordered, or redirected se
 test('event validation rejects malformed metadata, reveal rounds, and draw outcomes', () => {
   const settled = createClashSettledEvent(SETTLED_INPUT)
   const invalidEvents = [
-    { ...clone(settled), eventVersion: 2 },
+    { ...clone(settled), eventVersion: 1 },
     { ...clone(settled), id: 'run-42:clash-16' },
     { ...clone(settled), turn: 0 },
     { ...clone(settled), stage: 'Source' },

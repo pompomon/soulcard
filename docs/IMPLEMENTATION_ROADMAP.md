@@ -461,7 +461,7 @@ the end overlay likewise remains within Game rather than becoming a fourth scree
 
 ```json
 {
-  "eventVersion": 1,
+  "eventVersion": 2,
   "id": "run-42:clash-17",
   "type": "clashSettled",
   "turn": 17,
@@ -512,7 +512,7 @@ survives that same player-first transition and continues from personal piles wit
 same action. In the personal stage, each side recycles its complete nonempty `wonPile`
 only when its `drawPile` is empty immediately before that side's required reveal.
 
-`src/domain/events.js` owns `eventVersion: 1` validation and factories. Settlements emit
+`src/domain/events.js` owns `eventVersion: 2` validation and factories. Settlements emit
 `clashSettled` with ID `<runId>:clash-<turn>`, the final committed stage, winner,
 chronological reveals, ordered transfers and burns, and
 an exact canonical `stateFingerprint` binding the event payload to the stable post-commit state, plus
@@ -610,7 +610,7 @@ and pass the stated zone validation.
     "futureModifiers": []
   },
   "pendingEvent": {
-    "eventVersion": 1,
+    "eventVersion": 2,
     "id": "run-42:clash-17",
     "type": "clashSettled",
     "turn": 17,
@@ -627,6 +627,7 @@ and pass the stated zone validation.
       { "cardId": "c-AS", "to": "player.wonPile" }
     ],
     "burned": ["c-10C", "c-KD"],
+    "stateFingerprint": "[\"run-42\",{\"burn\":...},\"mulberry32\",12345,3771268942,...]",
     "pendingPresentation": "settlement-v1"
   }
 }

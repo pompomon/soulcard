@@ -1,6 +1,6 @@
 import { getCard, isCardId } from './cards.js'
 
-export const EVENT_VERSION = 1
+export const EVENT_VERSION = 2
 
 const SIDES = Object.freeze(['player', 'opponent'])
 const STAGES = Object.freeze(['source', 'personal'])
