@@ -77,6 +77,12 @@ function assertStage(stage) {
   }
 }
 
+function assertStateFingerprint(stateFingerprint) {
+  if (typeof stateFingerprint !== 'string' || stateFingerprint.length === 0) {
+    throw new TypeError('stateFingerprint must be a nonempty string')
+  }
+}
+
 function assertRevealRecords(reveals) {
   assertDenseArray(reveals, 'reveals', { nonempty: true })
   const seen = new Set()
@@ -277,6 +283,7 @@ export function validateCommittedEvent(event) {
       'reveals',
       'transfers',
       'burned',
+      'stateFingerprint',
       'pendingPresentation',
     ], 'event')
     assertBaseEvent(event, 'clashSettled')
@@ -286,6 +293,7 @@ export function validateCommittedEvent(event) {
     if (event.pendingPresentation !== SETTLEMENT_PRESENTATION) {
       throw new TypeError(`pendingPresentation must be ${SETTLEMENT_PRESENTATION}`)
     }
+    assertStateFingerprint(event.stateFingerprint)
     assertSettlementCoverage(event.reveals, event.transfers, event.burned, event.winner)
     assertSettledRevealHistory(event.reveals, event.winner, event.stage)
     return event
@@ -300,6 +308,7 @@ export function validateCommittedEvent(event) {
       'stage',
       'reason',
       'reveals',
+      'stateFingerprint',
       'pendingPresentation',
     ], 'event')
     assertBaseEvent(event, 'clashDrawn')
@@ -309,6 +318,7 @@ export function validateCommittedEvent(event) {
     if (event.pendingPresentation !== DRAW_PRESENTATION) {
       throw new TypeError(`pendingPresentation must be ${DRAW_PRESENTATION}`)
     }
+    assertStateFingerprint(event.stateFingerprint)
     assertRevealRecords(event.reveals)
     if (event.stage !== 'personal' || event.reveals.length % 2 !== 0) {
       throw new Error('A drawn clash must end with a complete tied reveal round')
@@ -326,7 +336,7 @@ export function createClashSettledEvent(options) {
   assertPlainObject(options, 'options')
   assertExactKeys(
     options,
-    ['runId', 'turn', 'stage', 'winner', 'reveals', 'transfers', 'burned'],
+    ['runId', 'turn', 'stage', 'winner', 'reveals', 'transfers', 'burned', 'stateFingerprint'],
     'options',
   )
   assertRunId(options.runId)
@@ -340,6 +350,7 @@ export function createClashSettledEvent(options) {
     reveals: options.reveals,
     transfers: options.transfers,
     burned: options.burned,
+    stateFingerprint: options.stateFingerprint,
     pendingPresentation: SETTLEMENT_PRESENTATION,
   }
   validateCommittedEvent(event)
@@ -348,7 +359,7 @@ export function createClashSettledEvent(options) {
 
 export function createClashDrawnEvent(options) {
   assertPlainObject(options, 'options')
-  const keys = ['runId', 'turn', 'stage', 'reveals']
+  const keys = ['runId', 'turn', 'stage', 'reveals', 'stateFingerprint']
   if (Object.hasOwn(options, 'reason')) {
     keys.push('reason')
   }
@@ -362,6 +373,7 @@ export function createClashDrawnEvent(options) {
     stage: options.stage,
     reason: Object.hasOwn(options, 'reason') ? options.reason : DRAW_REASON,
     reveals: options.reveals,
+    stateFingerprint: options.stateFingerprint,
     pendingPresentation: DRAW_PRESENTATION,
   }
   validateCommittedEvent(event)

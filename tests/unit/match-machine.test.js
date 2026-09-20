@@ -159,6 +159,7 @@ test('source-stage clashes resolve both winners and preserve the input snapshot'
       ],
       transfers: fixture.transfers,
       burned: fixture.burned,
+      stateFingerprint: match.pendingEvent.stateFingerprint,
       pendingPresentation: 'settlement-v1',
     })
     assert.equal(match.pendingEvent, event)
@@ -327,6 +328,7 @@ test('source-to-personal inability produces a terminal winner or retained draw',
       { cardId: 'c-10S', suppliedBy: 'player' },
       { cardId: 'c-10H', suppliedBy: 'opponent' },
     ],
+    stateFingerprint: neitherAvailable.match.pendingEvent.stateFingerprint,
     pendingPresentation: 'draw-v1',
   })
   assert.deepEqual(neitherAvailable.match.zones.contestedPile, neitherAvailable.event.reveals)
@@ -501,6 +503,46 @@ test('invalid and ended states fail atomically before any transition is exposed'
   assert.throws(
     () => validateMatchState(readyAsTerminal),
     /inability must agree/,
+  )
+})
+
+test('validation rejects stale events and post-transition pile reordering', () => {
+  const first = revealOrContinue(createFixture({
+    runId: 'stale-event',
+    ruleset: NO_BURN_RULESET,
+    stage: 'source',
+    sourceDeck: ['c-AS', 'c-KH', 'c-QS', 'c-JH', 'c-2S', 'c-3H'],
+  }))
+  const second = revealOrContinue(first.match)
+  const stale = clone(second.match)
+  stale.pendingEvent = {
+    ...clone(first.event),
+    id: second.event.id,
+    turn: second.event.turn,
+  }
+  assert.throws(
+    () => validateMatchState(stale),
+    /exact post-commit state/,
+  )
+
+  const transitioned = clone(revealOrContinue(createFixture({
+    runId: 'shuffled-order',
+    ruleset: NO_BURN_RULESET,
+    stage: 'source',
+    sourceDeck: ['c-AS', 'c-KH'],
+    playerWon: ['c-2S', 'c-3S'],
+    opponentWon: ['c-4H', 'c-5H'],
+  })).match)
+  ;[
+    transitioned.zones.player.drawPile[0],
+    transitioned.zones.player.drawPile[1],
+  ] = [
+    transitioned.zones.player.drawPile[1],
+    transitioned.zones.player.drawPile[0],
+  ]
+  assert.throws(
+    () => validateMatchState(transitioned),
+    /exact post-commit state/,
   )
 })
 

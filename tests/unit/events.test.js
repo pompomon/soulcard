@@ -34,6 +34,7 @@ const SETTLED_INPUT = {
     { cardId: 'c-AS', to: 'player.wonPile' },
   ],
   burned: ['c-10C', 'c-KD'],
+  stateFingerprint: 'post-commit-state',
 }
 
 test('settled clash events use the canonical versioned shape and detached immutable data', () => {
@@ -50,6 +51,7 @@ test('settled clash events use the canonical versioned shape and detached immuta
     reveals: SETTLED_INPUT.reveals,
     transfers: SETTLED_INPUT.transfers,
     burned: SETTLED_INPUT.burned,
+    stateFingerprint: SETTLED_INPUT.stateFingerprint,
     pendingPresentation: 'settlement-v1',
   })
   assert.equal(Object.hasOwn(event, 'runId'), false)
@@ -75,6 +77,7 @@ test('terminal draws use a distinct event without settlement fields', () => {
     turn: 3,
     stage: 'personal',
     reveals,
+    stateFingerprint: 'draw-post-commit-state',
   })
 
   assert.deepEqual(event, {
@@ -85,6 +88,7 @@ test('terminal draws use a distinct event without settlement fields', () => {
     stage: 'personal',
     reason: 'mutualInability',
     reveals,
+    stateFingerprint: 'draw-post-commit-state',
     pendingPresentation: 'draw-v1',
   })
   assert.equal(Object.hasOwn(event, 'winner'), false)
@@ -129,6 +133,7 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
     { ...clone(settled), turn: 0 },
     { ...clone(settled), stage: 'Source' },
     { ...clone(settled), winner: 'draw' },
+    { ...clone(settled), stateFingerprint: '' },
     { ...clone(settled), pendingPresentation: 'draw-v1' },
     { ...clone(settled), extra: true },
     {
@@ -148,6 +153,7 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
     runId: 'draw-run',
     turn: 1,
     stage: 'personal',
+    stateFingerprint: 'draw-state',
     reveals: [
       { cardId: 'c-10S', suppliedBy: 'player' },
       { cardId: 'c-9H', suppliedBy: 'opponent' },
@@ -157,6 +163,7 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
     runId: 'draw-run',
     turn: 1,
     stage: 'personal',
+    stateFingerprint: 'draw-state',
     reveals: [{ cardId: 'c-10S', suppliedBy: 'player' }],
   }), /complete tied reveal round/)
   assert.throws(() => createClashSettledEvent({
@@ -167,6 +174,7 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
     reveals: [{ cardId: 'c-AS', suppliedBy: 'player' }],
     transfers: [{ cardId: 'c-AS', to: 'player.wonPile' }],
     burned: [],
+    stateFingerprint: 'settled-state',
   }), /personal stage/)
   assert.throws(() => createClashSettledEvent({
     ...clone(SETTLED_INPUT),
@@ -181,6 +189,7 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
     runId: 'late-draw',
     turn: 1,
     stage: 'personal',
+    stateFingerprint: 'draw-state',
     reveals: [
       { cardId: 'c-AS', suppliedBy: 'player' },
       { cardId: 'c-KH', suppliedBy: 'opponent' },

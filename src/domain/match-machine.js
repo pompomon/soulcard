@@ -230,6 +230,36 @@ function assertPendingEvent(match) {
   ) {
     throw new Error('The terminal draw event must match the retained contest')
   }
+  if (pendingEvent.stateFingerprint !== createStateFingerprint(match)) {
+    throw new Error('The pending event must match the exact post-commit state')
+  }
+}
+
+function createStateFingerprint(match) {
+  const outcome = match.outcome === null
+    ? null
+    : match.outcome.result === 'win'
+      ? [match.outcome.result, match.outcome.winner, match.outcome.reason]
+      : [match.outcome.result, match.outcome.reason]
+  return JSON.stringify([
+    match.runId,
+    match.rng.algorithm,
+    match.rng.seed,
+    match.rng.state,
+    match.stage,
+    match.machineState,
+    match.turn,
+    match.status,
+    outcome,
+    match.zones.sourceDeck,
+    match.zones.player.drawPile,
+    match.zones.player.wonPile,
+    match.zones.opponent.drawPile,
+    match.zones.opponent.wonPile,
+    match.zones.contestedPile.map(({ cardId, suppliedBy }) => [cardId, suppliedBy]),
+    match.zones.burnPile,
+    match.zones.inPlay.map(({ cardId, suppliedBy }) => [cardId, suppliedBy]),
+  ])
 }
 
 function assertStableMatch(match) {
@@ -426,6 +456,7 @@ function commitSettled(match, rng, winner, settlement, terminal) {
     stage: match.stage,
     winner,
     ...settlement,
+    stateFingerprint: createStateFingerprint(match),
   })
   match.pendingEvent = event
   validateMatchState(match)
@@ -446,6 +477,7 @@ function commitDraw(match, rng) {
     stage: match.stage,
     reason: DRAW_REASON,
     reveals: match.zones.contestedPile,
+    stateFingerprint: createStateFingerprint(match),
   })
   match.pendingEvent = event
   validateMatchState(match)
