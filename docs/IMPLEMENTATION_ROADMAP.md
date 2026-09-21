@@ -870,10 +870,10 @@ reviewable PR.
   menu and HUD factories while preserving production-only relative service-worker
   registration. `src/ui/menus.js` and `src/ui/hud.js` provide the three DOM shells,
   disabled future controls, neutral zone/status placeholders, and a Game-owned overlay
-  host. `src/presentation/prototype-scene.js` retains the prototype canvas only within
-  Game and disposes its renderer resources and listener on teardown. Focused coordinator
-  tests lock the screen whitelist, single mount, teardown, navigation, Resume updates,
-  and overlay nesting.
+  host. `src/presentation/battlefield.js`, which replaced the milestone 7 prototype in
+  milestone 11, keeps its canvas only within Game and disposes renderer resources and
+  listeners on teardown. Focused coordinator tests lock the screen whitelist, single
+  mount, teardown, navigation, Resume updates, and overlay nesting.
 - **Validation:** All 97 unit tests and the production build pass locally on Node 24.
   A text-only headless Chrome check navigates Main → Settings → Main → Game, verifies
   semantic button state, one top-level screen, a nested Game overlay, one canvas under
