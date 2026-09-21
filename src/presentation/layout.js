@@ -25,7 +25,7 @@ export const MINIMUM_VIEWPORT = Object.freeze({
 const MODE_SPECS = Object.freeze({
   'phone-portrait': Object.freeze({
     world: Object.freeze({ width: 7.5, height: 11 }),
-    hud: Object.freeze({ header: 72, footer: 142, side: 0 }),
+    hud: Object.freeze({ header: 72, footer: 210, side: 0 }),
     zones: Object.freeze({
       sourceDeck: Object.freeze({ x: -2.7, y: 0, z: 0.2 }),
       opponentDrawPile: Object.freeze({ x: -2, y: 4, z: 0.2 }),
@@ -168,6 +168,9 @@ export function createBattlefieldLayout({
   }
   const scale = Math.min(width / logicalWidth, height / logicalHeight, 1)
   const letterboxed = scale < 1
+  const scaledControlCount = mode === 'phone-landscape' ? 2 : 1
+  const footerReserve = spec.hud.footer
+    + scaledControlCount * 44 * (1 / scale - 1)
   const logicalSafe = Object.fromEntries(
     Object.entries(safe).map(([side, value]) => [side, value / scale]),
   )
@@ -180,7 +183,7 @@ export function createBattlefieldLayout({
     Math.min(spec.hud.header, contentHeight),
   )
   const footerHeight = Math.min(
-    spec.hud.footer,
+    footerReserve,
     Math.max(0, contentHeight - header.height),
   )
   const footer = freezeRectangle(

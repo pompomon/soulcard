@@ -193,18 +193,15 @@ button:disabled {
   z-index: 1;
   display: grid;
   grid-template:
-    "header header" auto
-    "opponent comparison" 1fr
-    "player comparison" 1fr
-    "piles piles" auto
-    "status controls" auto / minmax(8rem, 0.7fr) minmax(10rem, 1.3fr);
-  gap: 0.75rem;
+    "header header header" var(--hud-header-reserve, 4.75rem)
+    "opponent comparison player" minmax(0, 1fr)
+    "piles status controls" var(--hud-footer-reserve, 5.75rem)
+    / var(--hud-side-reserve, 13rem) minmax(0, 1fr) var(--hud-side-reserve, 13rem);
+  gap: 0;
   width: 100%;
   height: 100%;
-  padding: max(0.75rem, var(--safe-area-top, 0px))
-    max(0.75rem, var(--safe-area-right, 0px))
-    max(0.75rem, var(--safe-area-bottom, 0px))
-    max(0.75rem, var(--safe-area-left, 0px));
+  padding: var(--safe-area-top, 0px) var(--safe-area-right, 0px)
+    var(--safe-area-bottom, 0px) var(--safe-area-left, 0px);
   pointer-events: none;
 }
 
@@ -214,6 +211,8 @@ button:disabled {
 .hud-metrics--piles,
 .game-status,
 .game-controls {
+  min-width: 0;
+  min-height: 0;
   border: 1px solid rgb(255 255 255 / 16%);
   border-radius: 0.75rem;
   background: rgb(6 5 20 / 64%);
@@ -384,30 +383,22 @@ button:disabled {
 
 .screen--game[data-layout-mode="phone-portrait"] .game-hud {
   grid-template:
-    "header header" auto
-    "opponent player" auto
-    "comparison comparison" 1fr
-    "piles piles" auto
-    "status status" auto
-    "controls controls" auto / 1fr 1fr;
-  gap: 0.4rem;
-  padding: max(0.4rem, var(--safe-area-top, 0px))
-    max(0.4rem, var(--safe-area-right, 0px))
-    max(0.4rem, var(--safe-area-bottom, 0px))
-    max(0.4rem, var(--safe-area-left, 0px));
+    "header header" var(--hud-header-reserve, 4.5rem)
+    "comparison comparison" minmax(0, 1fr)
+    "opponent player" 4.4rem
+    "piles piles" 2.8rem
+    "status status" 2.1rem
+    "controls controls" calc(var(--hud-footer-reserve, 13.125rem) - 9.3rem)
+    / 1fr 1fr;
 }
 
 .screen--game[data-layout-mode="phone-landscape"] .game-hud {
   grid-template:
-    "header header header" auto
-    "opponent comparison player" 1fr
-    "piles status controls" auto / minmax(7rem, var(--hud-side-reserve, 9rem))
-      1fr minmax(9rem, var(--hud-side-reserve, 9rem));
-  gap: 0.4rem;
-  padding: max(0.4rem, var(--safe-area-top, 0px))
-    max(0.4rem, var(--safe-area-right, 0px))
-    max(0.4rem, var(--safe-area-bottom, 0px))
-    max(0.4rem, var(--safe-area-left, 0px));
+    "header header header" var(--hud-header-reserve, 3.5rem)
+    "opponent comparison player" minmax(0, 1fr)
+    "piles status controls" var(--hud-footer-reserve, 7.125rem)
+    / var(--hud-side-reserve, 9.375rem) minmax(0, 1fr)
+      var(--hud-side-reserve, 9.375rem);
 }
 
 .screen--game[data-layout-mode="phone-portrait"] .game-hud__header,
@@ -450,6 +441,11 @@ button:disabled {
   min-height: 44px;
 }
 
+.screen--game[data-letterboxed="true"] .game-hud .game-button {
+  min-width: var(--hud-control-min-size, 44px);
+  min-height: var(--hud-control-min-size, 44px);
+}
+
 .screen--game[data-letterboxed="true"] .game-hud {
   position: absolute;
   top: 50%;
@@ -457,10 +453,4 @@ button:disabled {
   width: var(--battlefield-logical-width, 320px);
   height: var(--battlefield-logical-height, 480px);
   transform: translate(-50%, -50%) scale(var(--battlefield-layout-scale, 1));
-}
-
-@supports not (padding: max(0px, 1px)) {
-  .game-hud {
-    padding: 0.75rem;
-  }
 }

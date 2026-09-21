@@ -160,6 +160,10 @@ export function createGameScreen({
     element.dataset.letterboxed = String(layout.viewport.letterboxed)
     element.style?.setProperty?.('--battlefield-layout-scale', String(layout.viewport.scale))
     element.style?.setProperty?.(
+      '--hud-control-min-size',
+      `${44 / layout.viewport.scale}px`,
+    )
+    element.style?.setProperty?.(
       '--battlefield-logical-width',
       `${layout.viewport.logicalWidth}px`,
     )

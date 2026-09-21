@@ -110,6 +110,12 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(smallerLandscape.viewport.logicalWidth, 480)
   assert.equal(smallerLandscape.viewport.logicalHeight, 320)
   assert.equal(smallerLandscape.viewport.scale, 5 / 6)
+  assert.ok(Math.abs(smallerLandscape.hud.footer.height - 131.6) < Number.EPSILON * 100)
+
+  assert.equal(minimum.hud.footer.height, 210)
+  assert.ok(
+    Math.abs(smaller.hud.footer.height - 218.8) < Number.EPSILON * 100,
+  )
 })
 
 test('letterboxed layouts preserve physical safe areas and fit the scaled battlefield', () => {

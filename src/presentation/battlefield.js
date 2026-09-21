@@ -71,6 +71,7 @@ function publishLayout(host, layout, onLayout) {
     host.dataset.letterboxed = String(layout.viewport.letterboxed)
   }
   setStyleProperty(host, '--battlefield-layout-scale', String(layout.viewport.scale))
+  setStyleProperty(host, '--hud-control-min-size', `${44 / layout.viewport.scale}px`)
   setStyleProperty(host, '--battlefield-logical-width', `${layout.viewport.logicalWidth}px`)
   setStyleProperty(host, '--battlefield-logical-height', `${layout.viewport.logicalHeight}px`)
   setStyleProperty(host, '--hud-header-reserve', `${layout.hud.header.height}px`)
