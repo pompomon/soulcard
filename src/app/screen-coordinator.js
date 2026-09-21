@@ -123,9 +123,15 @@ export function createScreenCoordinator({
       return currentResumeAvailability
     }
 
+    const previousResumeAvailability = currentResumeAvailability
     currentResumeAvailability = available
-    if (started && activeScreen === 'main') {
-      mount('main', true)
+    try {
+      if (started && activeScreen === 'main') {
+        mount('main', true)
+      }
+    } catch (error) {
+      currentResumeAvailability = previousResumeAvailability
+      throw error
     }
     return currentResumeAvailability
   }

@@ -112,15 +112,29 @@ test('start can retry after the initial mount fails', () => {
 test('resume availability is injectable and refreshes only the active Main screen', () => {
   const root = createRoot()
   const log = []
+  const factories = createFactories(log)
+  let failRefresh = true
   const coordinator = createScreenCoordinator({
     root,
     resumeAvailable: false,
-    screenFactories: createFactories(log),
+    screenFactories: {
+      ...factories,
+      main: (options) => {
+        if (options.resumeAvailable && failRefresh) {
+          failRefresh = false
+          throw new Error('refresh failed')
+        }
+        return factories.main(options)
+      },
+    },
   })
 
   coordinator.start()
   assert.equal(root.children[0].resumeAvailable, false)
 
+  assert.throws(() => coordinator.setResumeAvailable(true), /refresh failed/)
+  assert.equal(coordinator.resumeAvailable, false)
+  assert.equal(root.children[0].resumeAvailable, false)
   assert.equal(coordinator.setResumeAvailable(true), true)
   assert.equal(coordinator.resumeAvailable, true)
   assert.equal(root.children[0].resumeAvailable, true)

@@ -859,7 +859,7 @@ reviewable PR.
   Game and disposes its renderer resources and listener on teardown. Focused coordinator
   tests lock the screen whitelist, single mount, teardown, navigation, Resume updates,
   and overlay nesting.
-- **Validation:** All 96 unit tests and the production build pass locally on Node 24.
+- **Validation:** All 97 unit tests and the production build pass locally on Node 24.
   A text-only headless Chrome check navigates Main → Settings → Main → Game, verifies
   semantic button state, one top-level screen, a nested Game overlay, one canvas under
   `#app`, and zero severe console messages. The production bundle retains `./sw.js`
