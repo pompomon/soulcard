@@ -524,6 +524,45 @@ detached and deeply immutable. The returned event is also the match's `pendingEv
 so persistence and presentation can consume the committed result without replaying
 rules or RNG.
 
+### Seeded simulation contract (milestone 6)
+
+`src/domain/simulation.js` drives complete matches only through `createMatch` and
+`revealOrContinue`. It does not inspect clocks, use browser or Three.js state, call
+`Math.random`, or bypass committed events. A single-run result records the uint32 seed,
+ruleset ID, completion or truncation status, committed clash and burn counts, terminal
+result/reason and winner when present, and a deterministic duration estimate. Results
+are immutable JSON-compatible data.
+
+The default execution guard is 10,000 committed clashes per run and callers may select
+from 1 through 1,000,000. Reaching the guard reports `status: "truncated"` with null
+terminal fields; it never invents an outcome or changes rules. A report accepts an
+ordered, duplicate-free corpus of at most 10,000 uint32 seeds. The canonical baseline
+corpus is the inclusive ordered range 0–999. Burn-disabled and custom validated
+rulesets use the same observation path and guard but are not judged against baseline
+statistics.
+
+Report schema version 1 contains the ruleset ID, complete ordered seed corpus, timing
+profile, per-run clash guard, completed/truncated counts, terminal result/reason counts,
+and summaries for clashes, burns, and estimated milliseconds. Summaries include every
+run, including deterministic partial metrics from truncated runs. Terminal counts
+include completed runs only. Each metric reports minimum, maximum, arithmetic mean, and
+median; means and medians are rounded to three decimal places.
+
+The duration estimate uses timing profile `mvp-presentation-estimate-v1`: 400 ms per
+revealed card, 600 ms per settled clash, 200 ms per burned card, and 1,200 ms once for
+a terminal event. Draw events receive no settlement duration. This is a versioned
+content-planning estimate, not elapsed runtime, a performance budget, or an input to
+gameplay. Changing its constants requires a new timing-profile ID and refreshed fixture
+but never a ruleset change.
+
+`npm run simulate` emits stable formatted JSON for the canonical corpus. `--seed`
+selects one seed, while `--start` plus `--count` selects a contiguous ordered corpus;
+`--max-clashes` selects the execution guard. The fixture in
+`tests/fixtures/simulation-report.json` contains no timestamp or environment-derived
+value, so CI compares the canonical report exactly. Simulation findings inform future
+tuning only; they do not establish probabilistic pass thresholds or silently alter any
+ruleset.
+
 ## Screens, settings, and input
 
 **Main** offers Start New Game, Resume Game (enabled only for a valid resumable save),
@@ -790,6 +829,18 @@ reviewable PR.
   reason, and duration estimate for default rules.
 - **Checks/risks:** CI deterministic simulation test; it informs baseline tuning but
   never constrains burn-disabled/custom modes or alters rules.
+- **Acceptance evidence:** `src/domain/simulation.js` runs the immutable milestone 5
+  machine through committed events, reports completion or explicit guard truncation,
+  and produces versioned immutable per-seed and aggregate JSON. The default CLI covers
+  the ordered 0–999 baseline corpus, whose checked-in report fixture locks clash, burn,
+  terminal, and estimated-duration summaries without wall-clock data. Focused tests
+  reconcile event and final-zone metrics, lock seed `12345`, compare the complete
+  corpus fixture, exercise repeatability, uint32 boundaries, malformed inputs,
+  truncation, alternate rulesets, JSON round trips, CLI failures, and execution with
+  `Math.random` disabled.
+- **Validation:** All 91 unit tests and the production build pass locally on Node 24.
+  Two independent canonical CLI runs produce byte-identical output. Browser validation
+  is omitted because this milestone changes only pure domain and Node CLI code.
 
 ### 7. Three-screen coordinator and DOM shell
 - **Goal/files:** Split `main.js` into bootstrap/coordinator/menus/HUD skeleton and

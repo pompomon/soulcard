@@ -11,7 +11,7 @@ dependency-map sections.
 - [x] 3. Card model, decks, zones, setup, and invariants (depends on: 2)
 - [x] 4. Configurable burn-enabled/disabled rules (depends on: 3)
 - [x] 5. Pure clash/tie state machine and conservation (depends on: 4)
-- [ ] 6. Seeded simulation harness (depends on: 5)
+- [x] 6. Seeded simulation harness (depends on: 5)
 - [ ] 7. Three-screen coordinator and DOM shell (depends on: 1)
 - [ ] 8. Settings persistence and graphics/reduced-motion controller (depends on: 7)
 - [ ] 9. Versioned active-run persistence, validation, migrations, recovery
