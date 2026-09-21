@@ -105,6 +105,9 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(landscape.viewport.minimumHeight, 320)
   assert.equal(landscape.hud.footer.height, 114)
 
+  const tablet = createBattlefieldLayout({ width: 768, height: 1024 })
+  assert.equal(tablet.hud.footer.height, 114)
+
   const smallerLandscape = createBattlefieldLayout({ width: 400, height: 280 })
   assert.equal(smallerLandscape.viewport.letterboxed, true)
   assert.equal(smallerLandscape.viewport.logicalWidth, 480)
@@ -115,6 +118,20 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(minimum.hud.footer.height, 210)
   assert.ok(
     Math.abs(smaller.hud.footer.height - 218.8) < Number.EPSILON * 100,
+  )
+})
+
+test('camera far plane includes the fitted distance and battlefield depth margin', () => {
+  const layout = createBattlefieldLayout({
+    width: 320,
+    height: 480,
+    safeArea: { top: 60, right: 0, bottom: 60, left: 0 },
+  })
+
+  assert.ok(layout.camera.distance > 100)
+  assert.equal(
+    layout.camera.far,
+    layout.camera.distance + Math.max(layout.world.width, layout.world.height),
   )
 })
 

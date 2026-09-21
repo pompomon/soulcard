@@ -55,7 +55,7 @@ const MODE_SPECS = Object.freeze({
   }),
   tablet: Object.freeze({
     world: Object.freeze({ width: 10, height: 9 }),
-    hud: Object.freeze({ header: 68, footer: 102, side: 176 }),
+    hud: Object.freeze({ header: 68, footer: 114, side: 176 }),
     zones: Object.freeze({
       sourceDeck: Object.freeze({ x: -4, y: 0, z: 0.2 }),
       opponentDrawPile: Object.freeze({ x: -2.8, y: 3.3, z: 0.2 }),
@@ -255,7 +255,7 @@ export function createBattlefieldLayout({
     camera: {
       fov,
       near: 0.1,
-      far: 100,
+      far: distance + Math.max(spec.world.width, spec.world.height),
       aspect,
       distance,
       target: {
