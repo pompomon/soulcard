@@ -134,7 +134,11 @@ test('bootstrap enables Resume after restoring a resumable run', async (t) => {
   const runController = {
     currentMatch: null,
     getSnapshot: () => Object.freeze({}),
-    restore: async () => restoreResult,
+    restore: async () => {
+      runController.currentMatch = Object.freeze({ runId: 'restored-run' })
+      return restoreResult
+    },
+    discardPendingRestore: () => undefined,
     saveStable: async () => Object.freeze({ status: 'skipped' }),
     subscribe: () => () => undefined,
     pause: () => undefined,
@@ -175,6 +179,7 @@ test('bootstrap does not refresh Resume after teardown', async (t) => {
     currentMatch: null,
     getSnapshot: () => Object.freeze({}),
     restore: () => restore,
+    discardPendingRestore: () => undefined,
     saveStable: async () => Object.freeze({ status: 'skipped' }),
     subscribe: () => () => undefined,
     pause: () => undefined,
@@ -193,6 +198,66 @@ test('bootstrap does not refresh Resume after teardown', async (t) => {
   await app.destroy()
   resolveRestore(restoreResult)
   assert.equal(await app.ready, restoreResult)
+})
+
+test('Start New discards a restoration that is still pending', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  let resolveRestore
+  let discarded = false
+  let currentMatch = null
+  const restore = new Promise((resolve) => {
+    resolveRestore = resolve
+  })
+  const runController = {
+    get currentMatch() {
+      return currentMatch
+    },
+    getSnapshot: () => Object.freeze({ match: currentMatch }),
+    restore: () => restore.then((result) => {
+      if (!discarded) currentMatch = result.match
+      return result
+    }),
+    discardPendingRestore() {
+      discarded = true
+    },
+    saveStable: async () => Object.freeze({ status: 'skipped' }),
+    subscribe: () => () => undefined,
+    pause: () => undefined,
+    resume: () => undefined,
+    destroy: async () => undefined,
+  }
+  const root = new FakeElement('div')
+  const app = bootstrap({
+    root,
+    runController,
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield: () => undefined,
+  })
+  const startButton = root.children[0].children[0].children[2].children[0]
+
+  for (const listener of startButton.listeners.get('click')) listener()
+  assert.equal(discarded, true)
+  assert.equal(app.activeScreen, 'game')
+
+  const restoreResult = Object.freeze({
+    status: 'resumable',
+    match: Object.freeze({ runId: 'old-run' }),
+  })
+  resolveRestore(restoreResult)
+  assert.equal(await app.ready, restoreResult)
+  assert.equal(runController.currentMatch, null)
+  assert.equal(app.resumeAvailable, false)
+
+  await app.destroy()
 })
 
 test('bootstrap tears down every owner when Game presentation teardown fails', async (t) => {

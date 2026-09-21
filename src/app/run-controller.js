@@ -35,8 +35,12 @@ function storageFailure(operation, error) {
 export function createRunController({
   repository,
   initialMatch = null,
+  onSubscriberError = (error) => globalThis.reportError?.(error),
 } = {}) {
   assertRepository(repository)
+  if (typeof onSubscriberError !== 'function') {
+    throw new TypeError('onSubscriberError must be a function')
+  }
   if (initialMatch !== null) {
     validateMatchState(initialMatch)
   }
@@ -77,7 +81,13 @@ export function createRunController({
   function publish() {
     const snapshot = getSnapshot()
     for (const listener of [...listeners]) {
-      listener(snapshot)
+      try {
+        listener(snapshot)
+      } catch (error) {
+        try {
+          onSubscriberError(error)
+        } catch {}
+      }
     }
   }
 
@@ -211,6 +221,13 @@ export function createRunController({
     return markMatch(nextMatch)
   }
 
+  function discardPendingRestore() {
+    assertActive()
+    if (restoreStatus === 'loading') {
+      revision += 1
+    }
+  }
+
   function revealOrContinue() {
     assertActive()
     if (match === null) {
@@ -254,7 +271,12 @@ export function createRunController({
       throw new TypeError('listener must be a function')
     }
     listeners.add(listener)
-    listener(getSnapshot())
+    try {
+      listener(getSnapshot())
+    } catch (error) {
+      listeners.delete(listener)
+      throw error
+    }
     return () => {
       listeners.delete(listener)
     }
@@ -282,6 +304,7 @@ export function createRunController({
     subscribe,
     restore,
     setMatch,
+    discardPendingRestore,
     revealOrContinue,
     pause,
     resume,

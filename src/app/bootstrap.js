@@ -12,6 +12,7 @@ function assertRunController(runController) {
   const methods = [
     'getSnapshot',
     'restore',
+    'discardPendingRestore',
     'saveStable',
     'subscribe',
     'pause',
@@ -102,7 +103,10 @@ export function bootstrap({
       screenFactories: {
         main: ({ navigate, resumeAvailable: canResume }) => createMainScreen({
           resumeAvailable: canResume,
-          onStart: () => navigate('game'),
+          onStart: () => {
+            activeRunController.discardPendingRestore()
+            navigate('game')
+          },
           onResume: () => navigate('game'),
           onSettings: () => navigate('settings'),
         }),
@@ -128,7 +132,9 @@ export function bootstrap({
   const ready = activeRunController.currentMatch === null
     ? activeRunController.restore().then((result) => {
       if (!destroyed) {
-        coordinator.setResumeAvailable(result.status === 'resumable')
+        coordinator.setResumeAvailable(
+          result.status === 'resumable' && activeRunController.currentMatch !== null,
+        )
       }
       return result
     })

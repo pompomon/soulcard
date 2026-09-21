@@ -225,6 +225,44 @@ test('storage failures are reported without discarding valid in-memory play', as
   assert.equal(controller.getSnapshot().saveStatus, 'saved')
 })
 
+test('subscriber failures cannot interrupt transitions or autosaves', async () => {
+  const repository = createRepository()
+  const subscriberErrors = []
+  const controller = createRunController({
+    repository,
+    initialMatch: createActiveMatch('subscriber-failure'),
+    onSubscriberError: (error) => subscriberErrors.push(error),
+  })
+  let deliveries = 0
+  controller.subscribe(() => {
+    deliveries += 1
+    if (deliveries > 1) throw new Error('subscriber failed')
+  })
+
+  const paused = await controller.pause()
+
+  assert.equal(paused.match.machineState, 'paused')
+  assert.equal(paused.save.status, 'saved')
+  assert.equal(repository.saves.length, 1)
+  assert.ok(subscriberErrors.length > 0)
+  assert.match(subscriberErrors[0].message, /subscriber failed/)
+})
+
+test('a subscriber that rejects its initial snapshot is removed', () => {
+  const controller = createRunController({
+    repository: createRepository(),
+    initialMatch: createActiveMatch('initial-subscriber-failure'),
+  })
+  let deliveries = 0
+
+  assert.throws(() => controller.subscribe(() => {
+    deliveries += 1
+    throw new Error('initial delivery failed')
+  }), /initial delivery failed/)
+  assert.doesNotThrow(() => controller.setMatch(createActiveMatch('replacement-match')))
+  assert.equal(deliveries, 1)
+})
+
 test('lifecycle saves skip an absent run and invalid snapshots never enter the controller', async () => {
   const repository = createRepository()
   const controller = createRunController({ repository })
