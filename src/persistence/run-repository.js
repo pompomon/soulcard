@@ -12,6 +12,12 @@ export const RUN_STORE_NAME = 'active-runs'
 export const ACTIVE_RUN_KEY = 'active'
 export const QUARANTINED_RUN_KEY = 'quarantine'
 
+const RECOVERY_REASONS = new Set([
+  'invalid-save',
+  'unsupported-save-version',
+  'incompatible-game-rules',
+])
+
 function deepFreeze(value) {
   if (value !== null && typeof value === 'object') {
     for (const child of Object.values(value)) {
@@ -71,10 +77,38 @@ function recoveryMessage(reason) {
 function timestampFromClock(now) {
   const value = now()
   const timestamp = value instanceof Date ? value.toISOString() : value
-  if (typeof timestamp !== 'string') {
+  if (
+    typeof timestamp !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(timestamp)
+  ) {
+    throw new TypeError('now must return a Date or canonical ISO timestamp')
+  }
+  const parsed = new Date(timestamp)
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== timestamp) {
     throw new TypeError('now must return a Date or canonical ISO timestamp')
   }
   return timestamp
+}
+
+function assertWriteOptions(options) {
+  if (
+    options === null
+    || typeof options !== 'object'
+    || Array.isArray(options)
+    || ![Object.prototype, null].includes(Object.getPrototypeOf(options))
+  ) {
+    throw new TypeError('options must be a plain object')
+  }
+  const keys = Reflect.ownKeys(options)
+  if (keys.some((key) => key !== 'savedAt')) {
+    throw new TypeError('options may contain only savedAt')
+  }
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(options, key)
+    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
+      throw new TypeError(`options.${key} must be JSON-compatible data`)
+    }
+  }
 }
 
 function openDatabase(indexedDB) {
@@ -131,9 +165,7 @@ function openDatabase(indexedDB) {
         return
       }
       settled = true
-      const database = request.result
-      database.onversionchange = () => database.close()
-      resolve(database)
+      resolve(request.result)
     }
   })
 }
@@ -220,19 +252,33 @@ export function createRunRepository({
 
   let database = null
   let opening = null
+  let connectionGeneration = 0
 
   async function getDatabase() {
     if (database) return database
     if (!opening) {
-      opening = openDatabase(indexedDB)
+      const generation = connectionGeneration
+      let attempt
+      attempt = openDatabase(indexedDB)
         .then((opened) => {
+          if (generation !== connectionGeneration) {
+            opened.close()
+            throw createStorageError('AbortError', 'IndexedDB open was superseded')
+          }
           database = opened
+          opened.onversionchange = () => {
+            opened.close()
+            if (database === opened) database = null
+            if (opening === attempt) opening = null
+            connectionGeneration += 1
+          }
           return opened
         })
         .catch((error) => {
-          opening = null
+          if (opening === attempt) opening = null
           throw error
         })
+      opening = attempt
     }
     return opening
   }
@@ -259,7 +305,7 @@ export function createRunRepository({
               setResult(deepFreeze({ status: 'empty' }))
               return
             }
-            const reason = typeof quarantine?.reason === 'string'
+            const reason = RECOVERY_REASONS.has(quarantine?.reason)
               ? quarantine.reason
               : 'invalid-save'
             setResult(deepFreeze({
@@ -319,14 +365,7 @@ export function createRunRepository({
   }
 
   async function write(match, options = {}) {
-    if (
-      options === null
-      || typeof options !== 'object'
-      || Array.isArray(options)
-      || Object.keys(options).some((key) => key !== 'savedAt')
-    ) {
-      throw new TypeError('options may contain only savedAt')
-    }
+    assertWriteOptions(options)
     const savedAt = Object.hasOwn(options, 'savedAt')
       ? options.savedAt
       : timestampFromClock(now)
@@ -372,9 +411,11 @@ export function createRunRepository({
   }
 
   function close() {
-    database?.close()
+    connectionGeneration += 1
+    const opened = database
     database = null
     opening = null
+    opened?.close()
   }
 
   return Object.freeze({

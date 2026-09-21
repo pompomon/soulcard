@@ -606,6 +606,13 @@ versions. Invalid, incomplete, or corrupt runs are quarantined/discardable and l
 Main with Resume disabled and a clear discard/start-new recovery path—never a resume
 crash loop.
 
+The implemented current format is `saveSchemaVersion: 2` with
+`gameRulesVersion: 1`. Version 2 adds the match `outcome` required to restore terminal
+runs exactly. The documented pre-implementation version 1 active/ready shape is the
+only supported legacy format; it migrates one step by adding `outcome: null`. A
+version 1 terminal record is rejected because that shape did not retain enough
+information to reconstruct its result. No synthetic older format is accepted.
+
 Save only at stable domain boundaries: after every committed clash, explicit pause,
 and best effort on `visibilitychange`, `pagehide`, and lifecycle freeze events when the
 domain is already stable; do not depend on `unload` and never force a mid-resolution
@@ -622,7 +629,7 @@ and pass the stated zone validation.
 
 ```json
 {
-  "saveSchemaVersion": 1,
+  "saveSchemaVersion": 2,
   "gameRulesVersion": 1,
   "savedAt": "2026-09-19T07:00:00.000Z",
   "runId": "run-42",
@@ -640,6 +647,7 @@ and pass the stated zone validation.
     "machineState": "ready",
     "turn": 17,
     "status": "active",
+    "outcome": null,
     "sourceDeck": [],
     "player": { "drawPile": ["c-2S"], "wonPile": ["c-10H", "c-AS"] },
     "opponent": { "drawPile": ["c-QD"], "wonPile": [] },
@@ -899,6 +907,22 @@ reviewable PR.
   and corrupted/unknown saves recover by discard/start-new.
 - **Checks/risks:** Unit migration/validation/corruption and deterministic
   save-resume-equivalence tests; IndexedDB quota/error handling.
+- **Acceptance evidence:** `src/persistence/run-schema.js` owns the exact version 2
+  stable-save shape, full structural/domain/event validation, immutable serialization,
+  and restoration including terminal outcomes and pending presentation events.
+  `src/persistence/migrations.js` performs the sole explicit version 1-to-2 active-save
+  migration without mutating input and rejects skipped, future, ambiguous terminal, or
+  incompatible-rules records. `src/persistence/run-repository.js` atomically stores one
+  active run in IndexedDB, upgrades migrated records, quarantines invalid records,
+  exposes discard/replacement recovery, and returns explicit blocked, unavailable,
+  quota, abort, and transaction failure results without reporting false success.
+  Complete active, legacy, and terminal fixtures plus focused tests cover turn-zero,
+  pending-event, corruption, migration, recovery, connection lifecycle, and exact
+  deterministic continuation for baseline and no-burn rules.
+- **Validation:** All 137 unit tests and the production build pass locally on Node 24.
+  A text-only headless Chrome check uses native IndexedDB to save, load, compare, and
+  discard a committed run; RNG and pending-event snapshots remain exact. The same check
+  verifies one canvas under `#app`, one Game screen, and zero relevant console errors.
 
 ### 10. Pause/resume/autosave/page lifecycle
 - **Goal/files:** Add pause overlay/lifecycle wiring and integration tests; depends on

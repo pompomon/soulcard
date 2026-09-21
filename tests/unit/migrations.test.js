@@ -90,3 +90,18 @@ test('legacy migration rejects ambiguous terminal and shape variants', () => {
   incomplete.match.sourceDeck.pop()
   assert.throws(() => migrateRunSave(incomplete), /all 52 cards/)
 })
+
+test('migration rejects accessors without invoking legacy data', () => {
+  const legacy = fixture('run-save-v1.json')
+  let invoked = false
+  Object.defineProperty(legacy.match, 'sourceDeck', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return []
+    },
+  })
+
+  assert.throws(() => migrateRunSave(legacy), /JSON-compatible data/)
+  assert.equal(invoked, false)
+})

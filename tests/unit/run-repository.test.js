@@ -176,6 +176,7 @@ class FakeIndexedDB {
     this.writeFailure = null
     this.readFailure = null
     this.transactionAbort = null
+    this.databases = []
   }
 
   open(name, version) {
@@ -204,6 +205,7 @@ class FakeIndexedDB {
 
       const needsUpgrade = !this.initialized
       request.result = new FakeDatabase(this)
+      this.databases.push(request.result)
       if (needsUpgrade) request.onupgradeneeded?.()
       request.onsuccess?.()
     })
@@ -400,6 +402,39 @@ test('unavailable, blocked, and failed storage return explicit failures', async 
   })
 })
 
+test('close supersedes an in-flight open without leaking or blocking a later reopen', async () => {
+  const indexedDB = new FakeIndexedDB()
+  const repository = createRunRepository({ indexedDB })
+
+  const loading = repository.load()
+  repository.close()
+  assert.deepEqual(await loading, {
+    status: 'storage-unavailable',
+    operation: 'load',
+    reason: 'transaction-aborted',
+  })
+  assert.equal(indexedDB.databases.length, 1)
+  assert.equal(indexedDB.databases[0].closed, true)
+
+  assert.deepEqual(await repository.load(), { status: 'empty' })
+  assert.equal(indexedDB.openCalls.length, 2)
+  assert.equal(indexedDB.databases[1].closed, false)
+})
+
+test('a version change closes and invalidates the cached connection for reopening', async () => {
+  const indexedDB = new FakeIndexedDB()
+  const repository = createRunRepository({ indexedDB })
+
+  assert.deepEqual(await repository.load(), { status: 'empty' })
+  const firstDatabase = indexedDB.databases[0]
+  firstDatabase.onversionchange()
+  assert.equal(firstDatabase.closed, true)
+
+  assert.deepEqual(await repository.load(), { status: 'empty' })
+  assert.equal(indexedDB.openCalls.length, 2)
+  assert.equal(indexedDB.databases[1].closed, false)
+})
+
 test('quota and abort failures never report success or partially replace a save', async () => {
   const indexedDB = new FakeIndexedDB()
   indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v2.json'))
@@ -471,5 +506,19 @@ test('invalid caller snapshots fail before IndexedDB is opened', async () => {
     repository.save(activeMatch(), { savedAt: 'not-a-date' }),
     /canonical ISO timestamp/,
   )
+  let invoked = false
+  const options = {}
+  Object.defineProperty(options, 'savedAt', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return SAVED_AT
+    },
+  })
+  await assert.rejects(
+    repository.save(activeMatch(), options),
+    /JSON-compatible data/,
+  )
+  assert.equal(invoked, false)
   assert.deepEqual(indexedDB.openCalls, [])
 })

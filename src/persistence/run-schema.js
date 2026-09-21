@@ -128,25 +128,42 @@ function deepFreeze(value) {
   return value
 }
 
+function assertMatchStructure(match) {
+  assertPlainObject(match, 'save.match')
+  assertExactKeys(match, MATCH_KEYS, 'save.match')
+  for (const pile of ['sourceDeck', 'contestedPile', 'inPlay', 'burnPile', 'futureModifiers']) {
+    assertDenseArray(match[pile], `save.match.${pile}`)
+  }
+  for (const side of ['player', 'opponent']) {
+    assertPlainObject(match[side], `save.match.${side}`)
+    assertExactKeys(match[side], ['drawPile', 'wonPile'], `save.match.${side}`)
+    assertDenseArray(match[side].drawPile, `save.match.${side}.drawPile`)
+    assertDenseArray(match[side].wonPile, `save.match.${side}.wonPile`)
+  }
+  if (match.futureModifiers.length !== 0) {
+    throw new TypeError('save.match.futureModifiers must be empty for the current rules version')
+  }
+}
+
 function matchFromSave(save) {
   return {
-    runId: cloneData(save.runId),
-    ruleset: cloneData(save.ruleset),
-    rng: cloneData(save.rng),
-    stage: cloneData(save.match.stage),
-    machineState: cloneData(save.match.machineState),
-    turn: cloneData(save.match.turn),
-    status: cloneData(save.match.status),
-    outcome: cloneData(save.match.outcome),
+    runId: save.runId,
+    ruleset: save.ruleset,
+    rng: save.rng,
+    stage: save.match.stage,
+    machineState: save.match.machineState,
+    turn: save.match.turn,
+    status: save.match.status,
+    outcome: save.match.outcome,
     zones: {
-      sourceDeck: cloneData(save.match.sourceDeck),
-      player: cloneData(save.match.player),
-      opponent: cloneData(save.match.opponent),
-      contestedPile: cloneData(save.match.contestedPile),
-      burnPile: cloneData(save.match.burnPile),
-      inPlay: cloneData(save.match.inPlay),
+      sourceDeck: save.match.sourceDeck,
+      player: save.match.player,
+      opponent: save.match.opponent,
+      contestedPile: save.match.contestedPile,
+      burnPile: save.match.burnPile,
+      inPlay: save.match.inPlay,
     },
-    pendingEvent: cloneData(save.pendingEvent),
+    pendingEvent: save.pendingEvent,
   }
 }
 
@@ -166,12 +183,7 @@ export function validateRunSave(save) {
     throw new UnsupportedGameRulesVersionError(save.gameRulesVersion)
   }
   assertCanonicalTimestamp(save.savedAt)
-  assertPlainObject(save.match, 'save.match')
-  assertExactKeys(save.match, MATCH_KEYS, 'save.match')
-  assertDenseArray(save.match.futureModifiers, 'save.match.futureModifiers')
-  if (save.match.futureModifiers.length !== 0) {
-    throw new TypeError('save.match.futureModifiers must be empty for the current rules version')
-  }
+  assertMatchStructure(save.match)
   validateMatchState(matchFromSave(save))
   return save
 }
@@ -212,7 +224,7 @@ export function createRunSave(match, options) {
 
 export function restoreRunSave(save) {
   validateRunSave(save)
-  const match = matchFromSave(save)
+  const match = cloneData(matchFromSave(save))
   validateMatchState(match)
   return deepFreeze(match)
 }

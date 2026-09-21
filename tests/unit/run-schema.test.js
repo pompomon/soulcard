@@ -94,6 +94,20 @@ test('terminal outcome and pending presentation event restore exactly', () => {
   assert.deepEqual(restored.rng, save.rng)
 })
 
+test('a fresh turn-zero match round-trips without inventing a pending event', () => {
+  const match = createMatch({
+    runId: 'turn-zero',
+    seed: 0,
+    ruleset: BASELINE_RULESET,
+  })
+  const restored = restoreRunSave(createRunSave(match, { savedAt: SAVED_AT }))
+
+  assert.deepEqual(restored, match)
+  assert.equal(restored.turn, 0)
+  assert.equal(restored.pendingEvent, null)
+  assert.deepEqual(restored.rng, match.rng)
+})
+
 test('schema validation rejects malformed metadata and nonstable records', () => {
   const current = fixture('run-save-v2.json')
   const invalid = [
@@ -140,6 +154,24 @@ test('schema validation rejects malformed metadata and nonstable records', () =>
     () => validateRunSave({ ...clone(current), gameRulesVersion: 2 }),
     UnsupportedGameRulesVersionError,
   )
+})
+
+test('schema validation rejects non-JSON containers and accessors without invoking them', () => {
+  const extraArrayProperty = fixture('run-save-v2.json')
+  extraArrayProperty.match.sourceDeck.label = 'not-an-index'
+  assert.throws(() => validateRunSave(extraArrayProperty), /dense array/)
+
+  const accessor = fixture('run-save-v2.json')
+  let invoked = false
+  Object.defineProperty(accessor.match.player, 'drawPile', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return []
+    },
+  })
+  assert.throws(() => validateRunSave(accessor), /JSON-compatible data/)
+  assert.equal(invoked, false)
 })
 
 test('serialization requires an explicit canonical timestamp and stable valid match', () => {
