@@ -1,8 +1,9 @@
 # Soulcard
 
 A framework-light, fullscreen card-game PWA with a deterministic domain engine and
-Main, Settings, and Game screen shell. The Game screen retains the rotating Three.js
-prototype while the battlefield presentation is developed incrementally.
+Main, Settings, and Game screen shell. The Game screen contains a responsive Three.js
+battlefield with logical zone placeholders while generated card visuals are developed
+incrementally.
 
 ## Development
 

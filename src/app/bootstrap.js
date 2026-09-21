@@ -6,7 +6,7 @@ import { createPageLifecycle } from '../pwa/lifecycle.js'
 import { createMainScreen, createSettingsScreen } from '../ui/menus.js'
 import { createSettingsController } from '../ui/settings-controller.js'
 import { createGameScreen } from '../ui/hud.js'
-import { mountPrototypeScene } from '../presentation/prototype-scene.js'
+import { mountBattlefield as mountResponsiveBattlefield } from '../presentation/battlefield.js'
 
 function assertRunController(runController) {
   const methods = [
@@ -53,7 +53,7 @@ export function registerServiceWorker({
 export function bootstrap({
   root,
   resumeAvailable = false,
-  mountBattlefield = mountPrototypeScene,
+  mountBattlefield = mountResponsiveBattlefield,
   settingsRepository = createSettingsRepository(),
   matchMedia = undefined,
   runRepository = undefined,

@@ -18,7 +18,6 @@ body,
 }
 
 body {
-  min-width: 320px;
   overflow: hidden;
 }
 
@@ -169,12 +168,18 @@ button:disabled {
 
 .screen--game {
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
 .battlefield {
   position: absolute;
   inset: 0;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
 }
 
 .battlefield canvas {
@@ -188,16 +193,15 @@ button:disabled {
   z-index: 1;
   display: grid;
   grid-template:
-    "header header" auto
-    "opponent comparison" 1fr
-    "player comparison" 1fr
-    "piles piles" auto
-    "status controls" auto / minmax(8rem, 0.7fr) minmax(10rem, 1.3fr);
-  gap: 0.75rem;
+    "header header header" var(--hud-header-reserve, 4.75rem)
+    "opponent comparison player" minmax(0, 1fr)
+    "piles status controls" var(--hud-footer-reserve, 5.75rem)
+    / var(--hud-side-reserve, 13rem) minmax(0, 1fr) var(--hud-side-reserve, 13rem);
+  gap: 0;
   width: 100%;
   height: 100%;
-  padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right))
-    max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+  padding: var(--safe-area-top, 0px) var(--safe-area-right, 0px)
+    var(--safe-area-bottom, 0px) var(--safe-area-left, 0px);
   pointer-events: none;
 }
 
@@ -207,6 +211,8 @@ button:disabled {
 .hud-metrics--piles,
 .game-status,
 .game-controls {
+  min-width: 0;
+  min-height: 0;
   border: 1px solid rgb(255 255 255 / 16%);
   border-radius: 0.75rem;
   background: rgb(6 5 20 / 64%);
@@ -220,6 +226,7 @@ button:disabled {
   justify-content: space-between;
   gap: 1rem;
   padding: 0.65rem 0.9rem;
+  min-height: var(--hud-header-reserve, 4.75rem);
 }
 
 .zone-panel {
@@ -299,6 +306,7 @@ button:disabled {
   gap: 0.5rem;
   padding: 0.5rem;
   pointer-events: auto;
+  min-height: 44px;
 }
 
 .game-button {
@@ -373,32 +381,91 @@ button:disabled {
   border: 0;
 }
 
-@media (max-width: 520px), (max-height: 560px) {
-  .game-hud {
-    grid-template:
-      "header header" auto
-      "opponent player" auto
-      "comparison comparison" 1fr
-      "piles piles" auto
-      "status status" auto
-      "controls controls" auto / 1fr 1fr;
-    gap: 0.4rem;
-    padding: max(0.4rem, env(safe-area-inset-top)) max(0.4rem, env(safe-area-inset-right))
-      max(0.4rem, env(safe-area-inset-bottom)) max(0.4rem, env(safe-area-inset-left));
-  }
+.screen--game[data-layout-mode="phone-portrait"] .game-hud {
+  grid-template:
+    "header header" var(--hud-header-reserve, 4.5rem)
+    "comparison comparison" minmax(0, 1fr)
+    "opponent player" 70px
+    "piles piles" 44px
+    "status status" 34px
+    "controls controls" calc(var(--hud-footer-reserve, 210px) - 148px)
+    / 1fr 1fr;
+}
 
-  .game-hud__header,
-  .zone-panel,
-  .hud-metrics--piles,
-  .game-status {
-    padding: 0.45rem 0.55rem;
-  }
+.screen--game[data-layout-mode="phone-landscape"] .game-hud {
+  grid-template:
+    "header header header" var(--hud-header-reserve, 3.5rem)
+    "opponent comparison player" minmax(0, 1fr)
+    "piles status controls" var(--hud-footer-reserve, 7.125rem)
+    / var(--hud-side-reserve, 9.375rem) minmax(0, 1fr)
+      var(--hud-side-reserve, 9.375rem);
+}
 
-  .game-controls {
-    justify-content: stretch;
-  }
+.screen--game[data-layout-mode="phone-portrait"] .game-hud__header,
+.screen--game[data-layout-mode="phone-portrait"] .zone-panel,
+.screen--game[data-layout-mode="phone-portrait"] .hud-metrics--piles,
+.screen--game[data-layout-mode="phone-portrait"] .game-status,
+.screen--game[data-layout-mode="phone-landscape"] .game-hud__header,
+.screen--game[data-layout-mode="phone-landscape"] .zone-panel,
+.screen--game[data-layout-mode="phone-landscape"] .hud-metrics--piles,
+.screen--game[data-layout-mode="phone-landscape"] .game-status {
+  padding: 0.45rem 0.55rem;
+}
 
-  .game-controls button {
-    flex: 1;
-  }
+.screen--game[data-layout-mode="phone-portrait"] .game-controls {
+  justify-content: stretch;
+  padding: 8px;
+}
+
+.screen--game[data-layout-mode="phone-landscape"] .game-controls,
+.screen--game[data-layout-mode="tablet"] .game-controls {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.screen--game[data-layout-mode="phone-landscape"] .game-controls .game-button {
+  padding-inline: 0.1rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.screen--game[data-layout-mode="phone-portrait"] .game-controls .game-button,
+.screen--game[data-layout-mode="tablet"] .game-controls .game-button {
+  padding-inline: 0.25rem;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.screen--game[data-layout-mode="phone-portrait"] .comparison-area {
+  min-height: 4rem;
+}
+
+.screen--game[data-layout-mode="phone-portrait"] .game-controls button {
+  flex: 1;
+}
+
+.screen--game[data-layout-mode="phone-landscape"] .screen-title {
+  font-size: 1.15rem;
+}
+
+.screen--game[data-layout-mode="phone-landscape"] .zone-panel {
+  align-self: stretch;
+}
+
+.screen--game[data-layout-mode="phone-landscape"] .game-controls {
+  min-height: 44px;
+}
+
+.screen--game[data-letterboxed="true"] .game-hud .game-button {
+  min-width: var(--hud-control-min-size, 44px);
+  min-height: var(--hud-control-min-size, 44px);
+}
+
+.screen--game[data-letterboxed="true"] .game-hud {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--battlefield-logical-width, 320px);
+  height: var(--battlefield-logical-height, 480px);
+  transform: translate(-50%, -50%) scale(var(--battlefield-layout-scale, 1));
 }
