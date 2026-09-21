@@ -31,6 +31,24 @@ const SAVE_KEYS = Object.freeze([
   'pendingEvent',
 ])
 
+function validateV2RunSave(input) {
+  assertPlainObject(input, 'save')
+  assertExactDataKeys(input, SAVE_KEYS, 'save')
+  if (input.saveSchemaVersion !== 2) {
+    throw new TypeError('Expected save schema version 2')
+  }
+
+  const currentShape = {
+    ...input,
+    saveSchemaVersion: SAVE_SCHEMA_VERSION,
+  }
+  validateRunSave(currentShape)
+  if (input.match.machineState === 'paused') {
+    throw new TypeError('Save schema version 2 does not support paused matches')
+  }
+  return input
+}
+
 function assertPlainObject(value, name) {
   if (
     value === null
@@ -119,12 +137,21 @@ function migrateV1ToV2(input) {
     },
     pendingEvent: input.pendingEvent,
   }
-  validateRunSave(migrated)
+  validateV2RunSave(migrated)
   return cloneData(migrated)
 }
 
 const MIGRATIONS = new Map([
   [1, migrateV1ToV2],
+  [2, (input) => {
+    validateV2RunSave(input)
+    const migrated = {
+      ...cloneData(input),
+      saveSchemaVersion: 3,
+    }
+    validateRunSave(migrated)
+    return migrated
+  }],
 ])
 
 export function migrateRunSave(input) {
