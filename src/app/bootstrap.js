@@ -121,6 +121,9 @@ export function bootstrap({
         }),
       },
     })
+    if (activeRunController.currentMatch !== null) {
+      coordinator.setResumeAvailable(true)
+    }
     coordinator.start()
   } catch (error) {
     pageLifecycle.destroy()

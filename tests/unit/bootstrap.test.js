@@ -121,7 +121,7 @@ test('bootstrap owns run restoration, lifecycle wiring, and repository teardown'
   assert.deepEqual(root.children, [])
 })
 
-test('bootstrap enables Resume after restoring a resumable run', async (t) => {
+test('bootstrap enables Resume for restored and pre-populated runs', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
     createElement: (tagName) => new FakeElement(tagName),
@@ -159,6 +159,29 @@ test('bootstrap enables Resume after restoring a resumable run', async (t) => {
   assert.equal(app.resumeAvailable, true)
 
   await app.destroy()
+
+  const currentMatch = Object.freeze({ runId: 'current-run' })
+  const currentRunController = {
+    ...runController,
+    currentMatch,
+    getSnapshot: () => Object.freeze({ match: currentMatch }),
+    restore: async () => assert.fail('A current run should not be restored'),
+  }
+  const currentRoot = new FakeElement('div')
+  const currentApp = bootstrap({
+    root: currentRoot,
+    runController: currentRunController,
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield: () => undefined,
+  })
+
+  assert.equal(currentApp.resumeAvailable, true)
+  assert.equal(currentRoot.children[0].children[0].children[2].children[1].disabled, false)
+  assert.deepEqual(await currentApp.ready, { status: 'current' })
+
+  await currentApp.destroy()
 })
 
 test('bootstrap does not refresh Resume after teardown', async (t) => {

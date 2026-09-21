@@ -949,8 +949,9 @@ reviewable PR.
   `visibilitychange`, `pagehide`, and `freeze`, never uses `unload`, and removes every
   listener on teardown. The semantic pause dialog remains inside Game and reports live
   save status; bootstrap owns restoration, lifecycle, and repository cleanup.
-- **Validation:** All 161 unit/integration tests and the production build pass locally
-  on Node 24. Tests cover pause legality and turn-zero saves, v1/v2/v3 migration,
+- **Validation:** All 157 declared unit/integration test cases (166 Node test executions)
+  and the production build pass locally on Node 24. Tests cover pause legality and
+  turn-zero saves, v1/v2/v3 migration,
   serialized overlapping writes, storage failure, lifecycle feature fallback and
   cleanup, bootstrap teardown, overlay semantics, and deterministic continuation
   through clash/pause/background/restore/resume. A text-only headless Chrome check
