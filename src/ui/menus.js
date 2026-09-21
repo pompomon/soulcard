@@ -49,9 +49,10 @@ export function createMainScreen({
   const startButton = createButton('Start New Game', onStart)
   startButton.dataset.action = 'start'
 
-  const resumeButton = createButton('Resume Game', () => {
+  const handleResume = () => {
     if (resumeAvailable) onResume()
-  })
+  }
+  const resumeButton = createButton('Resume Game', handleResume)
   resumeButton.dataset.action = 'resume'
   resumeButton.disabled = !resumeAvailable
 
@@ -66,6 +67,7 @@ export function createMainScreen({
     element,
     teardown() {
       startButton.removeEventListener('click', onStart)
+      resumeButton.removeEventListener('click', handleResume)
       settingsButton.removeEventListener('click', onSettings)
     },
   }

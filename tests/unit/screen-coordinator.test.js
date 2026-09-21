@@ -148,4 +148,13 @@ test('constructor rejects incomplete or expanded screen registries', () => {
     }),
     /only main, settings, and game/,
   )
+
+  const invalidMountCoordinator = createScreenCoordinator({
+    root,
+    screenFactories: { ...factories, main: () => ({ element: null }) },
+  })
+  assert.throws(
+    () => invalidMountCoordinator.start(),
+    /must return an element mount/,
+  )
 })

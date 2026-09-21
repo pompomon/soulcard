@@ -849,6 +849,21 @@ reviewable PR.
   alter screen count; Resume availability is injectable.
 - **Checks/risks:** Browser navigation/manual DOM semantics check; avoid framework
   dependency and preserve existing PWA registration.
+- **Acceptance evidence:** `src/app/screen-coordinator.js` owns an exact
+  `main`/`settings`/`game` registry, single-screen mounting and teardown, active-screen
+  inspection, and injectable Resume availability. `src/app/bootstrap.js` wires semantic
+  menu and HUD factories while preserving production-only relative service-worker
+  registration. `src/ui/menus.js` and `src/ui/hud.js` provide the three DOM shells,
+  disabled future controls, neutral zone/status placeholders, and a Game-owned overlay
+  host. `src/presentation/prototype-scene.js` retains the prototype canvas only within
+  Game and disposes its renderer resources and listener on teardown. Focused coordinator
+  tests lock the screen whitelist, single mount, teardown, navigation, Resume updates,
+  and overlay nesting.
+- **Validation:** All 96 unit tests and the production build pass locally on Node 24.
+  A text-only headless Chrome check navigates Main → Settings → Main → Game, verifies
+  semantic button state, one top-level screen, a nested Game overlay, one canvas under
+  `#app`, and zero severe console messages. The production bundle retains `./sw.js`
+  registration.
 
 ### 8. Settings persistence and graphics/reduced-motion controller
 - **Goal/files:** Add `ui/settings-controller.js`, settings repository, tests; depends

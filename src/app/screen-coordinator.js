@@ -29,7 +29,12 @@ function assertScreenFactories(screenFactories) {
 }
 
 function validateMount(mount, screenId) {
-  if (mount === null || typeof mount !== 'object' || !('element' in mount)) {
+  if (
+    mount === null
+    || typeof mount !== 'object'
+    || mount.element === null
+    || typeof mount.element !== 'object'
+  ) {
     throw new TypeError(`${screenId} screen factory must return an element mount`)
   }
   if (mount.teardown !== undefined && typeof mount.teardown !== 'function') {
