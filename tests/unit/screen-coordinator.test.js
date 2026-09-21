@@ -85,6 +85,30 @@ test('navigation and destruction tear down mounted screens', () => {
   assert.throws(() => coordinator.start(), /has been destroyed/)
 })
 
+test('start can retry after the initial mount fails', () => {
+  const root = createRoot()
+  const factories = createFactories([])
+  let attempts = 0
+  const coordinator = createScreenCoordinator({
+    root,
+    screenFactories: {
+      ...factories,
+      main: () => {
+        attempts += 1
+        if (attempts === 1) {
+          throw new Error('mount failed')
+        }
+        return factories.main({ resumeAvailable: false })
+      },
+    },
+  })
+
+  assert.throws(() => coordinator.start(), /mount failed/)
+  assert.equal(coordinator.start(), 'main')
+  assert.equal(attempts, 2)
+  assert.equal(coordinator.activeScreen, 'main')
+})
+
 test('resume availability is injectable and refreshes only the active Main screen', () => {
   const root = createRoot()
   const log = []

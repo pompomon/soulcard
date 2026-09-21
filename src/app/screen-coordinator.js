@@ -95,7 +95,12 @@ export function createScreenCoordinator({
     assertActiveLifecycle()
     if (!started) {
       started = true
-      mount(initialScreen)
+      try {
+        mount(initialScreen)
+      } catch (error) {
+        started = false
+        throw error
+      }
     }
     return activeScreen
   }
