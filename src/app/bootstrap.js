@@ -37,25 +37,25 @@ export function bootstrap({
     repository: settingsRepository,
     matchMedia,
   })
-  const coordinator = createScreenCoordinator({
-    root,
-    resumeAvailable,
-    screenFactories: {
-      main: ({ navigate, resumeAvailable: canResume }) => createMainScreen({
-        resumeAvailable: canResume,
-        onStart: () => navigate('game'),
-        onResume: () => navigate('game'),
-        onSettings: () => navigate('settings'),
-      }),
-      settings: ({ navigate }) => createSettingsScreen({
-        onBack: () => navigate('main'),
-        settingsController,
-      }),
-      game: () => createGameScreen({ mountBattlefield, settingsController }),
-    },
-  })
-
+  let coordinator
   try {
+    coordinator = createScreenCoordinator({
+      root,
+      resumeAvailable,
+      screenFactories: {
+        main: ({ navigate, resumeAvailable: canResume }) => createMainScreen({
+          resumeAvailable: canResume,
+          onStart: () => navigate('game'),
+          onResume: () => navigate('game'),
+          onSettings: () => navigate('settings'),
+        }),
+        settings: ({ navigate }) => createSettingsScreen({
+          onBack: () => navigate('main'),
+          settingsController,
+        }),
+        game: () => createGameScreen({ mountBattlefield, settingsController }),
+      },
+    })
     coordinator.start()
   } catch (error) {
     settingsController.destroy()
