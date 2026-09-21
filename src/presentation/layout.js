@@ -1,0 +1,258 @@
+export const BATTLEFIELD_LAYOUT_MODES = Object.freeze([
+  'phone-portrait',
+  'phone-landscape',
+  'tablet',
+  'desktop',
+])
+
+export const BATTLEFIELD_ZONE_IDS = Object.freeze([
+  'sourceDeck',
+  'opponentDrawPile',
+  'opponentWonPile',
+  'opponentReveal',
+  'playerReveal',
+  'playerDrawPile',
+  'playerWonPile',
+  'contestedPile',
+  'burnPile',
+])
+
+export const MINIMUM_VIEWPORT = Object.freeze({
+  width: 320,
+  height: 480,
+})
+
+const MODE_SPECS = Object.freeze({
+  'phone-portrait': Object.freeze({
+    world: Object.freeze({ width: 7.5, height: 11 }),
+    hud: Object.freeze({ header: 72, footer: 142, side: 0 }),
+    zones: Object.freeze({
+      sourceDeck: Object.freeze({ x: -2.7, y: 0, z: 0.2 }),
+      opponentDrawPile: Object.freeze({ x: -2, y: 4, z: 0.2 }),
+      opponentWonPile: Object.freeze({ x: 2, y: 4, z: 0.2 }),
+      opponentReveal: Object.freeze({ x: 0, y: 1.35, z: 0.3 }),
+      playerReveal: Object.freeze({ x: 0, y: -1.35, z: 0.3 }),
+      playerDrawPile: Object.freeze({ x: -2, y: -4, z: 0.2 }),
+      playerWonPile: Object.freeze({ x: 2, y: -4, z: 0.2 }),
+      contestedPile: Object.freeze({ x: 2.7, y: 0.7, z: 0.2 }),
+      burnPile: Object.freeze({ x: 2.7, y: -0.7, z: 0.2 }),
+    }),
+  }),
+  'phone-landscape': Object.freeze({
+    world: Object.freeze({ width: 12, height: 6.5 }),
+    hud: Object.freeze({ header: 56, footer: 70, side: 150 }),
+    zones: Object.freeze({
+      sourceDeck: Object.freeze({ x: -4.9, y: 0, z: 0.2 }),
+      opponentDrawPile: Object.freeze({ x: -3.5, y: 2.25, z: 0.2 }),
+      opponentWonPile: Object.freeze({ x: -1.7, y: 2.25, z: 0.2 }),
+      opponentReveal: Object.freeze({ x: 0.3, y: 1.1, z: 0.3 }),
+      playerReveal: Object.freeze({ x: 0.3, y: -1.1, z: 0.3 }),
+      playerDrawPile: Object.freeze({ x: -3.5, y: -2.25, z: 0.2 }),
+      playerWonPile: Object.freeze({ x: -1.7, y: -2.25, z: 0.2 }),
+      contestedPile: Object.freeze({ x: 3.3, y: 0.8, z: 0.2 }),
+      burnPile: Object.freeze({ x: 4.8, y: -0.8, z: 0.2 }),
+    }),
+  }),
+  tablet: Object.freeze({
+    world: Object.freeze({ width: 10, height: 9 }),
+    hud: Object.freeze({ header: 68, footer: 102, side: 176 }),
+    zones: Object.freeze({
+      sourceDeck: Object.freeze({ x: -4, y: 0, z: 0.2 }),
+      opponentDrawPile: Object.freeze({ x: -2.8, y: 3.3, z: 0.2 }),
+      opponentWonPile: Object.freeze({ x: -0.9, y: 3.3, z: 0.2 }),
+      opponentReveal: Object.freeze({ x: 0.7, y: 1.35, z: 0.3 }),
+      playerReveal: Object.freeze({ x: 0.7, y: -1.35, z: 0.3 }),
+      playerDrawPile: Object.freeze({ x: -2.8, y: -3.3, z: 0.2 }),
+      playerWonPile: Object.freeze({ x: -0.9, y: -3.3, z: 0.2 }),
+      contestedPile: Object.freeze({ x: 3.1, y: 0.8, z: 0.2 }),
+      burnPile: Object.freeze({ x: 3.8, y: -1.1, z: 0.2 }),
+    }),
+  }),
+  desktop: Object.freeze({
+    world: Object.freeze({ width: 12, height: 8 }),
+    hud: Object.freeze({ header: 76, footer: 92, side: 208 }),
+    zones: Object.freeze({
+      sourceDeck: Object.freeze({ x: -5, y: 0, z: 0.2 }),
+      opponentDrawPile: Object.freeze({ x: -3.8, y: 2.8, z: 0.2 }),
+      opponentWonPile: Object.freeze({ x: -1.7, y: 2.8, z: 0.2 }),
+      opponentReveal: Object.freeze({ x: 0.5, y: 1.25, z: 0.3 }),
+      playerReveal: Object.freeze({ x: 0.5, y: -1.25, z: 0.3 }),
+      playerDrawPile: Object.freeze({ x: -3.8, y: -2.8, z: 0.2 }),
+      playerWonPile: Object.freeze({ x: -1.7, y: -2.8, z: 0.2 }),
+      contestedPile: Object.freeze({ x: 3.2, y: 0.9, z: 0.2 }),
+      burnPile: Object.freeze({ x: 4.7, y: -0.9, z: 0.2 }),
+    }),
+  }),
+})
+
+function assertPositiveFinite(value, name) {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new TypeError(`${name} must be a positive finite number`)
+  }
+}
+
+function normalizeSafeArea(safeArea) {
+  if (safeArea === undefined) {
+    return { top: 0, right: 0, bottom: 0, left: 0 }
+  }
+  if (safeArea === null || typeof safeArea !== 'object' || Array.isArray(safeArea)) {
+    throw new TypeError('safeArea must be an object')
+  }
+
+  const keys = ['top', 'right', 'bottom', 'left']
+  if (
+    Object.keys(safeArea).length !== keys.length
+    || keys.some((key) => !Object.hasOwn(safeArea, key))
+  ) {
+    throw new TypeError('safeArea must contain exactly top, right, bottom, and left')
+  }
+  for (const key of keys) {
+    if (!Number.isFinite(safeArea[key]) || safeArea[key] < 0) {
+      throw new TypeError(`safeArea.${key} must be a nonnegative finite number`)
+    }
+  }
+  return {
+    top: safeArea.top,
+    right: safeArea.right,
+    bottom: safeArea.bottom,
+    left: safeArea.left,
+  }
+}
+
+function freezeRectangle(x, y, width, height) {
+  return Object.freeze({ x, y, width, height })
+}
+
+function deepFreeze(value) {
+  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) {
+    return value
+  }
+  for (const nested of Object.values(value)) deepFreeze(nested)
+  return Object.freeze(value)
+}
+
+export function classifyBattlefieldLayout(width, height) {
+  assertPositiveFinite(width, 'width')
+  assertPositiveFinite(height, 'height')
+
+  if (Math.min(width, height) <= 520) {
+    return width > height ? 'phone-landscape' : 'phone-portrait'
+  }
+  if (width < 1180 || height < 700) return 'tablet'
+  return 'desktop'
+}
+
+export function createBattlefieldLayout({
+  width,
+  height,
+  safeArea = undefined,
+} = {}) {
+  assertPositiveFinite(width, 'width')
+  assertPositiveFinite(height, 'height')
+  const safe = normalizeSafeArea(safeArea)
+  const mode = classifyBattlefieldLayout(width, height)
+  const spec = MODE_SPECS[mode]
+  const logicalWidth = Math.max(width, MINIMUM_VIEWPORT.width)
+  const logicalHeight = Math.max(height, MINIMUM_VIEWPORT.height)
+  if (safe.left + safe.right >= logicalWidth) {
+    throw new RangeError('safeArea horizontal insets must leave visible width')
+  }
+  if (safe.top + safe.bottom >= logicalHeight) {
+    throw new RangeError('safeArea vertical insets must leave visible height')
+  }
+  const scale = Math.min(width / logicalWidth, height / logicalHeight, 1)
+  const letterboxed = scale < 1
+  const contentWidth = Math.max(1, logicalWidth - safe.left - safe.right)
+  const contentHeight = Math.max(1, logicalHeight - safe.top - safe.bottom)
+  const header = freezeRectangle(
+    safe.left,
+    safe.top,
+    contentWidth,
+    Math.min(spec.hud.header, contentHeight),
+  )
+  const footerHeight = Math.min(
+    spec.hud.footer,
+    Math.max(0, contentHeight - header.height),
+  )
+  const footer = freezeRectangle(
+    safe.left,
+    logicalHeight - safe.bottom - footerHeight,
+    contentWidth,
+    footerHeight,
+  )
+  const middleY = header.y + header.height
+  const middleHeight = Math.max(1, footer.y - middleY)
+  const sideWidth = Math.min(spec.hud.side, Math.max(0, contentWidth / 2 - 1))
+  const leftPanel = freezeRectangle(safe.left, middleY, sideWidth, middleHeight)
+  const rightPanel = freezeRectangle(
+    logicalWidth - safe.right - sideWidth,
+    middleY,
+    sideWidth,
+    middleHeight,
+  )
+  const battlefield = freezeRectangle(
+    safe.left + sideWidth,
+    middleY,
+    Math.max(1, contentWidth - sideWidth * 2),
+    middleHeight,
+  )
+
+  const fov = 38
+  const aspect = width / height
+  const battlefieldWidthFraction = battlefield.width / logicalWidth
+  const battlefieldHeightFraction = battlefield.height / logicalHeight
+  const verticalRadians = fov * Math.PI / 180
+  const verticalDistance = spec.world.height
+    / (2 * Math.tan(verticalRadians / 2) * battlefieldHeightFraction)
+  const horizontalDistance = spec.world.width
+    / (2 * Math.tan(verticalRadians / 2) * aspect * battlefieldWidthFraction)
+  const distance = Math.max(verticalDistance, horizontalDistance) * 1.08
+  const visibleHeight = 2 * distance * Math.tan(verticalRadians / 2)
+  const visibleWidth = visibleHeight * aspect
+  const battlefieldCenterX = battlefield.x + battlefield.width / 2
+  const battlefieldCenterY = battlefield.y + battlefield.height / 2
+  const normalizedCenterX = battlefieldCenterX / logicalWidth * 2 - 1
+  const normalizedCenterY = 1 - battlefieldCenterY / logicalHeight * 2
+
+  return deepFreeze({
+    mode,
+    viewport: {
+      width,
+      height,
+      logicalWidth,
+      logicalHeight,
+      scale,
+      letterboxed,
+    },
+    safeArea: safe,
+    hud: {
+      header,
+      footer,
+      leftPanel,
+      rightPanel,
+      battlefield,
+    },
+    camera: {
+      fov,
+      near: 0.1,
+      far: 100,
+      aspect,
+      distance,
+      target: {
+        x: -normalizedCenterX * visibleWidth / 2,
+        y: -normalizedCenterY * visibleHeight / 2,
+        z: 0,
+      },
+    },
+    world: {
+      width: spec.world.width,
+      height: spec.world.height,
+    },
+    zones: Object.fromEntries(
+      BATTLEFIELD_ZONE_IDS.map((zoneId) => [
+        zoneId,
+        { ...spec.zones[zoneId] },
+      ]),
+    ),
+  })
+}

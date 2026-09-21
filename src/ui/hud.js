@@ -155,9 +155,31 @@ export function createGameScreen({
 
   element.append(battlefieldHost, hud, overlayHost)
 
-  const teardownBattlefield = mountBattlefield(battlefieldHost, { settingsController })
-  if (teardownBattlefield !== undefined && typeof teardownBattlefield !== 'function') {
-    throw new TypeError('mountBattlefield must return a teardown function or undefined')
+  const applyLayout = (layout) => {
+    element.dataset.layoutMode = layout.mode
+    element.dataset.letterboxed = String(layout.viewport.letterboxed)
+    element.style?.setProperty?.('--battlefield-layout-scale', String(layout.viewport.scale))
+    element.style?.setProperty?.('--hud-header-reserve', `${layout.hud.header.height}px`)
+    element.style?.setProperty?.('--hud-footer-reserve', `${layout.hud.footer.height}px`)
+    element.style?.setProperty?.('--hud-side-reserve', `${layout.hud.leftPanel.width}px`)
+    for (const [side, value] of Object.entries(layout.safeArea)) {
+      element.style?.setProperty?.(`--safe-area-${side}`, `${value}px`)
+    }
+  }
+  const battlefieldMount = mountBattlefield(battlefieldHost, {
+    settingsController,
+    onLayout: applyLayout,
+  })
+  const battlefield = typeof battlefieldMount === 'function'
+    ? { teardown: battlefieldMount }
+    : battlefieldMount ?? {}
+  if (
+    (battlefield.teardown !== undefined && typeof battlefield.teardown !== 'function')
+    || (battlefield.setPaused !== undefined && typeof battlefield.setPaused !== 'function')
+  ) {
+    throw new TypeError(
+      'mountBattlefield must return a presentation handle, teardown function, or undefined',
+    )
   }
 
   const handlePause = () => {
@@ -167,11 +189,17 @@ export function createGameScreen({
   }
   pauseButton.addEventListener('click', handlePause)
 
+  let presentationPaused
   const unsubscribeRun = runController?.subscribe((snapshot) => {
     const { match } = snapshot
     pauseButton.disabled = match?.machineState !== 'ready'
     pauseOverlay.element.hidden = match?.machineState !== 'paused'
     pauseOverlay.update(snapshot)
+    const nextPresentationPaused = match?.machineState === 'paused'
+    if (presentationPaused !== nextPresentationPaused) {
+      presentationPaused = nextPresentationPaused
+      battlefield.setPaused?.(nextPresentationPaused)
+    }
   })
 
   return {
@@ -180,7 +208,7 @@ export function createGameScreen({
       unsubscribeRun?.()
       pauseButton.removeEventListener('click', handlePause)
       pauseOverlay.teardown()
-      teardownBattlefield?.()
+      battlefield.teardown?.()
     },
   }
 }

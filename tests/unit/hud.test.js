@@ -16,6 +16,10 @@ class FakeElement {
     this.textContent = ''
     this.hidden = false
     this.disabled = false
+    this.style = {
+      values: new Map(),
+      setProperty: (name, value) => this.style.values.set(name, value),
+    }
   }
 
   append(...children) {
@@ -79,10 +83,29 @@ test('Game owns a semantic pause overlay with live save status and Resume', asyn
     }),
   })
   let battlefieldTeardowns = 0
+  const battlefieldPauses = []
   const screen = createGameScreen({
     runController: controller,
-    mountBattlefield: () => () => {
-      battlefieldTeardowns += 1
+    mountBattlefield: (host, { onLayout }) => {
+      assert.ok(Object.hasOwn(host.dataset, 'battlefield'))
+      onLayout({
+        mode: 'phone-portrait',
+        viewport: { letterboxed: false, scale: 1 },
+        safeArea: { top: 1, right: 2, bottom: 3, left: 4 },
+        hud: {
+          header: { height: 72 },
+          footer: { height: 142 },
+          leftPanel: { width: 0 },
+        },
+      })
+      return {
+        setPaused(value) {
+          battlefieldPauses.push(value)
+        },
+        teardown() {
+          battlefieldTeardowns += 1
+        },
+      }
     },
   })
   const elements = descendants(screen.element)
@@ -103,11 +126,17 @@ test('Game owns a semantic pause overlay with live save status and Resume', asyn
   assert.equal(overlay.attributes['aria-modal'], 'true')
   assert.equal(overlay.hidden, true)
   assert.equal(pause.disabled, false)
+  assert.equal(screen.element.dataset.layoutMode, 'phone-portrait')
+  assert.equal(screen.element.dataset.letterboxed, 'false')
+  assert.equal(screen.element.style.values.get('--hud-header-reserve'), '72px')
+  assert.equal(screen.element.style.values.get('--safe-area-left'), '4px')
+  assert.deepEqual(battlefieldPauses, [false])
 
   pause.dispatch('click')
   assert.equal(controller.currentMatch.machineState, 'paused')
   assert.equal(overlay.hidden, false)
   assert.match(saveStatus.textContent, /Saving/)
+  assert.deepEqual(battlefieldPauses, [false, true])
   await controller.whenIdle()
   await Promise.resolve()
   assert.equal(saves.length, 1)
@@ -118,6 +147,7 @@ test('Game owns a semantic pause overlay with live save status and Resume', asyn
   assert.equal(controller.currentMatch.machineState, 'ready')
   assert.equal(overlay.hidden, true)
   assert.equal(pause.disabled, false)
+  assert.deepEqual(battlefieldPauses, [false, true, false])
 
   screen.teardown()
   pause.dispatch('click')
