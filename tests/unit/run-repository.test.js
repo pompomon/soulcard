@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
+import {
+  createMatch,
+  pauseMatch,
+  revealOrContinue,
+} from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import {
   ACTIVE_RUN_KEY,
@@ -302,7 +306,7 @@ test('save, load, and replacement atomically preserve valid stable snapshots', a
     status: 'saved',
     savedAt: SAVED_AT,
   })
-  assert.equal(indexedDB.read(ACTIVE_RUN_KEY).saveSchemaVersion, 2)
+  assert.equal(indexedDB.read(ACTIVE_RUN_KEY).saveSchemaVersion, 3)
   assert.equal(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
 
   const loaded = await repository.load()
@@ -323,24 +327,47 @@ test('save, load, and replacement atomically preserve valid stable snapshots', a
   assert.equal((await repository.load()).match.runId, 'replacement-run')
 })
 
-test('load migrates legacy saves and replaces them atomically', async () => {
+test('paused snapshots save and restore without changing RNG or the pending event', async () => {
   const indexedDB = new FakeIndexedDB()
-  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v1.json'))
   const repository = createRunRepository({
     indexedDB,
-    now: () => SAVED_AT,
+    now: () => new Date(SAVED_AT),
   })
+  const ready = activeMatch('fixture-active')
+  const paused = pauseMatch(ready)
 
+  assert.deepEqual(await repository.save(paused), {
+    status: 'saved',
+    savedAt: SAVED_AT,
+  })
+  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-paused-v3.json'))
   const loaded = await repository.load()
   assert.equal(loaded.status, 'resumable')
-  assert.equal(loaded.migratedFrom, 1)
-  assert.equal(loaded.match.runId, 'fixture-active')
-  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v2.json'))
+  assert.deepEqual(loaded.match, paused)
+  assert.deepEqual(loaded.match.rng, ready.rng)
+  assert.deepEqual(loaded.match.pendingEvent, ready.pendingEvent)
+})
+
+test('load migrates legacy saves and replaces them atomically', async () => {
+  for (const version of [1, 2]) {
+    const indexedDB = new FakeIndexedDB()
+    indexedDB.seed(ACTIVE_RUN_KEY, fixture(`run-save-v${version}.json`))
+    const repository = createRunRepository({
+      indexedDB,
+      now: () => SAVED_AT,
+    })
+
+    const loaded = await repository.load()
+    assert.equal(loaded.status, 'resumable')
+    assert.equal(loaded.migratedFrom, version)
+    assert.equal(loaded.match.runId, 'fixture-active')
+    assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v3.json'))
+  }
 })
 
 test('invalid saves are quarantined once and require explicit discard', async () => {
   const indexedDB = new FakeIndexedDB()
-  const corrupt = fixture('run-save-v2.json')
+  const corrupt = fixture('run-save-v3.json')
   corrupt.match.sourceDeck.pop()
   indexedDB.seed(ACTIVE_RUN_KEY, corrupt)
   const repository = createRunRepository({
@@ -366,8 +393,8 @@ test('invalid saves are quarantined once and require explicit discard', async ()
 
 test('future, incompatible, and malformed legacy saves expose distinct recovery reasons', async () => {
   for (const [fixtureName, field, value, reason] of [
-    ['run-save-v2.json', 'saveSchemaVersion', 99, 'unsupported-save-version'],
-    ['run-save-v2.json', 'gameRulesVersion', 99, 'incompatible-game-rules'],
+    ['run-save-v3.json', 'saveSchemaVersion', 99, 'unsupported-save-version'],
+    ['run-save-v3.json', 'gameRulesVersion', 99, 'incompatible-game-rules'],
     ['run-save-v1.json', 'gameRulesVersion', '1', 'invalid-save'],
   ]) {
     const indexedDB = new FakeIndexedDB()
@@ -472,7 +499,7 @@ test('an unexpected close invalidates the cached connection for reopening', asyn
 
 test('quota and abort failures never report success or partially replace a save', async () => {
   const indexedDB = new FakeIndexedDB()
-  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v2.json'))
+  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v3.json'))
   indexedDB.seed(QUARANTINED_RUN_KEY, {
     quarantinedAt: SAVED_AT,
     reason: 'invalid-save',
@@ -487,7 +514,7 @@ test('quota and abort failures never report success or partially replace a save'
     operation: 'save',
     reason: 'quota-exceeded',
   })
-  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v2.json'))
+  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v3.json'))
   assert.notEqual(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
 
   indexedDB.abortNextTransaction()
@@ -496,13 +523,13 @@ test('quota and abort failures never report success or partially replace a save'
     operation: 'save',
     reason: 'transaction-aborted',
   })
-  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v2.json'))
+  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v3.json'))
   assert.notEqual(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
 })
 
 test('synchronous execution failures abort queued transaction writes', async () => {
   const indexedDB = new FakeIndexedDB()
-  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v2.json'))
+  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v3.json'))
   indexedDB.seed(QUARANTINED_RUN_KEY, {
     quarantinedAt: SAVED_AT,
     reason: 'invalid-save',
@@ -518,13 +545,13 @@ test('synchronous execution failures abort queued transaction writes', async () 
     operation: 'save',
     reason: 'storage-error',
   })
-  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v2.json'))
+  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v3.json'))
   assert.notEqual(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
 })
 
 test('failed reads and quarantine writes preserve the original active record', async () => {
   const indexedDB = new FakeIndexedDB()
-  const corrupt = fixture('run-save-v2.json')
+  const corrupt = fixture('run-save-v3.json')
   corrupt.match.sourceDeck.pop()
   indexedDB.seed(ACTIVE_RUN_KEY, corrupt)
   const repository = createRunRepository({

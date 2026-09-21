@@ -4,6 +4,7 @@ import {
   UnsupportedGameRulesVersionError,
   UnsupportedSaveVersionError,
   validateRunSave,
+  validateRunSaveVersion,
 } from './run-schema.js'
 
 const LEGACY_V1_MATCH_KEYS = Object.freeze([
@@ -30,6 +31,10 @@ const SAVE_KEYS = Object.freeze([
   'match',
   'pendingEvent',
 ])
+
+function validateV2RunSave(input) {
+  return validateRunSaveVersion(input, 2)
+}
 
 function assertPlainObject(value, name) {
   if (
@@ -119,12 +124,21 @@ function migrateV1ToV2(input) {
     },
     pendingEvent: input.pendingEvent,
   }
-  validateRunSave(migrated)
+  validateV2RunSave(migrated)
   return cloneData(migrated)
 }
 
 const MIGRATIONS = new Map([
   [1, migrateV1ToV2],
+  [2, (input) => {
+    validateV2RunSave(input)
+    const migrated = {
+      ...cloneData(input),
+      saveSchemaVersion: 3,
+    }
+    validateRunSave(migrated)
+    return migrated
+  }],
 ])
 
 export function migrateRunSave(input) {

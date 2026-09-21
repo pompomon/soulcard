@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   createMatch,
+  pauseMatch,
   revealOrContinue,
   validateMatchState,
 } from '../../src/domain/match-machine.js'
@@ -49,9 +50,9 @@ test('current saves use the exact versioned shape and complete fixed fixture', (
   const match = activeFixtureMatch()
   const save = createRunSave(match, { savedAt: SAVED_AT })
 
-  assert.equal(SAVE_SCHEMA_VERSION, 2)
+  assert.equal(SAVE_SCHEMA_VERSION, 3)
   assert.equal(GAME_RULES_VERSION, 1)
-  assert.deepEqual(save, fixture('run-save-v2.json'))
+  assert.deepEqual(save, fixture('run-save-v3.json'))
   assert.equal(validateRunSave(save), save)
   assert.ok(allObjects(save).every(Object.isFrozen))
   assert.notEqual(save.ruleset, match.ruleset)
@@ -61,7 +62,7 @@ test('current saves use the exact versioned shape and complete fixed fixture', (
 })
 
 test('restore returns a detached immutable equivalent domain snapshot', () => {
-  const source = fixture('run-save-v2.json')
+  const source = fixture('run-save-v3.json')
   const before = clone(source)
   const restored = restoreRunSave(source)
 
@@ -78,7 +79,7 @@ test('restore returns a detached immutable equivalent domain snapshot', () => {
 })
 
 test('terminal outcome and pending presentation event restore exactly', () => {
-  const save = fixture('run-save-terminal-v2.json')
+  const save = fixture('run-save-terminal-v3.json')
   const restored = restoreRunSave(save)
 
   assert.equal(restored.machineState, 'ended')
@@ -88,10 +89,27 @@ test('terminal outcome and pending presentation event restore exactly', () => {
     winner: 'player',
     reason: 'opponentUnableToReveal',
   })
+
   assert.equal(restored.turn, 46)
   assert.equal(restored.pendingEvent.id, 'fixture-terminal:clash-46')
   assert.equal(restored.pendingEvent.pendingPresentation, 'settlement-v1')
   assert.deepEqual(restored.rng, save.rng)
+})
+
+test('paused snapshots preserve the ready-state event fingerprint and restore exactly', () => {
+  const paused = pauseMatch(activeFixtureMatch())
+  const save = createRunSave(paused, { savedAt: SAVED_AT })
+
+  assert.deepEqual(save, fixture('run-save-paused-v3.json'))
+  assert.equal(
+    save.pendingEvent.stateFingerprint,
+    fixture('run-save-v3.json').pendingEvent.stateFingerprint,
+  )
+  const restored = restoreRunSave(JSON.parse(JSON.stringify(save)))
+  assert.deepEqual(restored, paused)
+  assert.deepEqual(restored.rng, activeFixtureMatch().rng)
+  assert.deepEqual(restored.pendingEvent, activeFixtureMatch().pendingEvent)
+  assert.equal(validateMatchState(restored), restored)
 })
 
 test('a fresh turn-zero match round-trips without inventing a pending event', () => {
@@ -106,13 +124,21 @@ test('a fresh turn-zero match round-trips without inventing a pending event', ()
   assert.equal(restored.turn, 0)
   assert.equal(restored.pendingEvent, null)
   assert.deepEqual(restored.rng, match.rng)
+
+  const paused = pauseMatch(match)
+  const restoredPaused = restoreRunSave(createRunSave(paused, { savedAt: SAVED_AT }))
+  assert.deepEqual(restoredPaused, paused)
+  assert.equal(restoredPaused.turn, 0)
+  assert.equal(restoredPaused.pendingEvent, null)
+  assert.deepEqual(restoredPaused.rng, match.rng)
 })
 
 test('schema validation rejects malformed metadata and nonstable records', () => {
-  const current = fixture('run-save-v2.json')
+  const current = fixture('run-save-v3.json')
   const invalid = [
     { ...clone(current), saveSchemaVersion: 1 },
-    { ...clone(current), saveSchemaVersion: 3 },
+    { ...clone(current), saveSchemaVersion: 2 },
+    { ...clone(current), saveSchemaVersion: 4 },
     { ...clone(current), gameRulesVersion: 2 },
     { ...clone(current), savedAt: '2026-09-21T08:00:00Z' },
     { ...clone(current), savedAt: 'not-a-date' },
@@ -147,7 +173,7 @@ test('schema validation rejects malformed metadata and nonstable records', () =>
     assert.throws(() => restoreRunSave(save))
   }
   assert.throws(
-    () => validateRunSave({ ...clone(current), saveSchemaVersion: 3 }),
+    () => validateRunSave({ ...clone(current), saveSchemaVersion: 4 }),
     UnsupportedSaveVersionError,
   )
   assert.throws(
@@ -157,11 +183,11 @@ test('schema validation rejects malformed metadata and nonstable records', () =>
 })
 
 test('schema validation rejects non-JSON containers and accessors without invoking them', () => {
-  const extraArrayProperty = fixture('run-save-v2.json')
+  const extraArrayProperty = fixture('run-save-v3.json')
   extraArrayProperty.match.sourceDeck.label = 'not-an-index'
   assert.throws(() => validateRunSave(extraArrayProperty), /dense array/)
 
-  const accessor = fixture('run-save-v2.json')
+  const accessor = fixture('run-save-v3.json')
   let invoked = false
   Object.defineProperty(accessor.match.player, 'drawPile', {
     enumerable: true,

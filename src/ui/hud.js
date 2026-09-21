@@ -1,3 +1,5 @@
+import { createPauseOverlay } from './overlays.js'
+
 function createTextElement(tagName, className, text) {
   const element = document.createElement(tagName)
   element.className = className
@@ -39,10 +41,29 @@ function createSidePanel(side, label) {
   return panel
 }
 
-export function createGameScreen({ mountBattlefield, settingsController } = {}) {
+function assertRunController(runController) {
+  const methods = ['getSnapshot', 'subscribe', 'pause', 'resume']
+  if (
+    runController !== null
+    && runController !== undefined
+    && (
+      typeof runController !== 'object'
+      || methods.some((method) => typeof runController[method] !== 'function')
+    )
+  ) {
+    throw new TypeError('runController must implement the Game run controller interface')
+  }
+}
+
+export function createGameScreen({
+  mountBattlefield,
+  settingsController,
+  runController,
+} = {}) {
   if (typeof mountBattlefield !== 'function') {
     throw new TypeError('mountBattlefield must be a function')
   }
+  assertRunController(runController)
 
   const element = document.createElement('main')
   element.className = 'screen screen--game'
@@ -124,6 +145,14 @@ export function createGameScreen({ mountBattlefield, settingsController } = {}) 
   overlayHost.className = 'game-overlays'
   overlayHost.dataset.overlayHost = ''
 
+  const handleResume = () => {
+    try {
+      runController?.resume()
+    } catch {}
+  }
+  const pauseOverlay = createPauseOverlay({ onResume: handleResume })
+  overlayHost.append(pauseOverlay.element)
+
   element.append(battlefieldHost, hud, overlayHost)
 
   const teardownBattlefield = mountBattlefield(battlefieldHost, { settingsController })
@@ -131,9 +160,26 @@ export function createGameScreen({ mountBattlefield, settingsController } = {}) 
     throw new TypeError('mountBattlefield must return a teardown function or undefined')
   }
 
+  const handlePause = () => {
+    try {
+      Promise.resolve(runController?.pause()).catch(() => {})
+    } catch {}
+  }
+  pauseButton.addEventListener('click', handlePause)
+
+  const unsubscribeRun = runController?.subscribe((snapshot) => {
+    const { match } = snapshot
+    pauseButton.disabled = match?.machineState !== 'ready'
+    pauseOverlay.element.hidden = match?.machineState !== 'paused'
+    pauseOverlay.update(snapshot)
+  })
+
   return {
     element,
     teardown() {
+      unsubscribeRun?.()
+      pauseButton.removeEventListener('click', handlePause)
+      pauseOverlay.teardown()
       teardownBattlefield?.()
     },
   }

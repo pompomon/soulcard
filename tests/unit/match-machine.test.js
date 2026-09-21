@@ -3,7 +3,9 @@ import test from 'node:test'
 import { CARD_IDS } from '../../src/domain/cards.js'
 import {
   createMatch,
+  pauseMatch,
   revealOrContinue,
+  resumeMatch,
   validateMatchState,
 } from '../../src/domain/match-machine.js'
 import { assertStableBoundary } from '../../src/domain/invariants.js'
@@ -93,6 +95,7 @@ test('new matches require explicit inputs and produce deterministic immutable re
     outcome: null,
     pendingEvent: null,
   })
+
   assert.equal(first.zones.sourceDeck.length, 52)
   assert.deepEqual(first.rng, {
     algorithm: 'mulberry32',
@@ -117,6 +120,53 @@ test('new matches require explicit inputs and produce deterministic immutable re
   for (const input of invalid) {
     assert.throws(() => createMatch(input))
   }
+})
+
+test('pause and resume preserve a stable match without replaying RNG or committed events', () => {
+  const ready = revealOrContinue(createMatch({
+    runId: 'pause-resume',
+    seed: 12345,
+    ruleset: BASELINE_RULESET,
+  })).match
+  const before = clone(ready)
+  const paused = pauseMatch(ready)
+
+  assert.deepEqual(ready, before)
+  assert.equal(paused.machineState, 'paused')
+  assert.deepEqual(paused.rng, ready.rng)
+  assert.deepEqual(paused.pendingEvent, ready.pendingEvent)
+  assert.equal(paused.pendingEvent.stateFingerprint, ready.pendingEvent.stateFingerprint)
+  assert.notEqual(paused, ready)
+  assert.ok(allObjects(paused).every(Object.isFrozen))
+  assert.equal(validateMatchState(paused), paused)
+  assert.doesNotThrow(() => assertStableBoundary(paused.zones))
+  assert.throws(() => revealOrContinue(paused), /paused match/)
+  assert.throws(() => pauseMatch(paused), /ready match/)
+
+  const resumed = resumeMatch(paused)
+  assert.deepEqual(resumed, ready)
+  assert.notEqual(resumed, ready)
+  assert.ok(allObjects(resumed).every(Object.isFrozen))
+  assert.throws(() => resumeMatch(resumed), /paused match/)
+})
+
+test('only active ready matches can pause and terminal matches cannot resume', () => {
+  const terminal = revealOrContinue(createFixture({
+    stage: 'personal',
+    playerDraw: ['c-AS'],
+  })).match
+
+  assert.equal(terminal.machineState, 'ended')
+  assert.throws(() => pauseMatch(terminal), /ready match/)
+  assert.throws(() => resumeMatch(terminal), /paused match/)
+
+  const unstable = clone(createMatch({
+    runId: 'unstable-pause',
+    seed: 1,
+    ruleset: BASELINE_RULESET,
+  }))
+  unstable.machineState = 'resolving'
+  assert.throws(() => pauseMatch(unstable), /public boundary/)
 })
 
 test('source-stage clashes resolve both winners and preserve the input snapshot', () => {

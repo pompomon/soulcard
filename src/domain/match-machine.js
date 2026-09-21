@@ -12,7 +12,7 @@ import { createInitialZones } from './zones.js'
 
 const SIDES = Object.freeze(['player', 'opponent'])
 const STAGES = Object.freeze(['source', 'personal'])
-const STABLE_MACHINE_STATES = Object.freeze(['ready', 'ended'])
+const STABLE_MACHINE_STATES = Object.freeze(['ready', 'paused', 'ended'])
 const DRAW_REASON = 'mutualInability'
 
 function assertPlainObject(value, name) {
@@ -69,9 +69,9 @@ function assertRngSnapshot(rng) {
 }
 
 function assertOutcome(outcome, machineState, status) {
-  if (machineState === 'ready') {
+  if (machineState === 'ready' || machineState === 'paused') {
     if (status !== 'active' || outcome !== null) {
-      throw new Error('A ready match must be active without a terminal outcome')
+      throw new Error('An active match must be ready or paused without a terminal outcome')
     }
     return
   }
@@ -118,8 +118,11 @@ function assertStageZones(match) {
     throw new Error('A personal-stage match requires an empty source deck')
   }
 
-  if (match.machineState === 'ready' && zones.contestedPile.length !== 0) {
-    throw new Error('A ready match cannot retain a contested pile')
+  if (
+    (match.machineState === 'ready' || match.machineState === 'paused')
+    && zones.contestedPile.length !== 0
+  ) {
+    throw new Error('An active stable match cannot retain a contested pile')
   }
   if (match.machineState === 'ended') {
     if (match.stage !== 'personal') {
@@ -148,13 +151,13 @@ function assertStageZones(match) {
   }
 
   if (
-    match.machineState === 'ready' &&
+    (match.machineState === 'ready' || match.machineState === 'paused') &&
     match.stage === 'personal' &&
     SIDES.every(
       (side) => zones[side].drawPile.length === 0 && zones[side].wonPile.length === 0,
     )
   ) {
-    throw new Error('A ready personal-stage match requires at least one revealable card')
+    throw new Error('An active personal-stage match requires at least one revealable card')
   }
 }
 
@@ -182,7 +185,10 @@ function assertPendingEvent(match) {
     throw new Error('The pending event must describe the latest committed clash')
   }
   if (
-    (match.machineState === 'ready' && pendingEvent.type !== 'clashSettled') ||
+    (
+      (match.machineState === 'ready' || match.machineState === 'paused')
+      && pendingEvent.type !== 'clashSettled'
+    ) ||
     (match.machineState === 'ended' &&
       match.outcome.result === 'win' &&
       pendingEvent.type !== 'clashSettled') ||
@@ -203,7 +209,10 @@ function assertPendingEvent(match) {
     const endedByInability = pendingEvent.reveals.length % 2 === 1
     if (
       (match.machineState === 'ended' && !endedByInability) ||
-      (match.machineState === 'ready' && endedByInability)
+      (
+        (match.machineState === 'ready' || match.machineState === 'paused')
+        && endedByInability
+      )
     ) {
       throw new Error('One-sided inability must agree with the terminal machine state')
     }
@@ -230,12 +239,18 @@ function assertPendingEvent(match) {
   ) {
     throw new Error('The terminal draw event must match the retained contest')
   }
-  if (pendingEvent.stateFingerprint !== createStateFingerprint(match, pendingEvent)) {
+  const fingerprintMachineState = match.machineState === 'paused'
+    ? 'ready'
+    : match.machineState
+  if (
+    pendingEvent.stateFingerprint
+    !== createStateFingerprint(match, pendingEvent, fingerprintMachineState)
+  ) {
     throw new Error('The pending event must match the exact post-commit state')
   }
 }
 
-function createStateFingerprint(match, event) {
+function createStateFingerprint(match, event, machineState = match.machineState) {
   const outcome = match.outcome === null
     ? null
     : match.outcome.result === 'win'
@@ -261,7 +276,7 @@ function createStateFingerprint(match, event) {
     match.rng.seed,
     match.rng.state,
     match.stage,
-    match.machineState,
+    machineState,
     match.turn,
     match.status,
     outcome,
@@ -338,7 +353,7 @@ export function validateMatchState(match) {
     throw new TypeError('stage must be source or personal')
   }
   if (!STABLE_MACHINE_STATES.includes(match.machineState)) {
-    throw new TypeError('machineState must be ready or ended at a public boundary')
+    throw new TypeError('machineState must be ready, paused, or ended at a public boundary')
   }
   if (!Number.isSafeInteger(match.turn) || match.turn < 0) {
     throw new TypeError('turn must be a nonnegative safe integer')
@@ -372,6 +387,30 @@ export function createMatch(options) {
     pendingEvent: null,
   }
   match.rng = rng.snapshot()
+  validateMatchState(match)
+  return deepFreeze(match)
+}
+
+export function pauseMatch(input) {
+  validateMatchState(input)
+  if (input.machineState !== 'ready') {
+    throw new Error('Only a ready match can be paused')
+  }
+
+  const match = cloneData(input)
+  match.machineState = 'paused'
+  validateMatchState(match)
+  return deepFreeze(match)
+}
+
+export function resumeMatch(input) {
+  validateMatchState(input)
+  if (input.machineState !== 'paused') {
+    throw new Error('Only a paused match can be resumed')
+  }
+
+  const match = cloneData(input)
+  match.machineState = 'ready'
   validateMatchState(match)
   return deepFreeze(match)
 }
@@ -566,6 +605,9 @@ export function revealOrContinue(input) {
   validateMatchState(input)
   if (input.machineState === 'ended') {
     throw new Error('An ended match cannot reveal or continue')
+  }
+  if (input.machineState === 'paused') {
+    throw new Error('A paused match cannot reveal or continue')
   }
 
   const match = cloneData(input)
