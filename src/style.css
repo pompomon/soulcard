@@ -99,6 +99,11 @@ button:focus-visible {
   outline-offset: 3px;
 }
 
+select:focus-visible {
+  outline: 3px solid #75eef5;
+  outline-offset: 3px;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -115,10 +120,9 @@ button:disabled {
 }
 
 .settings-host {
-  min-height: 10rem;
   margin: 2rem 0;
   padding: 1rem;
-  border: 1px dashed rgb(255 255 255 / 25%);
+  border: 1px solid rgb(255 255 255 / 25%);
   border-radius: 0.75rem;
   color: rgb(255 255 255 / 72%);
 }
@@ -127,6 +131,39 @@ button:disabled {
   margin-top: 0;
   color: #fff;
   font-size: 1rem;
+}
+
+.settings-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.settings-field label {
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.settings-field select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.65rem 2.25rem 0.65rem 0.75rem;
+  border: 1px solid rgb(255 255 255 / 30%);
+  border-radius: 0.65rem;
+  background: #1b1237;
+  color: #fff;
+  font: inherit;
+}
+
+.settings-status {
+  margin: 1rem 0 0;
+  color: #ffd394;
+  font-size: 0.8rem;
 }
 
 .screen--game {

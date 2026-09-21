@@ -1,5 +1,7 @@
 import { createScreenCoordinator } from './screen-coordinator.js'
+import { createSettingsRepository } from '../persistence/settings-repository.js'
 import { createMainScreen, createSettingsScreen } from '../ui/menus.js'
+import { createSettingsController } from '../ui/settings-controller.js'
 import { createGameScreen } from '../ui/hud.js'
 import { mountPrototypeScene } from '../presentation/prototype-scene.js'
 
@@ -28,7 +30,13 @@ export function bootstrap({
   root,
   resumeAvailable = false,
   mountBattlefield = mountPrototypeScene,
+  settingsRepository = createSettingsRepository(),
+  matchMedia = undefined,
 } = {}) {
+  const settingsController = createSettingsController({
+    repository: settingsRepository,
+    matchMedia,
+  })
   const coordinator = createScreenCoordinator({
     root,
     resumeAvailable,
@@ -41,12 +49,36 @@ export function bootstrap({
       }),
       settings: ({ navigate }) => createSettingsScreen({
         onBack: () => navigate('main'),
+        settingsController,
       }),
-      game: () => createGameScreen({ mountBattlefield }),
+      game: () => createGameScreen({ mountBattlefield, settingsController }),
     },
   })
 
-  coordinator.start()
+  try {
+    coordinator.start()
+  } catch (error) {
+    settingsController.destroy()
+    throw error
+  }
   registerServiceWorker()
-  return coordinator
+
+  return Object.freeze({
+    start: coordinator.start,
+    navigate: coordinator.navigate,
+    setResumeAvailable: coordinator.setResumeAvailable,
+    destroy() {
+      try {
+        coordinator.destroy()
+      } finally {
+        settingsController.destroy()
+      }
+    },
+    get activeScreen() {
+      return coordinator.activeScreen
+    },
+    get resumeAvailable() {
+      return coordinator.resumeAvailable
+    },
+  })
 }
