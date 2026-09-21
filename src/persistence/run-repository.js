@@ -201,7 +201,12 @@ function runTransaction(database, mode, execute) {
         },
       })
     } catch (error) {
-      reject(error)
+      if (transaction) {
+        try {
+          transaction.abort()
+        } catch {}
+      }
+      rejectOnce(error)
       return
     }
 

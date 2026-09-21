@@ -54,10 +54,14 @@ class FakeTransaction {
         this.staged.set(key, clone(value))
         return key
       }, 'write'),
-      delete: (key) => this.request(() => {
-        this.staged.delete(key)
-        return undefined
-      }, 'write'),
+      delete: (key) => {
+        const failure = this.factory.takeDeleteFailure()
+        if (failure) throw failure
+        return this.request(() => {
+          this.staged.delete(key)
+          return undefined
+        }, 'write')
+      },
     }
   }
 
@@ -231,6 +235,16 @@ class FakeIndexedDB {
 
   abortNextTransaction() {
     this.transactionAbort = storageError('AbortError')
+  }
+
+  failNextDelete(name) {
+    this.deleteFailure = storageError(name)
+  }
+
+  takeDeleteFailure() {
+    const failure = this.deleteFailure
+    this.deleteFailure = null
+    return failure
   }
 
   takeWriteFailure() {
@@ -460,6 +474,28 @@ test('quota and abort failures never report success or partially replace a save'
     status: 'storage-unavailable',
     operation: 'save',
     reason: 'transaction-aborted',
+  })
+  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v2.json'))
+  assert.notEqual(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
+})
+
+test('synchronous execution failures abort queued transaction writes', async () => {
+  const indexedDB = new FakeIndexedDB()
+  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v2.json'))
+  indexedDB.seed(QUARANTINED_RUN_KEY, {
+    quarantinedAt: SAVED_AT,
+    reason: 'invalid-save',
+    record: {},
+  })
+  const repository = createRunRepository({ indexedDB })
+
+  indexedDB.failNextDelete('InvalidStateError')
+  assert.deepEqual(await repository.replace(activeMatch('replacement-run', 7), {
+    savedAt: SAVED_AT,
+  }), {
+    status: 'storage-unavailable',
+    operation: 'save',
+    reason: 'storage-error',
   })
   assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v2.json'))
   assert.notEqual(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
