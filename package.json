@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "simulate": "node scripts/simulate.js",
-    "test": "node --test \"tests/unit/**/*.test.js\"",
+    "test": "node --test \"tests/unit/**/*.test.js\" \"tests/integration/**/*.test.js\"",
     "test:watch": "node --test --watch \"tests/unit/**/*.test.js\""
   },
   "devDependencies": {

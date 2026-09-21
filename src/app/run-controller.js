@@ -115,8 +115,7 @@ export function createRunController({
       .then(normalizeSaveResult)
       .catch((error) => storageFailure('save', error))
 
-    writeTail = operation.then(() => undefined)
-    return operation.then((result) => {
+    const finalized = operation.then((result) => {
       if (sequence === latestSaveSequence && saveRevision === revision && !destroyed) {
         if (result.status === 'saved') {
           saveStatus = 'saved'
@@ -130,6 +129,8 @@ export function createRunController({
       }
       return result
     })
+    writeTail = finalized.then(() => undefined)
+    return finalized
   }
 
   function saveStable() {

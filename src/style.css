@@ -323,6 +323,44 @@ button:disabled {
   pointer-events: auto;
 }
 
+.pause-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(8 5 20 / 72%);
+}
+
+.pause-overlay[hidden] {
+  display: none;
+}
+
+.pause-overlay__panel {
+  display: grid;
+  width: min(100%, 24rem);
+  gap: 1rem;
+  padding: 1.25rem;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 1rem;
+  background: rgb(25 17 52 / 96%);
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 42%);
+  text-align: center;
+}
+
+.pause-overlay__panel h2,
+.pause-overlay__status {
+  margin: 0;
+}
+
+.pause-overlay__status {
+  color: rgb(255 255 255 / 72%);
+}
+
+.pause-overlay__panel .game-button {
+  min-height: 44px;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
