@@ -71,6 +71,10 @@ test('unknown, skipped, malformed, and incompatible versions are rejected', () =
     () => migrateRunSave({ ...clone(legacy), gameRulesVersion: 2 }),
     UnsupportedGameRulesVersionError,
   )
+  assert.throws(
+    () => migrateRunSave({ ...clone(legacy), gameRulesVersion: '1' }),
+    /gameRulesVersion must be a safe integer/,
+  )
 })
 
 test('legacy migration rejects ambiguous terminal and shape variants', () => {

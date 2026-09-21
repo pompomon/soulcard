@@ -145,6 +145,7 @@ class FakeDatabase {
   constructor(factory) {
     this.factory = factory
     this.closed = false
+    this.onclose = null
     this.onversionchange = null
     this.objectStoreNames = {
       contains: (name) => factory.initialized && name === RUN_STORE_NAME,
@@ -167,6 +168,11 @@ class FakeDatabase {
 
   close() {
     this.closed = true
+  }
+
+  closeUnexpectedly() {
+    this.closed = true
+    this.onclose?.()
   }
 }
 
@@ -358,13 +364,14 @@ test('invalid saves are quarantined once and require explicit discard', async ()
   assert.deepEqual(await repository.load(), { status: 'empty' })
 })
 
-test('future and incompatible rules saves expose distinct recovery reasons', async () => {
-  for (const [field, value, reason] of [
-    ['saveSchemaVersion', 99, 'unsupported-save-version'],
-    ['gameRulesVersion', 99, 'incompatible-game-rules'],
+test('future, incompatible, and malformed legacy saves expose distinct recovery reasons', async () => {
+  for (const [fixtureName, field, value, reason] of [
+    ['run-save-v2.json', 'saveSchemaVersion', 99, 'unsupported-save-version'],
+    ['run-save-v2.json', 'gameRulesVersion', 99, 'incompatible-game-rules'],
+    ['run-save-v1.json', 'gameRulesVersion', '1', 'invalid-save'],
   ]) {
     const indexedDB = new FakeIndexedDB()
-    const save = fixture('run-save-v2.json')
+    const save = fixture(fixtureName)
     save[field] = value
     indexedDB.seed(ACTIVE_RUN_KEY, save)
     const repository = createRunRepository({
@@ -442,6 +449,20 @@ test('a version change closes and invalidates the cached connection for reopenin
   assert.deepEqual(await repository.load(), { status: 'empty' })
   const firstDatabase = indexedDB.databases[0]
   firstDatabase.onversionchange()
+  assert.equal(firstDatabase.closed, true)
+
+  assert.deepEqual(await repository.load(), { status: 'empty' })
+  assert.equal(indexedDB.openCalls.length, 2)
+  assert.equal(indexedDB.databases[1].closed, false)
+})
+
+test('an unexpected close invalidates the cached connection for reopening', async () => {
+  const indexedDB = new FakeIndexedDB()
+  const repository = createRunRepository({ indexedDB })
+
+  assert.deepEqual(await repository.load(), { status: 'empty' })
+  const firstDatabase = indexedDB.databases[0]
+  firstDatabase.closeUnexpectedly()
   assert.equal(firstDatabase.closed, true)
 
   assert.deepEqual(await repository.load(), { status: 'empty' })

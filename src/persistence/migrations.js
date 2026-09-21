@@ -86,6 +86,9 @@ function migrateV1ToV2(input) {
   assertExactDataKeys(input, SAVE_KEYS, 'save')
   assertPlainObject(input.match, 'save.match')
   assertExactDataKeys(input.match, LEGACY_V1_MATCH_KEYS, 'save.match')
+  if (!Number.isSafeInteger(input.gameRulesVersion)) {
+    throw new TypeError('gameRulesVersion must be a safe integer')
+  }
   if (input.gameRulesVersion !== GAME_RULES_VERSION) {
     throw new UnsupportedGameRulesVersionError(input.gameRulesVersion)
   }

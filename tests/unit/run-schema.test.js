@@ -174,6 +174,32 @@ test('schema validation rejects non-JSON containers and accessors without invoki
   assert.equal(invoked, false)
 })
 
+test('schema validation rejects hidden fields on saved reveal records', () => {
+  let match = createMatch({
+    runId: 'malformed-draw',
+    seed: 32,
+    ruleset: BASELINE_RULESET,
+  })
+  while (match.status === 'active') {
+    match = revealOrContinue(match).match
+  }
+  assert.equal(match.outcome.result, 'draw')
+
+  const save = clone(createRunSave(match, { savedAt: SAVED_AT }))
+  Object.defineProperty(save.match.contestedPile[0], 'hidden', {
+    value: true,
+  })
+
+  assert.throws(
+    () => validateRunSave(save),
+    /save\.match\.contestedPile\[0\] must contain only cardId, suppliedBy/,
+  )
+  assert.throws(
+    () => restoreRunSave(save),
+    /save\.match\.contestedPile\[0\] must contain only cardId, suppliedBy/,
+  )
+})
+
 test('serialization requires an explicit canonical timestamp and stable valid match', () => {
   const match = activeFixtureMatch()
   assert.throws(() => createRunSave(match), TypeError)

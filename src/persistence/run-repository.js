@@ -271,12 +271,17 @@ export function createRunRepository({
             throw createStorageError('AbortError', 'IndexedDB open was superseded')
           }
           database = opened
-          opened.onversionchange = () => {
-            opened.close()
+          const invalidate = () => {
+            const isCurrent = database === opened || opening === attempt
             if (database === opened) database = null
             if (opening === attempt) opening = null
-            connectionGeneration += 1
+            if (isCurrent) connectionGeneration += 1
           }
+          opened.onversionchange = () => {
+            opened.close()
+            invalidate()
+          }
+          opened.onclose = invalidate
           return opened
         })
         .catch((error) => {

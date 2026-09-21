@@ -134,6 +134,13 @@ function assertMatchStructure(match) {
   for (const pile of ['sourceDeck', 'contestedPile', 'inPlay', 'burnPile', 'futureModifiers']) {
     assertDenseArray(match[pile], `save.match.${pile}`)
   }
+  for (const pile of ['contestedPile', 'inPlay']) {
+    for (let index = 0; index < match[pile].length; index += 1) {
+      const name = `save.match.${pile}[${index}]`
+      assertPlainObject(match[pile][index], name)
+      assertExactKeys(match[pile][index], ['cardId', 'suppliedBy'], name)
+    }
+  }
   for (const side of ['player', 'opponent']) {
     assertPlainObject(match[side], `save.match.${side}`)
     assertExactKeys(match[side], ['drawPile', 'wonPile'], `save.match.${side}`)
