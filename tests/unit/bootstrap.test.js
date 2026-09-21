@@ -90,6 +90,7 @@ test('bootstrap owns run restoration, lifecycle wiring, and repository teardown'
   const root = new FakeElement('div')
   const app = bootstrap({
     root,
+    resumeAvailable: true,
     runRepository,
     settingsRepository: createSettingsRepository({ storage: null }),
     matchMedia: null,
@@ -105,6 +106,7 @@ test('bootstrap owns run restoration, lifecycle wiring, and repository teardown'
   })
 
   assert.deepEqual(await app.ready, { status: 'empty' })
+  assert.equal(app.resumeAvailable, false)
   assert.equal(app.runSnapshot.restoreStatus, 'empty')
   assert.deepEqual(await lifecycleSave(), {
     status: 'skipped',
@@ -117,6 +119,42 @@ test('bootstrap owns run restoration, lifecycle wiring, and repository teardown'
   assert.equal(lifecycleDestroyCalls, 1)
   assert.equal(closeCalls, 1)
   assert.deepEqual(root.children, [])
+})
+
+test('bootstrap enables Resume after restoring a resumable run', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const restoreResult = Object.freeze({ status: 'resumable' })
+  const runController = {
+    currentMatch: null,
+    getSnapshot: () => Object.freeze({}),
+    restore: async () => restoreResult,
+    saveStable: async () => Object.freeze({ status: 'skipped' }),
+    subscribe: () => () => undefined,
+    pause: () => undefined,
+    resume: () => undefined,
+    destroy: async () => undefined,
+  }
+  const app = bootstrap({
+    root: new FakeElement('div'),
+    runController,
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield: () => undefined,
+  })
+
+  assert.equal(app.resumeAvailable, false)
+  assert.equal(await app.ready, restoreResult)
+  assert.equal(app.resumeAvailable, true)
+
+  await app.destroy()
 })
 
 test('bootstrap tears down every owner when Game presentation teardown fails', async (t) => {

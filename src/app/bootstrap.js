@@ -125,7 +125,10 @@ export function bootstrap({
     throw error
   }
   const ready = activeRunController.currentMatch === null
-    ? activeRunController.restore()
+    ? activeRunController.restore().then((result) => {
+      coordinator.setResumeAvailable(result.status === 'resumable')
+      return result
+    })
     : Promise.resolve(Object.freeze({ status: 'current' }))
   registerServiceWorker()
 
