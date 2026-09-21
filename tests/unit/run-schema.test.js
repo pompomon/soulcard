@@ -124,6 +124,13 @@ test('a fresh turn-zero match round-trips without inventing a pending event', ()
   assert.equal(restored.turn, 0)
   assert.equal(restored.pendingEvent, null)
   assert.deepEqual(restored.rng, match.rng)
+
+  const paused = pauseMatch(match)
+  const restoredPaused = restoreRunSave(createRunSave(paused, { savedAt: SAVED_AT }))
+  assert.deepEqual(restoredPaused, paused)
+  assert.equal(restoredPaused.turn, 0)
+  assert.equal(restoredPaused.pendingEvent, null)
+  assert.deepEqual(restoredPaused.rng, match.rng)
 })
 
 test('schema validation rejects malformed metadata and nonstable records', () => {

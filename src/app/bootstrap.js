@@ -134,14 +134,23 @@ export function bootstrap({
     start: coordinator.start,
     navigate: coordinator.navigate,
     setResumeAvailable: coordinator.setResumeAvailable,
-    destroy() {
-      pageLifecycle.destroy()
-      try {
-        coordinator.destroy()
-      } finally {
-        settingsController.destroy()
+    async destroy() {
+      let firstError = null
+      const attempt = async (teardown) => {
+        try {
+          await teardown()
+        } catch (error) {
+          firstError ??= error
+        }
       }
-      return activeRunController.destroy()
+
+      await attempt(() => pageLifecycle.destroy())
+      await attempt(() => coordinator.destroy())
+      await attempt(() => settingsController.destroy())
+      await attempt(() => activeRunController.destroy())
+      if (firstError) {
+        throw firstError
+      }
     },
     get activeScreen() {
       return coordinator.activeScreen

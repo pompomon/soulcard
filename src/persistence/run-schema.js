@@ -174,13 +174,16 @@ function matchFromSave(save) {
   }
 }
 
-export function validateRunSave(save) {
+export function validateRunSaveVersion(save, expectedVersion) {
+  if (![2, SAVE_SCHEMA_VERSION].includes(expectedVersion)) {
+    throw new RangeError('expectedVersion must be a supported save schema version')
+  }
   assertPlainObject(save, 'save')
   assertExactKeys(save, SAVE_KEYS, 'save')
   if (!Number.isSafeInteger(save.saveSchemaVersion)) {
     throw new TypeError('saveSchemaVersion must be a safe integer')
   }
-  if (save.saveSchemaVersion !== SAVE_SCHEMA_VERSION) {
+  if (save.saveSchemaVersion !== expectedVersion) {
     throw new UnsupportedSaveVersionError(save.saveSchemaVersion)
   }
   if (!Number.isSafeInteger(save.gameRulesVersion)) {
@@ -191,8 +194,15 @@ export function validateRunSave(save) {
   }
   assertCanonicalTimestamp(save.savedAt)
   assertMatchStructure(save.match)
+  if (expectedVersion === 2 && save.match.machineState === 'paused') {
+    throw new TypeError('Save schema version 2 does not support paused matches')
+  }
   validateMatchState(matchFromSave(save))
   return save
+}
+
+export function validateRunSave(save) {
+  return validateRunSaveVersion(save, SAVE_SCHEMA_VERSION)
 }
 
 export function createRunSave(match, options) {

@@ -4,6 +4,7 @@ import {
   UnsupportedGameRulesVersionError,
   UnsupportedSaveVersionError,
   validateRunSave,
+  validateRunSaveVersion,
 } from './run-schema.js'
 
 const LEGACY_V1_MATCH_KEYS = Object.freeze([
@@ -32,21 +33,7 @@ const SAVE_KEYS = Object.freeze([
 ])
 
 function validateV2RunSave(input) {
-  assertPlainObject(input, 'save')
-  assertExactDataKeys(input, SAVE_KEYS, 'save')
-  if (input.saveSchemaVersion !== 2) {
-    throw new TypeError('Expected save schema version 2')
-  }
-
-  const currentShape = {
-    ...input,
-    saveSchemaVersion: SAVE_SCHEMA_VERSION,
-  }
-  validateRunSave(currentShape)
-  if (input.match.machineState === 'paused') {
-    throw new TypeError('Save schema version 2 does not support paused matches')
-  }
-  return input
+  return validateRunSaveVersion(input, 2)
 }
 
 function assertPlainObject(value, name) {

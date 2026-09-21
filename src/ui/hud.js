@@ -146,7 +146,9 @@ export function createGameScreen({
   overlayHost.dataset.overlayHost = ''
 
   const handleResume = () => {
-    runController?.resume()
+    try {
+      runController?.resume()
+    } catch {}
   }
   const pauseOverlay = createPauseOverlay({ onResume: handleResume })
   overlayHost.append(pauseOverlay.element)

@@ -191,6 +191,14 @@ export function createRunController({
         publish()
         return result
       })
+      .catch((error) => {
+        const failure = storageFailure('load', error)
+        restoreStatus = failure.status
+        restoreReason = failure.reason
+        restoreMessage = null
+        if (!destroyed) publish()
+        return failure
+      })
       .finally(() => {
         restorePromise = null
       })

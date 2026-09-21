@@ -118,3 +118,42 @@ test('bootstrap owns run restoration, lifecycle wiring, and repository teardown'
   assert.equal(closeCalls, 1)
   assert.deepEqual(root.children, [])
 })
+
+test('bootstrap tears down every owner when Game presentation teardown fails', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  let closeCalls = 0
+  let lifecycleDestroyCalls = 0
+  const app = bootstrap({
+    root: new FakeElement('div'),
+    runRepository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => assert.fail('Unexpected save'),
+      close() {
+        closeCalls += 1
+      },
+    },
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({
+      destroy() {
+        lifecycleDestroyCalls += 1
+      },
+    }),
+    mountBattlefield: () => () => {
+      throw new Error('battlefield teardown failed')
+    },
+  })
+  await app.ready
+  app.navigate('game')
+
+  await assert.rejects(app.destroy(), /battlefield teardown failed/)
+  assert.equal(lifecycleDestroyCalls, 1)
+  assert.equal(closeCalls, 1)
+})

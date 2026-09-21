@@ -126,6 +126,27 @@ test('restore adopts ready or paused snapshots without replaying RNG', async () 
   assert.deepEqual(continued.event, uninterrupted.event)
 })
 
+test('invalid repository restore results degrade without an unhandled rejection', async () => {
+  const repository = createRepository({
+    loadResult: {
+      status: 'resumable',
+      savedAt: '2026-09-21T10:16:00.000Z',
+      migratedFrom: null,
+      match: {},
+    },
+  })
+  const controller = createRunController({ repository })
+
+  assert.deepEqual(await controller.restore(), {
+    status: 'storage-unavailable',
+    operation: 'load',
+    reason: 'storage-error',
+  })
+  assert.equal(controller.currentMatch, null)
+  assert.equal(controller.getSnapshot().restoreStatus, 'storage-unavailable')
+  assert.equal(controller.getSnapshot().restoreReason, 'storage-error')
+})
+
 test('queued saves cannot let an older snapshot overwrite a newer pause', async () => {
   const writes = []
   const repository = createRepository({

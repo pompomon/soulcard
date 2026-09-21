@@ -297,7 +297,7 @@ draw RNG, or mutate game state.
 
 ```text
 src/
-  app/bootstrap.js                 app/screen-coordinator.js
+  app/bootstrap.js                 app/screen-coordinator.js  app/run-controller.js
   domain/cards.js                  domain/deck.js             domain/zones.js
   domain/invariants.js             domain/rng.js              domain/ruleset.js
   domain/burn-evaluator.js         domain/match-machine.js    domain/ai-controller.js
@@ -486,14 +486,19 @@ or marks it skipped; it never reruns settlement or RNG.
 
 ### Match-machine and event contract (milestone 5)
 
-`src/domain/match-machine.js` exposes two deterministic operations.
+`src/domain/match-machine.js` exposes four deterministic operations.
 `createMatch({ runId, seed, ruleset })` requires all three caller-owned inputs, shuffles
 the source exactly once, and returns a deeply immutable `ready` snapshot.
 `revealOrContinue(match)` accepts only a validated stable `ready` snapshot and returns
 the next deeply immutable `{ match, event }` transition. It resolves the whole clash,
 including every tie, recycle, source-to-personal transition, settlement, or terminal
 inability, before returning. Callers never observe `resolving` or `stageTransition`,
-and an `ended` match rejects further actions.
+and a `paused` or `ended` match rejects reveal actions. `pauseMatch(match)` accepts only
+`ready` and returns an immutable `paused` snapshot; `resumeMatch(match)` accepts only
+`paused` and returns the prior `ready` state. Both preserve ordered zones, outcome, RNG,
+turn, and pending event exactly. Because the committed event describes the post-clash
+`ready` boundary, paused validation checks its unchanged fingerprint against that ready
+state rather than rewriting the event.
 
 A public match snapshot contains exactly `runId`, the complete `ruleset`, the current
 RNG snapshot, `stage`, `machineState`, `turn`, `status`, `outcome`, `zones`, and
@@ -606,12 +611,14 @@ versions. Invalid, incomplete, or corrupt runs are quarantined/discardable and l
 Main with Resume disabled and a clear discard/start-new recovery path—never a resume
 crash loop.
 
-The implemented current format is `saveSchemaVersion: 2` with
-`gameRulesVersion: 1`. Version 2 adds the match `outcome` required to restore terminal
-runs exactly. The documented pre-implementation version 1 active/ready shape is the
-only supported legacy format; it migrates one step by adding `outcome: null`. A
-version 1 terminal record is rejected because that shape did not retain enough
-information to reconstruct its result. No synthetic older format is accepted.
+The implemented current format is `saveSchemaVersion: 3` with
+`gameRulesVersion: 1`. Version 2 added the match `outcome` required to restore terminal
+runs exactly; version 3 admits the stable `paused` machine state without changing the
+rules or committed-event formats. Version 1 active/ready saves migrate through version
+2 by adding `outcome: null`, and valid version 2 ready/ended saves then migrate to
+version 3 without changing domain data. A version 1 terminal record and a forged
+version 2 paused record are rejected because those versions did not represent those
+states. No synthetic older format is accepted.
 
 Save only at stable domain boundaries: after every committed clash, explicit pause,
 and best effort on `visibilitychange`, `pagehide`, and lifecycle freeze events when the
@@ -629,7 +636,7 @@ and pass the stated zone validation.
 
 ```json
 {
-  "saveSchemaVersion": 2,
+  "saveSchemaVersion": 3,
   "gameRulesVersion": 1,
   "savedAt": "2026-09-19T07:00:00.000Z",
   "runId": "run-42",
@@ -907,12 +914,13 @@ reviewable PR.
   and corrupted/unknown saves recover by discard/start-new.
 - **Checks/risks:** Unit migration/validation/corruption and deterministic
   save-resume-equivalence tests; IndexedDB quota/error handling.
-- **Acceptance evidence:** `src/persistence/run-schema.js` owns the exact version 2
+- **Acceptance evidence:** `src/persistence/run-schema.js` introduced the exact version 2
   stable-save shape, full structural/domain/event validation, immutable serialization,
-  and restoration including terminal outcomes and pending presentation events.
-  `src/persistence/migrations.js` performs the sole explicit version 1-to-2 active-save
-  migration without mutating input and rejects skipped, future, ambiguous terminal, or
-  incompatible-rules records. `src/persistence/run-repository.js` atomically stores one
+  and restoration including terminal outcomes and pending presentation events; milestone
+  10 evolves the current shape to version 3 for paused boundaries.
+  `src/persistence/migrations.js` performs explicit version 1-to-2 and 2-to-3 migrations
+  without mutating input and rejects skipped, future, ambiguous terminal, forged paused,
+  or incompatible-rules records. `src/persistence/run-repository.js` atomically stores one
   active run in IndexedDB, upgrades migrated records, quarantines invalid records,
   exposes discard/replacement recovery, and returns explicit blocked, unavailable,
   quota, abort, and transaction failure results without reporting false success.
@@ -931,6 +939,24 @@ reviewable PR.
   never snapshots mid-resolution; restore has no RNG replay.
 - **Checks/risks:** Browser refresh, visibility/background interruption and paused-save
   manual checks; lifecycle APIs vary by browser.
+- **Acceptance evidence:** `src/domain/match-machine.js` exposes immutable ready/paused
+  transitions while retaining the original committed-event fingerprint. Save schema
+  version 3 and chained migrations persist paused boundaries without changing rules,
+  RNG, or event versions. `src/app/run-controller.js` owns stable match snapshots,
+  serializes writes so stale saves cannot overtake newer state, reports save failures
+  without discarding in-memory play, and restores ready/paused runs without resolving
+  rules. `src/pwa/lifecycle.js` requests best-effort saves only for hidden
+  `visibilitychange`, `pagehide`, and `freeze`, never uses `unload`, and removes every
+  listener on teardown. The semantic pause dialog remains inside Game and reports live
+  save status; bootstrap owns restoration, lifecycle, and repository cleanup.
+- **Validation:** All 161 unit/integration tests and the production build pass locally
+  on Node 24. Tests cover pause legality and turn-zero saves, v1/v2/v3 migration,
+  serialized overlapping writes, storage failure, lifecycle feature fallback and
+  cleanup, bootstrap teardown, overlay semantics, and deterministic continuation
+  through clash/pause/background/restore/resume. A text-only headless Chrome check
+  seeds native IndexedDB with a paused version 3 save, verifies one Game-owned dialog
+  and one canvas, resumes and pauses, dispatches `pagehide`, reloads twice, restores the
+  paused overlay, and reports no relevant console errors.
 
 ### 11. Three.js battlefield and responsive layout
 - **Goal/files:** Add battlefield/layout modules and refactor current scene; depends
