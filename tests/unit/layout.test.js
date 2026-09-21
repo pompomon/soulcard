@@ -103,6 +103,7 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(landscape.viewport.logicalHeight, 390)
   assert.equal(landscape.viewport.minimumWidth, 480)
   assert.equal(landscape.viewport.minimumHeight, 320)
+  assert.equal(landscape.hud.footer.height, 114)
 
   const smallerLandscape = createBattlefieldLayout({ width: 400, height: 280 })
   assert.equal(smallerLandscape.viewport.letterboxed, true)

@@ -40,7 +40,7 @@ const MODE_SPECS = Object.freeze({
   }),
   'phone-landscape': Object.freeze({
     world: Object.freeze({ width: 12, height: 6.5 }),
-    hud: Object.freeze({ header: 56, footer: 70, side: 150 }),
+    hud: Object.freeze({ header: 56, footer: 114, side: 150 }),
     zones: Object.freeze({
       sourceDeck: Object.freeze({ x: -4.9, y: 0, z: 0.2 }),
       opponentDrawPile: Object.freeze({ x: -3.5, y: 2.25, z: 0.2 }),
