@@ -152,8 +152,14 @@ export function createBattlefieldLayout({
   const safe = normalizeSafeArea(safeArea)
   const mode = classifyBattlefieldLayout(width, height)
   const spec = MODE_SPECS[mode]
-  const logicalWidth = Math.max(width, MINIMUM_VIEWPORT.width)
-  const logicalHeight = Math.max(height, MINIMUM_VIEWPORT.height)
+  const minimumWidth = mode === 'phone-landscape'
+    ? MINIMUM_VIEWPORT.height
+    : MINIMUM_VIEWPORT.width
+  const minimumHeight = mode === 'phone-landscape'
+    ? MINIMUM_VIEWPORT.width
+    : MINIMUM_VIEWPORT.height
+  const logicalWidth = Math.max(width, minimumWidth)
+  const logicalHeight = Math.max(height, minimumHeight)
   if (safe.left + safe.right >= logicalWidth) {
     throw new RangeError('safeArea horizontal insets must leave visible width')
   }
@@ -221,6 +227,8 @@ export function createBattlefieldLayout({
       height,
       logicalWidth,
       logicalHeight,
+      minimumWidth,
+      minimumHeight,
       scale,
       letterboxed,
     },

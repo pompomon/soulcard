@@ -307,7 +307,7 @@ button:disabled {
   gap: 0.5rem;
   padding: 0.5rem;
   pointer-events: auto;
-  min-height: min(var(--hud-footer-reserve, 5.75rem), 8rem);
+  min-height: 44px;
 }
 
 .game-button {
@@ -425,6 +425,10 @@ button:disabled {
   justify-content: stretch;
 }
 
+.screen--game[data-layout-mode="phone-portrait"] .comparison-area {
+  min-height: 4rem;
+}
+
 .screen--game[data-layout-mode="phone-portrait"] .game-controls button {
   flex: 1;
 }
@@ -445,8 +449,8 @@ button:disabled {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 320px;
-  height: 480px;
+  width: var(--battlefield-logical-width, 320px);
+  height: var(--battlefield-logical-height, 480px);
   transform: translate(-50%, -50%) scale(var(--battlefield-layout-scale, 1));
 }
 

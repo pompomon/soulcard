@@ -87,6 +87,8 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(minimum.viewport.scale, 1)
   assert.equal(minimum.viewport.logicalWidth, 320)
   assert.equal(minimum.viewport.logicalHeight, 480)
+  assert.equal(minimum.viewport.minimumWidth, 320)
+  assert.equal(minimum.viewport.minimumHeight, 480)
 
   const smaller = createBattlefieldLayout({ width: 280, height: 400 })
   assert.equal(smaller.mode, 'phone-portrait')
@@ -94,6 +96,19 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(smaller.viewport.logicalWidth, 320)
   assert.equal(smaller.viewport.logicalHeight, 480)
   assert.equal(smaller.viewport.scale, 5 / 6)
+
+  const landscape = createBattlefieldLayout({ width: 844, height: 390 })
+  assert.equal(landscape.viewport.letterboxed, false)
+  assert.equal(landscape.viewport.logicalWidth, 844)
+  assert.equal(landscape.viewport.logicalHeight, 390)
+  assert.equal(landscape.viewport.minimumWidth, 480)
+  assert.equal(landscape.viewport.minimumHeight, 320)
+
+  const smallerLandscape = createBattlefieldLayout({ width: 400, height: 280 })
+  assert.equal(smallerLandscape.viewport.letterboxed, true)
+  assert.equal(smallerLandscape.viewport.logicalWidth, 480)
+  assert.equal(smallerLandscape.viewport.logicalHeight, 320)
+  assert.equal(smallerLandscape.viewport.scale, 5 / 6)
 })
 
 test('layout rejects malformed dimensions and safe areas', () => {

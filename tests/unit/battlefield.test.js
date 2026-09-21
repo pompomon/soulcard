@@ -227,6 +227,7 @@ test('battlefield remeasures a zero-size mount and responds to resize and orient
   windowObject.dispatch('orientationchange')
   windowObject.flushFrames()
   assert.equal(handle.layout.mode, 'phone-landscape')
+  assert.equal(handle.layout.viewport.letterboxed, false)
   assert.equal(layouts.at(-1).mode, 'phone-landscape')
 
   handle.teardown()
