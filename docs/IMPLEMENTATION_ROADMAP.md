@@ -966,6 +966,28 @@ reviewable PR.
   capped DPR; domain works when rendering is paused.
 - **Checks/risks:** Resize/orientation browser tests and phone/tablet/desktop manual
   matrix; dispose replaced renderer resources.
+- **Acceptance evidence:** `src/presentation/layout.js` provides an immutable,
+  DOM/Three.js/domain-independent model for phone portrait, phone landscape, tablet,
+  and desktop modes, including the 320×480 minimum, smaller-viewport letterboxing,
+  safe-area-aware HUD reserves, perspective-camera fitting, and stable logical anchors
+  for every future card zone. `src/presentation/battlefield.js` replaces the prototype
+  pyramid with a neutral surface and shared placeholder geometry under stable zone
+  groups. It remeasures an initially detached host, coalesces `ResizeObserver`, resize,
+  and orientation updates, caps DPR through the existing settings contract, stops
+  ambient rendering for reduced motion or pause, rebuilds immutable renderer quality,
+  and owns listener, observer, renderer, geometry, and material disposal. Game relays
+  only layout and paused presentation state; domain transitions remain independent of
+  Three.js and the three-screen model is unchanged. Focused layout, battlefield, HUD,
+  and bootstrap tests cover boundaries, fitting, immutability, zero-size mounting,
+  settings, pause, deterministic domain independence, renderer replacement, and
+  idempotent teardown.
+- **Validation:** All 174 Node test executions and the production build pass locally
+  on Node 24. A text-only headless Chrome check verifies one Game screen and canvas,
+  responsive canvas sizing, a render-scale cap of 2, available primary controls, and
+  the expected modes at 320×480 phone portrait/DPR 3, 844×390 phone landscape/DPR 3,
+  768×1024 tablet/DPR 2, and 1280×800 desktop/DPR 1. Resize and orientation changes
+  update the mounted layout with zero relevant console errors; browser and preview
+  processes stop cleanly. No screenshots are produced.
 
 ### 12. Generated classic fronts/back, registry, cache, disposal
 - **Goal/files:** Add theme registry, classic generator, texture cache, fixture; depends
