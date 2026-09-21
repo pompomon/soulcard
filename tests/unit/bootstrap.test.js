@@ -157,6 +157,44 @@ test('bootstrap enables Resume after restoring a resumable run', async (t) => {
   await app.destroy()
 })
 
+test('bootstrap does not refresh Resume after teardown', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  let resolveRestore
+  const restore = new Promise((resolve) => {
+    resolveRestore = resolve
+  })
+  const restoreResult = Object.freeze({ status: 'resumable' })
+  const runController = {
+    currentMatch: null,
+    getSnapshot: () => Object.freeze({}),
+    restore: () => restore,
+    saveStable: async () => Object.freeze({ status: 'skipped' }),
+    subscribe: () => () => undefined,
+    pause: () => undefined,
+    resume: () => undefined,
+    destroy: async () => undefined,
+  }
+  const app = bootstrap({
+    root: new FakeElement('div'),
+    runController,
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield: () => undefined,
+  })
+
+  await app.destroy()
+  resolveRestore(restoreResult)
+  assert.equal(await app.ready, restoreResult)
+})
+
 test('bootstrap tears down every owner when Game presentation teardown fails', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {

@@ -124,9 +124,12 @@ export function bootstrap({
     settingsController.destroy()
     throw error
   }
+  let destroyed = false
   const ready = activeRunController.currentMatch === null
     ? activeRunController.restore().then((result) => {
-      coordinator.setResumeAvailable(result.status === 'resumable')
+      if (!destroyed) {
+        coordinator.setResumeAvailable(result.status === 'resumable')
+      }
       return result
     })
     : Promise.resolve(Object.freeze({ status: 'current' }))
@@ -138,6 +141,7 @@ export function bootstrap({
     navigate: coordinator.navigate,
     setResumeAvailable: coordinator.setResumeAvailable,
     async destroy() {
+      destroyed = true
       let firstError = null
       const attempt = async (teardown) => {
         try {
