@@ -872,6 +872,25 @@ reviewable PR.
   preference initializes only absent explicit override.
 - **Checks/risks:** Unit storage fallback and browser media-query/manual reload tests;
   burning absent from this UI.
+- **Acceptance evidence:** `src/app/settings.js` defines immutable supported values,
+  defaults, validation, and effective reduced-motion snapshots.
+  `src/persistence/settings-repository.js` stores each primitive under an independent
+  versioned localStorage key, preserves explicit false, ignores malformed values, and
+  degrades to in-memory session settings after storage access or quota failures.
+  `src/ui/settings-controller.js` applies the live reduced-motion media query only in
+  system mode, persists explicit reduce/full-motion overrides, publishes immutable
+  snapshots, and removes listeners on teardown. The semantic Settings controls in
+  `src/ui/menus.js` update immediately and exclude burn rules; `src/app/bootstrap.js`
+  shares one controller with the screen and Game presentation. The temporary scene
+  consumes quality, capped DPR, animation speed, and effective reduction without
+  affecting domain state.
+- **Validation:** All 112 unit tests and the production build pass locally on Node 24.
+  Repository/controller/UI tests cover independent round trips, malformed and failed
+  storage, session fallback, explicit false, live media changes, overrides, reload
+  state, validation, subscriptions, and teardown. A text-only headless Chrome check at
+  320×480 CSS px and DPR 3 verifies scrollable semantic controls, persistence across
+  reload, a DPR cap of 1, system reduced/no-preference modes, both explicit overrides,
+  one canvas under `#app`, and zero severe console messages.
 
 ### 9. Versioned active-run persistence, validation, migrations, recovery
 - **Goal/files:** Add persistence repository/schema/migrations and fixtures; depends
