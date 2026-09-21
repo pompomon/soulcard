@@ -1,6 +1,8 @@
 # Soulcard
 
-A fullscreen PWA featuring a rotating, gradient glass pyramid rendered with Three.js.
+A framework-light, fullscreen card-game PWA with a deterministic domain engine and
+Main, Settings, and Game screen shell. The Game screen retains the rotating Three.js
+prototype while the battlefield presentation is developed incrementally.
 
 ## Development
 

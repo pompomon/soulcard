@@ -2,6 +2,7 @@
   background: radial-gradient(circle at 25% 20%, #3a145d 0%, #110c25 38%, #03040d 100%);
   color: #fff;
   font-family: system-ui, sans-serif;
+  color-scheme: dark;
 }
 
 * {
@@ -10,8 +11,7 @@
 
 html,
 body,
-#app,
-canvas {
+#app {
   width: 100%;
   height: 100%;
   margin: 0;
@@ -22,6 +22,307 @@ body {
   overflow: hidden;
 }
 
-canvas {
+.screen {
+  position: relative;
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
+}
+
+.screen--menu {
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: max(1.5rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+    max(1.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+}
+
+.menu-panel {
+  width: min(100%, 28rem);
+  padding: clamp(1.5rem, 5vw, 3rem);
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 1.5rem;
+  background: rgb(12 8 31 / 76%);
+  box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 42%);
+  backdrop-filter: blur(16px);
+}
+
+.menu-eyebrow {
+  margin: 0 0 0.5rem;
+  color: #75eef5;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.game-title,
+.screen-title {
+  margin: 0;
+  line-height: 1;
+}
+
+.game-title {
+  font-size: clamp(3rem, 14vw, 5.5rem);
+  letter-spacing: -0.07em;
+}
+
+.screen-title {
+  font-size: clamp(2rem, 8vw, 3.25rem);
+}
+
+.screen-title--compact {
+  font-size: clamp(1.25rem, 4vw, 2rem);
+}
+
+.menu-actions {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 2.5rem;
+}
+
+button {
+  min-height: 44px;
+  border: 1px solid rgb(255 255 255 / 30%);
+  border-radius: 0.75rem;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:focus-visible {
+  outline: 3px solid #75eef5;
+  outline-offset: 3px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.menu-button {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  background: rgb(96 40 151 / 58%);
+}
+
+.menu-button:not(:disabled):hover {
+  background: rgb(126 54 191 / 72%);
+}
+
+.settings-host {
+  min-height: 10rem;
+  margin: 2rem 0;
+  padding: 1rem;
+  border: 1px dashed rgb(255 255 255 / 25%);
+  border-radius: 0.75rem;
+  color: rgb(255 255 255 / 72%);
+}
+
+.settings-host h2 {
+  margin-top: 0;
+  color: #fff;
+  font-size: 1rem;
+}
+
+.screen--game {
+  height: 100%;
+  overflow: hidden;
+}
+
+.battlefield {
+  position: absolute;
+  inset: 0;
+}
+
+.battlefield canvas {
   display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.game-hud {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template:
+    "header header" auto
+    "opponent comparison" 1fr
+    "player comparison" 1fr
+    "piles piles" auto
+    "status controls" auto / minmax(8rem, 0.7fr) minmax(10rem, 1.3fr);
+  gap: 0.75rem;
+  width: 100%;
+  height: 100%;
+  padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right))
+    max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+  pointer-events: none;
+}
+
+.game-hud__header,
+.zone-panel,
+.comparison-area,
+.hud-metrics--piles,
+.game-status,
+.game-controls {
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 0.75rem;
+  background: rgb(6 5 20 / 64%);
+  backdrop-filter: blur(8px);
+}
+
+.game-hud__header {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.9rem;
+}
+
+.zone-panel {
+  align-self: start;
+  padding: 0.7rem;
+}
+
+.zone-panel--opponent {
+  grid-area: opponent;
+}
+
+.zone-panel--player {
+  grid-area: player;
+}
+
+.zone-panel__title {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.comparison-area {
+  grid-area: comparison;
+  display: grid;
+  min-height: 8rem;
+  place-items: center;
+}
+
+.comparison-placeholder {
+  margin: 0;
+  color: rgb(255 255 255 / 56%);
+}
+
+.hud-metrics {
+  display: flex;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.hud-metrics--match {
+  justify-content: flex-end;
+}
+
+.hud-metrics--piles {
+  grid-area: piles;
+  justify-content: space-around;
+  padding: 0.55rem 0.75rem;
+}
+
+.hud-metric {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.hud-metric dt {
+  color: rgb(255 255 255 / 62%);
+  font-size: 0.7rem;
+}
+
+.hud-metric dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.game-status {
+  grid-area: status;
+  align-self: end;
+  margin: 0;
+  padding: 0.7rem;
+  color: rgb(255 255 255 / 72%);
+}
+
+.game-controls {
+  grid-area: controls;
+  display: flex;
+  align-self: end;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  pointer-events: auto;
+}
+
+.game-button {
+  padding: 0.65rem 0.9rem;
+  background: rgb(38 27 74 / 84%);
+}
+
+.game-button--primary {
+  background: rgb(91 34 145 / 86%);
+}
+
+.game-overlays {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.game-overlays > * {
+  pointer-events: auto;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 520px), (max-height: 560px) {
+  .game-hud {
+    grid-template:
+      "header header" auto
+      "opponent player" auto
+      "comparison comparison" 1fr
+      "piles piles" auto
+      "status status" auto
+      "controls controls" auto / 1fr 1fr;
+    gap: 0.4rem;
+    padding: max(0.4rem, env(safe-area-inset-top)) max(0.4rem, env(safe-area-inset-right))
+      max(0.4rem, env(safe-area-inset-bottom)) max(0.4rem, env(safe-area-inset-left));
+  }
+
+  .game-hud__header,
+  .zone-panel,
+  .hud-metrics--piles,
+  .game-status {
+    padding: 0.45rem 0.55rem;
+  }
+
+  .game-controls {
+    justify-content: stretch;
+  }
+
+  .game-controls button {
+    flex: 1;
+  }
 }
