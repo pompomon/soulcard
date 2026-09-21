@@ -160,19 +160,22 @@ export function createBattlefieldLayout({
     : MINIMUM_VIEWPORT.height
   const logicalWidth = Math.max(width, minimumWidth)
   const logicalHeight = Math.max(height, minimumHeight)
-  if (safe.left + safe.right >= logicalWidth) {
+  if (safe.left + safe.right >= width) {
     throw new RangeError('safeArea horizontal insets must leave visible width')
   }
-  if (safe.top + safe.bottom >= logicalHeight) {
+  if (safe.top + safe.bottom >= height) {
     throw new RangeError('safeArea vertical insets must leave visible height')
   }
   const scale = Math.min(width / logicalWidth, height / logicalHeight, 1)
   const letterboxed = scale < 1
-  const contentWidth = Math.max(1, logicalWidth - safe.left - safe.right)
-  const contentHeight = Math.max(1, logicalHeight - safe.top - safe.bottom)
+  const logicalSafe = Object.fromEntries(
+    Object.entries(safe).map(([side, value]) => [side, value / scale]),
+  )
+  const contentWidth = Math.max(1, logicalWidth - logicalSafe.left - logicalSafe.right)
+  const contentHeight = Math.max(1, logicalHeight - logicalSafe.top - logicalSafe.bottom)
   const header = freezeRectangle(
-    safe.left,
-    safe.top,
+    logicalSafe.left,
+    logicalSafe.top,
     contentWidth,
     Math.min(spec.hud.header, contentHeight),
   )
@@ -181,23 +184,23 @@ export function createBattlefieldLayout({
     Math.max(0, contentHeight - header.height),
   )
   const footer = freezeRectangle(
-    safe.left,
-    logicalHeight - safe.bottom - footerHeight,
+    logicalSafe.left,
+    logicalHeight - logicalSafe.bottom - footerHeight,
     contentWidth,
     footerHeight,
   )
   const middleY = header.y + header.height
   const middleHeight = Math.max(1, footer.y - middleY)
   const sideWidth = Math.min(spec.hud.side, Math.max(0, contentWidth / 2 - 1))
-  const leftPanel = freezeRectangle(safe.left, middleY, sideWidth, middleHeight)
+  const leftPanel = freezeRectangle(logicalSafe.left, middleY, sideWidth, middleHeight)
   const rightPanel = freezeRectangle(
-    logicalWidth - safe.right - sideWidth,
+    logicalWidth - logicalSafe.right - sideWidth,
     middleY,
     sideWidth,
     middleHeight,
   )
   const battlefield = freezeRectangle(
-    safe.left + sideWidth,
+    logicalSafe.left + sideWidth,
     middleY,
     Math.max(1, contentWidth - sideWidth * 2),
     middleHeight,
@@ -205,8 +208,8 @@ export function createBattlefieldLayout({
 
   const fov = 38
   const aspect = width / height
-  const battlefieldWidthFraction = battlefield.width / logicalWidth
-  const battlefieldHeightFraction = battlefield.height / logicalHeight
+  const battlefieldWidthFraction = battlefield.width * scale / width
+  const battlefieldHeightFraction = battlefield.height * scale / height
   const verticalRadians = fov * Math.PI / 180
   const verticalDistance = spec.world.height
     / (2 * Math.tan(verticalRadians / 2) * battlefieldHeightFraction)
@@ -217,8 +220,14 @@ export function createBattlefieldLayout({
   const visibleWidth = visibleHeight * aspect
   const battlefieldCenterX = battlefield.x + battlefield.width / 2
   const battlefieldCenterY = battlefield.y + battlefield.height / 2
-  const normalizedCenterX = battlefieldCenterX / logicalWidth * 2 - 1
-  const normalizedCenterY = 1 - battlefieldCenterY / logicalHeight * 2
+  const renderedWidth = logicalWidth * scale
+  const renderedHeight = logicalHeight * scale
+  const normalizedCenterX = (
+    (width - renderedWidth) / 2 + battlefieldCenterX * scale
+  ) / width * 2 - 1
+  const normalizedCenterY = 1 - (
+    (height - renderedHeight) / 2 + battlefieldCenterY * scale
+  ) / height * 2
 
   return deepFreeze({
     mode,
@@ -232,7 +241,7 @@ export function createBattlefieldLayout({
       scale,
       letterboxed,
     },
-    safeArea: safe,
+    safeArea: logicalSafe,
     hud: {
       header,
       footer,

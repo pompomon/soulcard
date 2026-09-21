@@ -111,6 +111,31 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(smallerLandscape.viewport.scale, 5 / 6)
 })
 
+test('letterboxed layouts preserve physical safe areas and fit the scaled battlefield', () => {
+  const physicalSafeArea = { top: 20, right: 10, bottom: 12, left: 8 }
+  const layout = createBattlefieldLayout({
+    width: 280,
+    height: 480,
+    safeArea: physicalSafeArea,
+  })
+
+  for (const [side, value] of Object.entries(physicalSafeArea)) {
+    assert.equal(layout.safeArea[side] * layout.viewport.scale, value)
+  }
+
+  const verticalRadians = layout.camera.fov * Math.PI / 180
+  const visibleHeight = 2 * layout.camera.distance * Math.tan(verticalRadians / 2)
+  const visibleWidth = visibleHeight * layout.camera.aspect
+  assert.ok(
+    visibleHeight * layout.hud.battlefield.height * layout.viewport.scale
+      / layout.viewport.height >= layout.world.height,
+  )
+  assert.ok(
+    visibleWidth * layout.hud.battlefield.width * layout.viewport.scale
+      / layout.viewport.width >= layout.world.width,
+  )
+})
+
 test('layout rejects malformed dimensions and safe areas', () => {
   assert.throws(() => classifyBattlefieldLayout(0, 480), /width/)
   assert.throws(() => classifyBattlefieldLayout(320, Number.NaN), /height/)
