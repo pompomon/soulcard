@@ -919,7 +919,7 @@ reviewable PR.
   Complete active, legacy, and terminal fixtures plus focused tests cover turn-zero,
   pending-event, corruption, migration, recovery, connection lifecycle, and exact
   deterministic continuation for baseline and no-burn rules.
-- **Validation:** All 137 unit tests and the production build pass locally on Node 24.
+- **Validation:** All 140 unit tests and the production build pass locally on Node 24.
   A text-only headless Chrome check uses native IndexedDB to save, load, compare, and
   discard a committed run; RNG and pending-event snapshots remain exact. The same check
   verifies one canvas under `#app`, one Game screen, and zero relevant console errors.
