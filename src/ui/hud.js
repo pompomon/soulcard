@@ -39,7 +39,7 @@ function createSidePanel(side, label) {
   return panel
 }
 
-export function createGameScreen({ mountBattlefield } = {}) {
+export function createGameScreen({ mountBattlefield, settingsController } = {}) {
   if (typeof mountBattlefield !== 'function') {
     throw new TypeError('mountBattlefield must be a function')
   }
@@ -126,7 +126,7 @@ export function createGameScreen({ mountBattlefield } = {}) {
 
   element.append(battlefieldHost, hud, overlayHost)
 
-  const teardownBattlefield = mountBattlefield(battlefieldHost)
+  const teardownBattlefield = mountBattlefield(battlefieldHost, { settingsController })
   if (teardownBattlefield !== undefined && typeof teardownBattlefield !== 'function') {
     throw new TypeError('mountBattlefield must return a teardown function or undefined')
   }

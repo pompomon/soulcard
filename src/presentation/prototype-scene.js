@@ -1,16 +1,25 @@
 import * as THREE from 'three'
+import {
+  DEFAULT_SETTINGS,
+  createSettingsSnapshot,
+} from '../app/settings.js'
 
-export function mountPrototypeScene(host) {
+const FALLBACK_SETTINGS = createSettingsSnapshot(DEFAULT_SETTINGS, false)
+
+export function mountPrototypeScene(host, { settingsController } = {}) {
   if (host === null || typeof host !== 'object' || typeof host.append !== 'function') {
     throw new TypeError('Prototype scene host must support append')
   }
 
+  const initialSettings = settingsController?.getSnapshot() ?? FALLBACK_SETTINGS
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100)
   camera.position.set(0, 0.15, 6)
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  const renderer = new THREE.WebGLRenderer({
+    antialias: initialSettings.quality !== 'low',
+    alpha: true,
+  })
   renderer.domElement.setAttribute('aria-hidden', 'true')
   host.append(renderer.domElement)
 
@@ -49,7 +58,12 @@ export function mountPrototypeScene(host) {
   const pyramid = new THREE.Mesh(pyramidGeometry, pyramidMaterial)
   scene.add(pyramid)
 
-  const glowGeometry = new THREE.SphereGeometry(0.45, 32, 32)
+  const glowDetail = {
+    low: 16,
+    balanced: 24,
+    high: 32,
+  }[initialSettings.quality]
+  const glowGeometry = new THREE.SphereGeometry(0.45, glowDetail, glowDetail)
   const glowMaterial = new THREE.MeshBasicMaterial({
     color: 0xffd9f2,
     transparent: true,
@@ -59,24 +73,55 @@ export function mountPrototypeScene(host) {
   glow.position.set(-2.2, 2.3, 1)
   scene.add(glow)
 
+  let currentSettings = initialSettings
+  let animationTime = 0
+  let previousTime = null
+
+  function renderCurrentFrame() {
+    pyramid.rotation.y = animationTime * 0.00032
+    pyramid.rotation.x = Math.sin(animationTime * 0.0002) * 0.15
+    glow.scale.setScalar(1 + Math.sin(animationTime * 0.002) * 0.08)
+    renderer.render(scene, camera)
+  }
+
   function resize() {
     const width = Math.max(1, host.clientWidth || window.innerWidth)
     const height = Math.max(1, host.clientHeight || window.innerHeight)
+    const devicePixelRatio = Number.isFinite(window.devicePixelRatio)
+      && window.devicePixelRatio > 0
+      ? window.devicePixelRatio
+      : 1
+    renderer.setPixelRatio(Math.min(devicePixelRatio, currentSettings.renderScaleCap))
     camera.aspect = width / height
     camera.updateProjectionMatrix()
     renderer.setSize(width, height)
+    if (currentSettings.reducedMotion) renderCurrentFrame()
   }
 
   function animate(time) {
-    pyramid.rotation.y = time * 0.00032
-    pyramid.rotation.x = Math.sin(time * 0.0002) * 0.15
-    glow.scale.setScalar(1 + Math.sin(time * 0.002) * 0.08)
-    renderer.render(scene, camera)
+    if (previousTime !== null) {
+      animationTime += Math.max(0, time - previousTime) * currentSettings.animationSpeed
+    }
+    previousTime = time
+    renderCurrentFrame()
+  }
+
+  function applySettings(settings) {
+    currentSettings = settings
+    previousTime = null
+    resize()
+    if (settings.reducedMotion) {
+      renderer.setAnimationLoop(null)
+      renderCurrentFrame()
+    } else {
+      renderer.setAnimationLoop(animate)
+    }
   }
 
   resize()
   window.addEventListener('resize', resize)
-  renderer.setAnimationLoop(animate)
+  const unsubscribeSettings = settingsController?.subscribe(applySettings)
+  if (!unsubscribeSettings) applySettings(FALLBACK_SETTINGS)
 
   let disposed = false
   return () => {
@@ -84,6 +129,7 @@ export function mountPrototypeScene(host) {
     disposed = true
     renderer.setAnimationLoop(null)
     window.removeEventListener('resize', resize)
+    unsubscribeSettings?.()
     pyramidGeometry.dispose()
     pyramidMaterial.dispose()
     glowGeometry.dispose()

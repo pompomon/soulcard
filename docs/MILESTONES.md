@@ -13,7 +13,7 @@ dependency-map sections.
 - [x] 5. Pure clash/tie state machine and conservation (depends on: 4)
 - [x] 6. Seeded simulation harness (depends on: 5)
 - [x] 7. Three-screen coordinator and DOM shell (depends on: 1)
-- [ ] 8. Settings persistence and graphics/reduced-motion controller (depends on: 7)
+- [x] 8. Settings persistence and graphics/reduced-motion controller (depends on: 7)
 - [ ] 9. Versioned active-run persistence, validation, migrations, recovery
       (depends on: 2–5)
 - [ ] 10. Pause/resume/autosave/page lifecycle (depends on: 7, 9)
