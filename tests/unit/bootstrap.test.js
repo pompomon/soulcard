@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { bootstrap } from '../../src/app/bootstrap.js'
+import { createMatch } from '../../src/domain/match-machine.js'
+import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { createSettingsRepository } from '../../src/persistence/settings-repository.js'
 
 class FakeElement {
@@ -37,6 +39,39 @@ class FakeElement {
   removeEventListener(type, listener) {
     this.listeners.get(type)?.delete(listener)
   }
+
+  dispatch(type, values = {}) {
+    const event = {
+      type,
+      target: this,
+      currentTarget: this,
+      button: undefined,
+      detail: 0,
+      preventDefault() {},
+      stopPropagation() {},
+      ...values,
+    }
+    for (const listener of [...(this.listeners.get(type) ?? [])]) {
+      listener(event)
+    }
+    return event
+  }
+}
+
+function descendants(element) {
+  return [element, ...element.children.flatMap(descendants)]
+}
+
+function byAction(root, action) {
+  return descendants(root).find((element) => element.dataset.action === action)
+}
+
+async function waitFor(predicate, rounds = 100) {
+  for (let index = 0; index < rounds; index += 1) {
+    if (predicate()) return
+    await Promise.resolve()
+  }
+  assert.fail('Condition did not settle')
 }
 
 test('coordinator construction failure destroys the settings controller', () => {
@@ -121,6 +156,75 @@ test('bootstrap owns run restoration, lifecycle wiring, and repository teardown'
   assert.deepEqual(root.children, [])
 })
 
+test('Start New creates, saves, and opens a playable baseline match', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const initialMatch = createMatch({
+    runId: 'new-game-bootstrap',
+    seed: 12345,
+    ruleset: BASELINE_RULESET,
+  })
+  const saves = []
+  const root = new FakeElement('div')
+  const app = bootstrap({
+    root,
+    runRepository: {
+      load: async () => ({ status: 'empty' }),
+      async save(match) {
+        saves.push(match)
+        return {
+          status: 'saved',
+          savedAt: `2026-09-22T19:40:0${saves.length}.000Z`,
+        }
+      },
+    },
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield: () => undefined,
+    newMatchFactory: () => initialMatch,
+    eventPlayerFactory: () => ({
+      present(match) {
+        return Promise.resolve({
+          status: match.pendingEvent === null ? 'synchronized' : 'completed',
+          eventId: match.pendingEvent?.id ?? null,
+          reason: null,
+        })
+      },
+      setPaused() {},
+      destroy() {},
+    }),
+  })
+  await app.ready
+
+  byAction(root, 'start').dispatch('click')
+
+  assert.equal(app.activeScreen, 'game')
+  assert.equal(app.resumeAvailable, true)
+  assert.deepEqual(app.runSnapshot.match, initialMatch)
+  assert.equal(app.runSnapshot.match.zones.sourceDeck.length, 52)
+  await waitFor(() => app.runSnapshot.saveStatus === 'saved')
+  assert.deepEqual(saves, [initialMatch])
+
+  const reveal = byAction(root, 'reveal')
+  assert.equal(reveal.disabled, false)
+  reveal.dispatch('click')
+  assert.equal(app.runSnapshot.match.turn, 1)
+  await waitFor(
+    () => app.runSnapshot.saveStatus === 'saved' && reveal.disabled === false,
+  )
+  assert.equal(saves.length, 2)
+  assert.equal(saves[1].turn, 1)
+
+  await app.destroy()
+})
+
 test('bootstrap injects the input controller factory into Game', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
@@ -179,6 +283,7 @@ test('bootstrap enables Resume for restored and pre-populated runs', async (t) =
       return restoreResult
     },
     discardPendingRestore: () => undefined,
+    setMatch: () => undefined,
     saveStable: async () => Object.freeze({ status: 'skipped' }),
     subscribe: () => () => undefined,
     revealOrContinue: () => undefined,
@@ -244,6 +349,7 @@ test('bootstrap does not refresh Resume after teardown', async (t) => {
     getSnapshot: () => Object.freeze({}),
     restore: () => restore,
     discardPendingRestore: () => undefined,
+    setMatch: () => undefined,
     saveStable: async () => Object.freeze({ status: 'skipped' }),
     subscribe: () => () => undefined,
     revealOrContinue: () => undefined,
@@ -265,7 +371,7 @@ test('bootstrap does not refresh Resume after teardown', async (t) => {
   assert.equal(await app.ready, restoreResult)
 })
 
-test('Start New discards a restoration that is still pending', async (t) => {
+test('Start New wins races with pending restore results', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
     createElement: (tagName) => new FakeElement(tagName),
@@ -274,56 +380,64 @@ test('Start New discards a restoration that is still pending', async (t) => {
     globalThis.document = previousDocument
   })
 
-  let resolveRestore
-  let discarded = false
-  let currentMatch = null
-  const restore = new Promise((resolve) => {
-    resolveRestore = resolve
-  })
-  const runController = {
-    get currentMatch() {
-      return currentMatch
-    },
-    getSnapshot: () => Object.freeze({ match: currentMatch }),
-    restore: () => restore.then((result) => {
-      if (!discarded) currentMatch = result.match
-      return result
+  const restoreResults = [
+    Object.freeze({ status: 'empty' }),
+    Object.freeze({
+      status: 'resumable',
+      match: Object.freeze({ runId: 'old-run' }),
     }),
-    discardPendingRestore() {
-      discarded = true
-    },
-    saveStable: async () => Object.freeze({ status: 'skipped' }),
-    subscribe: () => () => undefined,
-    revealOrContinue: () => undefined,
-    pause: () => undefined,
-    resume: () => undefined,
-    destroy: async () => undefined,
+  ]
+  for (const restoreResult of restoreResults) {
+    let resolveRestore
+    let discarded = false
+    let currentMatch = null
+    const restore = new Promise((resolve) => {
+      resolveRestore = resolve
+    })
+    const runController = {
+      get currentMatch() {
+        return currentMatch
+      },
+      getSnapshot: () => Object.freeze({ match: currentMatch }),
+      restore: () => restore.then((result) => {
+        if (!discarded && result.status === 'resumable') currentMatch = result.match
+        return result
+      }),
+      discardPendingRestore() {
+        discarded = true
+      },
+      setMatch(match) {
+        currentMatch = match
+      },
+      saveStable: async () => Object.freeze({ status: 'skipped' }),
+      subscribe: () => () => undefined,
+      revealOrContinue: () => undefined,
+      pause: () => undefined,
+      resume: () => undefined,
+      destroy: async () => undefined,
+    }
+    const root = new FakeElement('div')
+    const app = bootstrap({
+      root,
+      runController,
+      settingsRepository: createSettingsRepository({ storage: null }),
+      matchMedia: null,
+      pageLifecycleFactory: () => ({ destroy() {} }),
+      mountBattlefield: () => undefined,
+    })
+
+    byAction(root, 'start').dispatch('click')
+    const newMatch = runController.currentMatch
+    assert.equal(discarded, true)
+    assert.equal(app.activeScreen, 'game')
+
+    resolveRestore(restoreResult)
+    assert.equal(await app.ready, restoreResult)
+    assert.equal(runController.currentMatch, newMatch)
+    assert.equal(app.resumeAvailable, true)
+
+    await app.destroy()
   }
-  const root = new FakeElement('div')
-  const app = bootstrap({
-    root,
-    runController,
-    settingsRepository: createSettingsRepository({ storage: null }),
-    matchMedia: null,
-    pageLifecycleFactory: () => ({ destroy() {} }),
-    mountBattlefield: () => undefined,
-  })
-  const startButton = root.children[0].children[0].children[2].children[0]
-
-  for (const listener of startButton.listeners.get('click')) listener()
-  assert.equal(discarded, true)
-  assert.equal(app.activeScreen, 'game')
-
-  const restoreResult = Object.freeze({
-    status: 'resumable',
-    match: Object.freeze({ runId: 'old-run' }),
-  })
-  resolveRestore(restoreResult)
-  assert.equal(await app.ready, restoreResult)
-  assert.equal(runController.currentMatch, null)
-  assert.equal(app.resumeAvailable, false)
-
-  await app.destroy()
 })
 
 test('bootstrap tears down every owner when Game presentation teardown fails', async (t) => {

@@ -1,5 +1,6 @@
 import { createScreenCoordinator } from './screen-coordinator.js'
 import { createRunController } from './run-controller.js'
+import { createNewMatch } from './new-match.js'
 import { createRunRepository } from '../persistence/run-repository.js'
 import { createSettingsRepository } from '../persistence/settings-repository.js'
 import { createPageLifecycle } from '../pwa/lifecycle.js'
@@ -13,6 +14,7 @@ function assertRunController(runController) {
     'getSnapshot',
     'restore',
     'discardPendingRestore',
+    'setMatch',
     'saveStable',
     'subscribe',
     'revealOrContinue',
@@ -62,7 +64,11 @@ export function bootstrap({
   pageLifecycleFactory = createPageLifecycle,
   eventPlayerFactory = undefined,
   inputControllerFactory = undefined,
+  newMatchFactory = createNewMatch,
 } = {}) {
+  if (typeof newMatchFactory !== 'function') {
+    throw new TypeError('newMatchFactory must be a function')
+  }
   const settingsController = createSettingsController({
     repository: settingsRepository,
     matchMedia,
@@ -107,8 +113,13 @@ export function bootstrap({
         main: ({ navigate, resumeAvailable: canResume }) => createMainScreen({
           resumeAvailable: canResume,
           onStart: () => {
+            const match = newMatchFactory()
             activeRunController.discardPendingRestore()
+            activeRunController.setMatch(match)
+            const save = activeRunController.saveStable()
             navigate('game')
+            coordinator.setResumeAvailable(true)
+            void save
           },
           onResume: () => navigate('game'),
           onSettings: () => navigate('settings'),
@@ -140,9 +151,7 @@ export function bootstrap({
   const ready = activeRunController.currentMatch === null
     ? activeRunController.restore().then((result) => {
       if (!destroyed) {
-        coordinator.setResumeAvailable(
-          result.status === 'resumable' && activeRunController.currentMatch !== null,
-        )
+        coordinator.setResumeAvailable(activeRunController.currentMatch !== null)
       }
       return result
     })
