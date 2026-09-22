@@ -34,6 +34,10 @@ function setMetricValue(element, key, value) {
   return false
 }
 
+function saveWarningText(reason) {
+  return `Save failed${reason ? ` (${reason})` : ''}. Your game remains available in this session.`
+}
+
 function createSidePanel(side, label) {
   const panel = document.createElement('section')
   panel.className = `zone-panel zone-panel--${side}`
@@ -154,6 +158,12 @@ export function createGameScreen({
   status.setAttribute('role', 'status')
   status.setAttribute('aria-live', 'polite')
 
+  const saveWarning = createTextElement('p', 'game-save-warning', '')
+  saveWarning.dataset.saveWarning = ''
+  saveWarning.setAttribute('role', 'status')
+  saveWarning.setAttribute('aria-live', 'polite')
+  saveWarning.hidden = true
+
   const controls = document.createElement('div')
   controls.className = 'game-controls'
   controls.dataset.primaryActionHost = ''
@@ -169,7 +179,7 @@ export function createGameScreen({
   pauseButton.disabled = true
 
   controls.append(revealButton, pauseButton)
-  hud.append(header, opponentPanel, comparison, playerPanel, pileMetrics, status, controls)
+  hud.append(header, opponentPanel, comparison, playerPanel, pileMetrics, saveWarning, status, controls)
 
   const overlayHost = document.createElement('div')
   overlayHost.className = 'game-overlays'
@@ -273,6 +283,15 @@ export function createGameScreen({
   pauseButton.addEventListener('click', handlePause)
 
   const queuedEventIds = new Set()
+  const updateSaveWarning = (saveStatus, saveReason) => {
+    if (saveStatus === 'failed') {
+      saveWarning.textContent = saveWarningText(saveReason)
+      saveWarning.hidden = false
+    } else if (saveStatus === 'saved' || saveStatus === 'idle') {
+      saveWarning.textContent = ''
+      saveWarning.hidden = true
+    }
+  }
   const present = (match) => {
     const eventId = match.pendingEvent?.id
     if (eventId !== undefined && queuedEventIds.has(eventId)) return
@@ -283,7 +302,10 @@ export function createGameScreen({
       if (eventId !== undefined) queuedEventIds.delete(eventId)
     })
   }
-  const unsubscribeSaves = runController?.subscribeToSaves?.(({ match }) => {
+  const unsubscribeSaves = runController?.subscribeToSaves?.(({ match, result }) => {
+    if (result?.status === 'storage-unavailable') {
+      updateSaveWarning('failed', result.reason)
+    }
     if (match.pendingEvent !== null) present(match)
   })
   const unsubscribeRun = runController?.subscribe((snapshot) => {
@@ -291,6 +313,7 @@ export function createGameScreen({
     pauseButton.disabled = match?.machineState !== 'ready'
     pauseOverlay.element.hidden = match?.machineState !== 'paused'
     pauseOverlay.update(snapshot)
+    updateSaveWarning(snapshot.saveStatus, snapshot.saveReason)
     const nextPresentationPaused = match?.machineState === 'paused'
     eventPlayer.setPaused(nextPresentationPaused)
 

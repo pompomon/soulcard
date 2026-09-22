@@ -390,19 +390,41 @@ test('Game presents a committed event after a failed save without blocking play'
   const screen = createGameScreen({
     runController: controller,
     mountBattlefield: () => undefined,
-    eventPlayerFactory: () => ({
+    eventPlayerFactory: ({ onStateChange }) => ({
       present(match) {
         presented.push(match.pendingEvent?.id ?? null)
+        if (match.pendingEvent !== null) {
+          onStateChange({
+            status: 'playing',
+            eventId: match.pendingEvent.id,
+            stepIndex: 0,
+            stepCount: 1,
+            stepKind: 'reveal',
+            reason: null,
+          })
+        }
         return Promise.resolve({ status: 'completed' })
       },
       setPaused() {},
       destroy() {},
     }),
   })
+  const status = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'statusHost'),
+  )
+  const saveWarning = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'saveWarning'),
+  )
 
   await controller.revealOrContinue()
   await Promise.resolve()
   assert.deepEqual(presented, [null, controller.currentMatch.pendingEvent.id])
+  assert.equal(status.textContent, 'Revealing committed card.')
+  assert.equal(saveWarning.hidden, false)
+  assert.equal(
+    saveWarning.textContent,
+    'Save failed (quota-exceeded). Your game remains available in this session.',
+  )
   screen.teardown()
 })
 

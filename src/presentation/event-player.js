@@ -415,14 +415,16 @@ export function createEventPlayer({
           reportError(cancelError)
         }
       }
+      let recovered = destroyed
       if (!destroyed) {
         try {
           await synchronize(match, 'adapter-error', event)
+          recovered = true
         } catch (syncError) {
           reportError(syncError)
         }
       }
-      presented.add(key)
+      if (recovered) presented.add(key)
       reportError(error)
       if (!destroyed) {
         publish({

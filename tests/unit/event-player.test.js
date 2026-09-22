@@ -53,9 +53,10 @@ function createSettings(values = {}) {
   }
 }
 
-function createAdapter({ failStepOnce = false } = {}) {
+function createAdapter({ failStepOnce = false, failSyncOnce = false } = {}) {
   const calls = []
   let shouldFail = failStepOnce
+  let shouldFailSync = failSyncOnce
   return {
     calls,
     setPaused(value) {
@@ -73,6 +74,10 @@ function createAdapter({ failStepOnce = false } = {}) {
     },
     syncSnapshot(match, context) {
       calls.push(['sync', match.pendingEvent?.id ?? null, context.reason])
+      if (shouldFailSync) {
+        shouldFailSync = false
+        throw new Error('adapter sync failed')
+      }
     },
     cancelEvent(reason) {
       calls.push(['cancel', reason])
@@ -369,6 +374,34 @@ test('adapter failures reconcile the committed snapshot and do not block the que
       && reason === 'adapter-error'
     ),
   ))
+})
+
+test('events remain retryable when adapter-error reconciliation fails', async () => {
+  const match = transitionAt(0, 1).match
+  const adapter = createAdapter({ failStepOnce: true, failSyncOnce: true })
+  const errors = []
+  const player = createEventPlayer({
+    adapter,
+    timing: ZERO_TIMING,
+    onError: (error) => errors.push(error),
+  })
+
+  assert.deepEqual(await player.present(match), {
+    status: 'failed',
+    eventId: match.pendingEvent.id,
+    reason: 'adapter-error',
+  })
+  assert.equal((await player.present(match)).status, 'completed')
+  assert.deepEqual(
+    adapter.calls.filter(([kind]) => kind === 'sync').map(([, id, reason]) => [id, reason]),
+    [
+      [match.pendingEvent.id, 'adapter-error'],
+      [match.pendingEvent.id, 'completed'],
+    ],
+  )
+  assert.equal(errors.length, 2)
+  assert.match(errors[0].message, /adapter sync failed/)
+  assert.match(errors[1].message, /adapter step failed/)
 })
 
 test('turn-zero snapshots deduplicate and teardown cancels pending work idempotently', async () => {

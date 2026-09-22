@@ -1065,7 +1065,7 @@ reviewable PR.
   motion settings, save gating, resource bounds, failures, and teardown. Restore
   integration tests prove normal replay and reduced-motion skipping preserve RNG,
   ordered zones, outcomes, fingerprints, and deterministic continuation.
-- **Validation:** All 214 unit/integration tests and the production build pass locally
+- **Validation:** All 216 unit/integration tests and the production build pass locally
   on Node 24. A text-only headless Chrome check seeded a saved v3 pending event and
   verified normal replay, replay after refresh during animation, immediate
   reduced-motion reconciliation, exactly one canvas under `#app`, unchanged persisted
