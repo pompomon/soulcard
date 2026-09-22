@@ -1,9 +1,9 @@
 import {
   pauseMatch,
   resumeMatch,
-  revealOrContinue as resolveClash,
   validateMatchState,
 } from '../domain/match-machine.js'
+import { createAiController } from '../domain/ai-controller.js'
 
 const RESTORE_STATUSES = new Set([
   'empty',
@@ -24,6 +24,37 @@ function assertRepository(repository) {
   }
 }
 
+function assertAiController(aiController) {
+  if (
+    aiController === null
+    || typeof aiController !== 'object'
+    || typeof aiController.advanceEncounter !== 'function'
+  ) {
+    throw new TypeError('aiController must expose advanceEncounter')
+  }
+}
+
+function validateEncounterTransition(currentMatch, transition) {
+  if (
+    transition === null
+    || typeof transition !== 'object'
+    || Array.isArray(transition)
+    || !Object.hasOwn(transition, 'match')
+    || !Object.hasOwn(transition, 'event')
+  ) {
+    throw new TypeError('aiController must return a match and event')
+  }
+  validateMatchState(transition.match)
+  if (
+    transition.match.runId !== currentMatch.runId
+    || transition.match.turn !== currentMatch.turn + 1
+    || transition.event !== transition.match.pendingEvent
+  ) {
+    throw new Error('aiController must commit exactly one matching clash')
+  }
+  return transition
+}
+
 function storageFailure(operation, error) {
   return Object.freeze({
     status: 'storage-unavailable',
@@ -35,9 +66,11 @@ function storageFailure(operation, error) {
 export function createRunController({
   repository,
   initialMatch = null,
+  aiController = createAiController(),
   onSubscriberError = (error) => globalThis.reportError?.(error),
 } = {}) {
   assertRepository(repository)
+  assertAiController(aiController)
   if (typeof onSubscriberError !== 'function') {
     throw new TypeError('onSubscriberError must be a function')
   }
@@ -244,7 +277,10 @@ export function createRunController({
     if (match === null) {
       throw new Error('No active match is available')
     }
-    const transition = resolveClash(match)
+    const transition = validateEncounterTransition(
+      match,
+      aiController.advanceEncounter(match),
+    )
     markMatch(transition.match)
     const save = queueSave(transition.match)
     return save.then((saveResult) => Object.freeze({
