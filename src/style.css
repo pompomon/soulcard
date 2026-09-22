@@ -319,6 +319,7 @@ button:disabled {
   max-height: 100%;
   overflow: auto;
   padding: 0.55rem 0.7rem;
+  pointer-events: auto;
 }
 
 .game-status,
@@ -432,9 +433,9 @@ button:disabled {
   grid-template:
     "header header" var(--hud-header-reserve, 4.5rem)
     "comparison comparison" minmax(0, 1fr)
-    "opponent player" 70px
-    "piles piles" 44px
-    "status status" 34px
+    "opponent player" 64px
+    "piles piles" 36px
+    "status status" 48px
     "controls controls" calc(var(--hud-footer-reserve, 210px) - 148px)
     / 1fr 1fr;
 }
@@ -479,6 +480,7 @@ button:disabled {
 
 .screen--game[data-layout-mode="phone-portrait"] .game-feedback {
   align-self: stretch;
+  align-content: start;
   padding-block: 0.25rem;
 }
 
