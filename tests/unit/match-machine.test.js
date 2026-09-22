@@ -9,6 +9,7 @@ import {
   validateMatchState,
 } from '../../src/domain/match-machine.js'
 import { assertStableBoundary } from '../../src/domain/invariants.js'
+import { EVENT_VERSION } from '../../src/domain/events.js'
 import { restoreRng, shuffle } from '../../src/domain/rng.js'
 import {
   BASELINE_RULESET,
@@ -197,15 +198,15 @@ test('source-stage clashes resolve both winners and preserve the input snapshot'
     assert.equal(match.stage, 'source')
     assert.deepEqual(match.zones.sourceDeck, fixture.sourceDeck.slice(2))
     assert.deepEqual(event, {
-      eventVersion: 2,
+      eventVersion: EVENT_VERSION,
       id: 'fixture-run:clash-1',
       type: 'clashSettled',
       turn: 1,
       stage: 'source',
       winner: fixture.winner,
       reveals: [
-        { cardId: fixture.sourceDeck[0], suppliedBy: 'player' },
-        { cardId: fixture.sourceDeck[1], suppliedBy: 'opponent' },
+        { cardId: fixture.sourceDeck[0], suppliedBy: 'player', from: 'sourceDeck' },
+        { cardId: fixture.sourceDeck[1], suppliedBy: 'opponent', from: 'sourceDeck' },
       ],
       transfers: fixture.transfers,
       burned: fixture.burned,
@@ -233,12 +234,12 @@ test('one action resolves multiple source ties in chronological order', () => {
   assert.equal(match.turn, 1)
   assert.deepEqual(match.zones.sourceDeck, ['c-2S', 'c-3H'])
   assert.deepEqual(event.reveals, [
-    { cardId: 'c-10S', suppliedBy: 'player' },
-    { cardId: 'c-10H', suppliedBy: 'opponent' },
-    { cardId: 'c-9S', suppliedBy: 'player' },
-    { cardId: 'c-9H', suppliedBy: 'opponent' },
-    { cardId: 'c-AS', suppliedBy: 'player' },
-    { cardId: 'c-KH', suppliedBy: 'opponent' },
+    { cardId: 'c-10S', suppliedBy: 'player', from: 'sourceDeck' },
+    { cardId: 'c-10H', suppliedBy: 'opponent', from: 'sourceDeck' },
+    { cardId: 'c-9S', suppliedBy: 'player', from: 'sourceDeck' },
+    { cardId: 'c-9H', suppliedBy: 'opponent', from: 'sourceDeck' },
+    { cardId: 'c-AS', suppliedBy: 'player', from: 'sourceDeck' },
+    { cardId: 'c-KH', suppliedBy: 'opponent', from: 'sourceDeck' },
   ])
   assert.deepEqual(event.transfers, [
     { cardId: 'c-10S', to: 'player.wonPile' },
@@ -310,6 +311,7 @@ test('a settled final source pair transitions and shuffles player before opponen
   assert.deepEqual(match.zones.opponent.wonPile, [])
   assert.deepEqual(match.rng, control.snapshot())
   assert.equal(event.stage, 'personal')
+  assert.deepEqual(event.reveals.map(({ from }) => from), ['sourceDeck', 'sourceDeck'])
   assert.deepEqual(event.transfers, [{ cardId: 'c-AS', to: 'player.wonPile' }])
 })
 
@@ -326,10 +328,10 @@ test('a tied final source pair continues from personal piles in the same action'
   assert.equal(match.machineState, 'ready')
   assert.equal(match.turn, 1)
   assert.deepEqual(event.reveals, [
-    { cardId: 'c-10S', suppliedBy: 'player' },
-    { cardId: 'c-10H', suppliedBy: 'opponent' },
-    { cardId: 'c-AS', suppliedBy: 'player' },
-    { cardId: 'c-KH', suppliedBy: 'opponent' },
+    { cardId: 'c-10S', suppliedBy: 'player', from: 'sourceDeck' },
+    { cardId: 'c-10H', suppliedBy: 'opponent', from: 'sourceDeck' },
+    { cardId: 'c-AS', suppliedBy: 'player', from: 'player.drawPile' },
+    { cardId: 'c-KH', suppliedBy: 'opponent', from: 'opponent.drawPile' },
   ])
   assert.deepEqual(event.transfers, [
     { cardId: 'c-10S', to: 'player.wonPile' },
@@ -352,9 +354,9 @@ test('source-to-personal inability produces a terminal winner or retained draw',
   })
   assert.equal(oneAvailable.match.machineState, 'ended')
   assert.deepEqual(oneAvailable.event.reveals, [
-    { cardId: 'c-10S', suppliedBy: 'player' },
-    { cardId: 'c-10H', suppliedBy: 'opponent' },
-    { cardId: 'c-AS', suppliedBy: 'player' },
+    { cardId: 'c-10S', suppliedBy: 'player', from: 'sourceDeck' },
+    { cardId: 'c-10H', suppliedBy: 'opponent', from: 'sourceDeck' },
+    { cardId: 'c-AS', suppliedBy: 'player', from: 'player.drawPile' },
   ])
   assert.equal(oneAvailable.match.zones.contestedPile.length, 0)
 
@@ -368,20 +370,23 @@ test('source-to-personal inability produces a terminal winner or retained draw',
     reason: 'mutualInability',
   })
   assert.deepEqual(neitherAvailable.event, {
-    eventVersion: 2,
+    eventVersion: EVENT_VERSION,
     id: 'neither-available:clash-1',
     type: 'clashDrawn',
     turn: 1,
     stage: 'personal',
     reason: 'mutualInability',
     reveals: [
-      { cardId: 'c-10S', suppliedBy: 'player' },
-      { cardId: 'c-10H', suppliedBy: 'opponent' },
+      { cardId: 'c-10S', suppliedBy: 'player', from: 'sourceDeck' },
+      { cardId: 'c-10H', suppliedBy: 'opponent', from: 'sourceDeck' },
     ],
     stateFingerprint: neitherAvailable.match.pendingEvent.stateFingerprint,
     pendingPresentation: 'draw-v1',
   })
-  assert.deepEqual(neitherAvailable.match.zones.contestedPile, neitherAvailable.event.reveals)
+  assert.deepEqual(
+    neitherAvailable.match.zones.contestedPile,
+    neitherAvailable.event.reveals.map(({ cardId, suppliedBy }) => ({ cardId, suppliedBy })),
+  )
 })
 
 test('personal ties recycle both won piles in player-first RNG order', () => {
@@ -399,10 +404,10 @@ test('personal ties recycle both won piles in player-first RNG order', () => {
 
   assert.equal(event.winner, 'player')
   assert.deepEqual(event.reveals, [
-    { cardId: 'c-10S', suppliedBy: 'player' },
-    { cardId: 'c-10H', suppliedBy: 'opponent' },
-    { cardId: playerRecycle[0], suppliedBy: 'player' },
-    { cardId: opponentRecycle[0], suppliedBy: 'opponent' },
+    { cardId: 'c-10S', suppliedBy: 'player', from: 'player.drawPile' },
+    { cardId: 'c-10H', suppliedBy: 'opponent', from: 'opponent.drawPile' },
+    { cardId: playerRecycle[0], suppliedBy: 'player', from: 'player.drawPile' },
+    { cardId: opponentRecycle[0], suppliedBy: 'opponent', from: 'opponent.drawPile' },
   ])
   assert.deepEqual(match.zones.player.drawPile, playerRecycle.slice(1))
   assert.deepEqual(match.zones.opponent.drawPile, opponentRecycle.slice(1))
@@ -444,6 +449,7 @@ test('personal-stage inability appends the available card and ends for either si
     assert.deepEqual(event.reveals.at(-1), {
       cardId: fixture.finalCard,
       suppliedBy: fixture.winner,
+      from: `${fixture.winner}.drawPile`,
     })
     assert.equal(match.zones.contestedPile.length, 0)
   }
@@ -463,7 +469,10 @@ test('personal mutual inability retains the unresolved contest without settlemen
   assert.equal(event.type, 'clashDrawn')
   assert.equal(Object.hasOwn(event, 'transfers'), false)
   assert.equal(Object.hasOwn(event, 'burned'), false)
-  assert.deepEqual(match.zones.contestedPile, event.reveals)
+  assert.deepEqual(
+    match.zones.contestedPile,
+    event.reveals.map(({ cardId, suppliedBy }) => ({ cardId, suppliedBy })),
+  )
   assert.equal(match.zones.inPlay.length, 0)
   assert.doesNotThrow(() => assertStableBoundary(match.zones))
 })
@@ -583,14 +592,24 @@ test('validation rejects stale events and post-transition pile reordering', () =
     /exact post-commit state/,
   )
 
-  const transitioned = clone(revealOrContinue(createFixture({
+  const transitionedMatch = revealOrContinue(createFixture({
     runId: 'shuffled-order',
     ruleset: NO_BURN_RULESET,
     stage: 'source',
     sourceDeck: ['c-AS', 'c-KH'],
     playerWon: ['c-2S', 'c-3S'],
     opponentWon: ['c-4H', 'c-5H'],
-  })).match)
+  })).match
+  const changedOrigins = clone(transitionedMatch)
+  changedOrigins.pendingEvent.reveals = changedOrigins.pendingEvent.reveals.map(
+    (reveal) => ({ ...reveal, from: `${reveal.suppliedBy}.drawPile` }),
+  )
+  assert.throws(
+    () => validateMatchState(changedOrigins),
+    /exact post-commit state/,
+  )
+
+  const transitioned = clone(transitionedMatch)
   ;[
     transitioned.zones.player.drawPile[0],
     transitioned.zones.player.drawPile[1],

@@ -722,9 +722,15 @@ export function mountBattlefield(host, {
 
     if (step.kind === 'reveal') {
       const visual = ensureTransientCard(step.cardId, step.suppliedBy)
-      const originZone = currentEvent.stage === 'source'
+      const originZone = step.from === 'sourceDeck'
         ? 'sourceDeck'
-        : `${step.suppliedBy}DrawPile`
+        : step.from === 'player.drawPile'
+          ? 'playerDrawPile'
+          : step.from === 'opponent.drawPile'
+            ? 'opponentDrawPile'
+            : currentEvent.stage === 'source'
+              ? 'sourceDeck'
+              : `${step.suppliedBy}DrawPile`
       visual.zoneId = originZone
       visual.offset = Object.freeze({ x: 0, y: 0, z: 0.1 })
       placeTransient(visual)

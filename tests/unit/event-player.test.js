@@ -139,6 +139,7 @@ test('timeline preserves reveal and settlement order for ties and terminal varia
       step.kind,
       step.cardId,
       step.suppliedBy,
+      step.from,
       step.round,
       step.tied,
     ]),
@@ -146,6 +147,7 @@ test('timeline preserves reveal and settlement order for ties and terminal varia
       'reveal',
       reveal.cardId,
       reveal.suppliedBy,
+      reveal.from,
       Math.floor(index / 2),
       index < 2,
     ]),
@@ -174,6 +176,7 @@ test('timeline preserves reveal and settlement order for ties and terminal varia
       kind: 'reveal',
       cardId: oneSided.reveals.at(-1).cardId,
       suppliedBy: oneSided.reveals.at(-1).suppliedBy,
+      from: oneSided.reveals.at(-1).from,
       revealIndex: oneSided.reveals.length - 1,
       round: Math.floor((oneSided.reveals.length - 1) / 2),
       tied: false,
@@ -193,6 +196,15 @@ test('timeline preserves reveal and settlement order for ties and terminal varia
   assert.ok(drawnTimeline
     .filter(({ kind }) => kind === 'reveal')
     .every(({ tied }) => tied))
+
+  const legacy = {
+    ...clone(tied),
+    eventVersion: 2,
+    reveals: tied.reveals.map(({ cardId, suppliedBy }) => ({ cardId, suppliedBy })),
+  }
+  assert.ok(createEventTimeline(legacy)
+    .filter(({ kind }) => kind === 'reveal')
+    .every(({ from }) => from === null))
 })
 
 test('player consumes detached committed data once and queues newer events in order', async () => {

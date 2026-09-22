@@ -145,6 +145,7 @@ export function createEventTimeline(event, timing = EVENT_PRESENTATION_TIMING) {
       kind: 'reveal',
       cardId: reveal.cardId,
       suppliedBy: reveal.suppliedBy,
+      from: reveal.from ?? null,
       revealIndex: index,
       round,
       tied: roundIsTied(event.reveals, round),

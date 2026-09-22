@@ -3,6 +3,7 @@ import { getCard } from './cards.js'
 import {
   createClashDrawnEvent,
   createClashSettledEvent,
+  EVENT_VERSION,
   validateCommittedEvent,
 } from './events.js'
 import { assertStableBoundary, assertZoneInvariants } from './invariants.js'
@@ -256,18 +257,23 @@ function createStateFingerprint(match, event, machineState = match.machineState)
     : match.outcome.result === 'win'
       ? [match.outcome.result, match.outcome.winner, match.outcome.reason]
       : [match.outcome.result, match.outcome.reason]
+  const reveals = event.reveals.map(({ cardId, suppliedBy, from }) => (
+    event.eventVersion === EVENT_VERSION
+      ? [cardId, suppliedBy, from]
+      : [cardId, suppliedBy]
+  ))
   const eventPayload = event.type === 'clashSettled'
     ? [
         event.type,
         event.winner,
-        event.reveals.map(({ cardId, suppliedBy }) => [cardId, suppliedBy]),
+        reveals,
         event.transfers.map(({ cardId, to }) => [cardId, to]),
         event.burned,
       ]
     : [
         event.type,
         event.reason,
-        event.reveals.map(({ cardId, suppliedBy }) => [cardId, suppliedBy]),
+        reveals,
       ]
   return JSON.stringify([
     match.runId,
@@ -415,12 +421,13 @@ export function resumeMatch(input) {
   return deepFreeze(match)
 }
 
-function revealFromPile(zones, pile, suppliedBy) {
+function revealFromPile(zones, pile, suppliedBy, from, revealHistory) {
   const cardId = pile.shift()
   zones.inPlay.push({ cardId, suppliedBy })
   assertZoneInvariants(zones)
   zones.contestedPile.push(zones.inPlay.shift())
   assertZoneInvariants(zones)
+  revealHistory.push({ cardId, suppliedBy, from })
   return cardId
 }
 
@@ -443,12 +450,18 @@ function enterPersonalStage(match, rng) {
   assertZoneInvariants(match.zones)
 }
 
-function revealPersonalCard(match, side, rng) {
+function revealPersonalCard(match, side, rng, revealHistory) {
   recycleWonPile(match.zones, side, rng)
   if (match.zones[side].drawPile.length === 0) {
     return null
   }
-  return revealFromPile(match.zones, match.zones[side].drawPile, side)
+  return revealFromPile(
+    match.zones,
+    match.zones[side].drawPile,
+    side,
+    `${side}.drawPile`,
+    revealHistory,
+  )
 }
 
 function assertSettlement(contestedPile, settlement, winner) {
@@ -474,8 +487,21 @@ function assertSettlement(contestedPile, settlement, winner) {
   }
 }
 
-function settleContest(match, winner, rng) {
-  const reveals = cloneData(match.zones.contestedPile)
+function committedReveals(match, revealHistory) {
+  if (
+    revealHistory.length !== match.zones.contestedPile.length
+    || revealHistory.some(({ cardId, suppliedBy }, index) => (
+      match.zones.contestedPile[index].cardId !== cardId
+      || match.zones.contestedPile[index].suppliedBy !== suppliedBy
+    ))
+  ) {
+    throw new Error('Committed reveal history must match the contested pile')
+  }
+  return cloneData(revealHistory)
+}
+
+function settleContest(match, winner, rng, revealHistory) {
+  const reveals = committedReveals(match, revealHistory)
   const settlement = evaluateBurn(match.ruleset, winner, match.zones.contestedPile, rng)
   assertSettlement(match.zones.contestedPile, settlement, winner)
   const transfers = new Map(
@@ -528,6 +554,7 @@ function commitSettled(match, rng, winner, settlement, terminal) {
   const event = createClashSettledEvent({
     ...eventData,
     stateFingerprint: createStateFingerprint(match, {
+      eventVersion: EVENT_VERSION,
       type: 'clashSettled',
       ...eventData,
     }),
@@ -538,7 +565,7 @@ function commitSettled(match, rng, winner, settlement, terminal) {
   return Object.freeze({ match: committed, event: committed.pendingEvent })
 }
 
-function commitDraw(match, rng) {
+function commitDraw(match, rng, revealHistory) {
   match.rng = rng.snapshot()
   match.machineState = 'ended'
   match.status = 'ended'
@@ -550,11 +577,12 @@ function commitDraw(match, rng) {
     turn: match.turn,
     stage: match.stage,
     reason: DRAW_REASON,
-    reveals: match.zones.contestedPile,
+    reveals: committedReveals(match, revealHistory),
   }
   const event = createClashDrawnEvent({
     ...eventData,
     stateFingerprint: createStateFingerprint(match, {
+      eventVersion: EVENT_VERSION,
       type: 'clashDrawn',
       ...eventData,
     }),
@@ -565,9 +593,21 @@ function commitDraw(match, rng) {
   return Object.freeze({ match: committed, event: committed.pendingEvent })
 }
 
-function resolveSourceRound(match, rng) {
-  const playerCard = revealFromPile(match.zones, match.zones.sourceDeck, 'player')
-  const opponentCard = revealFromPile(match.zones, match.zones.sourceDeck, 'opponent')
+function resolveSourceRound(match, rng, revealHistory) {
+  const playerCard = revealFromPile(
+    match.zones,
+    match.zones.sourceDeck,
+    'player',
+    'sourceDeck',
+    revealHistory,
+  )
+  const opponentCard = revealFromPile(
+    match.zones,
+    match.zones.sourceDeck,
+    'opponent',
+    'sourceDeck',
+    revealHistory,
+  )
   const comparison = getCard(playerCard).value - getCard(opponentCard).value
 
   if (comparison === 0) {
@@ -578,19 +618,31 @@ function resolveSourceRound(match, rng) {
   }
 
   const winner = comparison > 0 ? 'player' : 'opponent'
-  return commitSettled(match, rng, winner, settleContest(match, winner, rng), false)
+  return commitSettled(
+    match,
+    rng,
+    winner,
+    settleContest(match, winner, rng, revealHistory),
+    false,
+  )
 }
 
-function resolvePersonalRound(match, rng) {
-  const playerCard = revealPersonalCard(match, 'player', rng)
-  const opponentCard = revealPersonalCard(match, 'opponent', rng)
+function resolvePersonalRound(match, rng, revealHistory) {
+  const playerCard = revealPersonalCard(match, 'player', rng, revealHistory)
+  const opponentCard = revealPersonalCard(match, 'opponent', rng, revealHistory)
 
   if (playerCard === null && opponentCard === null) {
-    return commitDraw(match, rng)
+    return commitDraw(match, rng, revealHistory)
   }
   if (playerCard === null || opponentCard === null) {
     const winner = playerCard === null ? 'opponent' : 'player'
-    return commitSettled(match, rng, winner, settleContest(match, winner, rng), true)
+    return commitSettled(
+      match,
+      rng,
+      winner,
+      settleContest(match, winner, rng, revealHistory),
+      true,
+    )
   }
 
   const comparison = getCard(playerCard).value - getCard(opponentCard).value
@@ -598,7 +650,13 @@ function resolvePersonalRound(match, rng) {
     return null
   }
   const winner = comparison > 0 ? 'player' : 'opponent'
-  return commitSettled(match, rng, winner, settleContest(match, winner, rng), false)
+  return commitSettled(
+    match,
+    rng,
+    winner,
+    settleContest(match, winner, rng, revealHistory),
+    false,
+  )
 }
 
 export function revealOrContinue(input) {
@@ -612,14 +670,15 @@ export function revealOrContinue(input) {
 
   const match = cloneData(input)
   const rng = restoreRng(match.rng)
+  const revealHistory = []
   match.machineState = 'resolving'
   match.turn += 1
   match.pendingEvent = null
 
   while (true) {
     const transition = match.stage === 'source'
-      ? resolveSourceRound(match, rng)
-      : resolvePersonalRound(match, rng)
+      ? resolveSourceRound(match, rng, revealHistory)
+      : resolvePersonalRound(match, rng, revealHistory)
     if (transition !== null) {
       return transition
     }

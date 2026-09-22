@@ -41,6 +41,8 @@ pending event in a fresh mount replays it.
 Animation speed scales presentation time, while effective reduced motion skips
 transitions and immediately reconciles the battlefield to the committed snapshot.
 Presentation never advances the match machine, evaluates burn rules, or consumes RNG.
+Current events record each reveal's source/personal pile origin; version 2 saved events
+remain readable.
 
 ## Tests
 

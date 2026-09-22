@@ -1,9 +1,10 @@
 import { getCard, isCardId } from './cards.js'
 
-export const EVENT_VERSION = 2
+export const EVENT_VERSION = 3
 
 const SIDES = Object.freeze(['player', 'opponent'])
 const STAGES = Object.freeze(['source', 'personal'])
+const SUPPORTED_EVENT_VERSIONS = Object.freeze([2, EVENT_VERSION])
 const SETTLEMENT_PRESENTATION = 'settlement-v1'
 const DRAW_PRESENTATION = 'draw-v1'
 const DRAW_REASON = 'mutualInability'
@@ -83,20 +84,40 @@ function assertStateFingerprint(stateFingerprint) {
   }
 }
 
-function assertRevealRecords(reveals) {
+function assertRevealRecords(reveals, eventVersion) {
   assertDenseArray(reveals, 'reveals', { nonempty: true })
   const seen = new Set()
+  let personalOriginReached = false
 
   for (let index = 0; index < reveals.length; index += 1) {
     const record = reveals[index]
     const name = `reveals[${index}]`
     assertPlainObject(record, name)
-    assertExactKeys(record, ['cardId', 'suppliedBy'], name)
+    assertExactKeys(
+      record,
+      eventVersion === EVENT_VERSION
+        ? ['cardId', 'suppliedBy', 'from']
+        : ['cardId', 'suppliedBy'],
+      name,
+    )
     if (!isCardId(record.cardId)) {
       throw new TypeError(`${name} contains an unknown card ID`)
     }
     if (!SIDES.includes(record.suppliedBy)) {
       throw new TypeError(`${name}.suppliedBy must be player or opponent`)
+    }
+    if (eventVersion === EVENT_VERSION) {
+      const personalOrigin = `${record.suppliedBy}.drawPile`
+      if (record.from !== 'sourceDeck' && record.from !== personalOrigin) {
+        throw new TypeError(`${name}.from must match its committed reveal origin`)
+      }
+      if (record.from === 'sourceDeck') {
+        if (personalOriginReached) {
+          throw new Error('Reveal origins cannot return to the source stage')
+        }
+      } else {
+        personalOriginReached = true
+      }
     }
     if (seen.has(record.cardId)) {
       throw new Error(`Card ${record.cardId} occurs more than once in reveals`)
@@ -112,6 +133,20 @@ function assertRevealRecords(reveals) {
     ) {
       throw new Error('Complete reveal rounds must be ordered player then opponent')
     }
+    if (
+      eventVersion === EVENT_VERSION
+      && (reveals[index].from === 'sourceDeck')
+      !== (reveals[index + 1].from === 'sourceDeck')
+    ) {
+      throw new Error('Complete reveal rounds must use the same stage origin')
+    }
+  }
+  if (
+    eventVersion === EVENT_VERSION
+    && reveals.length % 2 === 1
+    && reveals.at(-1).from === 'sourceDeck'
+  ) {
+    throw new Error('A singleton reveal must originate from a personal draw pile')
   }
 
   return seen
@@ -160,8 +195,8 @@ function assertBurned(burned) {
   return seen
 }
 
-function assertSettlementCoverage(reveals, transfers, burned, winner) {
-  const revealed = assertRevealRecords(reveals)
+function assertSettlementCoverage(reveals, transfers, burned, winner, eventVersion) {
+  const revealed = assertRevealRecords(reveals, eventVersion)
   const transferred = assertTransfers(transfers, winner)
   const burnedSet = assertBurned(burned)
 
@@ -232,8 +267,8 @@ function assertSettledRevealHistory(reveals, winner, stage) {
 }
 
 function assertBaseEvent(event, expectedType) {
-  if (event.eventVersion !== EVENT_VERSION) {
-    throw new TypeError(`eventVersion must be ${EVENT_VERSION}`)
+  if (!SUPPORTED_EVENT_VERSIONS.includes(event.eventVersion)) {
+    throw new TypeError(`eventVersion must be ${SUPPORTED_EVENT_VERSIONS.join(' or ')}`)
   }
   assertRunId(event.id.slice(0, event.id.lastIndexOf(':clash-')))
   assertTurn(event.turn)
@@ -294,7 +329,20 @@ export function validateCommittedEvent(event) {
       throw new TypeError(`pendingPresentation must be ${SETTLEMENT_PRESENTATION}`)
     }
     assertStateFingerprint(event.stateFingerprint)
-    assertSettlementCoverage(event.reveals, event.transfers, event.burned, event.winner)
+    assertSettlementCoverage(
+      event.reveals,
+      event.transfers,
+      event.burned,
+      event.winner,
+      event.eventVersion,
+    )
+    if (
+      event.eventVersion === EVENT_VERSION
+      && event.stage === 'source'
+      && event.reveals.some(({ from }) => from !== 'sourceDeck')
+    ) {
+      throw new Error('Source-stage events must reveal only from the source deck')
+    }
     assertSettledRevealHistory(event.reveals, event.winner, event.stage)
     return event
   }
@@ -319,7 +367,7 @@ export function validateCommittedEvent(event) {
       throw new TypeError(`pendingPresentation must be ${DRAW_PRESENTATION}`)
     }
     assertStateFingerprint(event.stateFingerprint)
-    assertRevealRecords(event.reveals)
+    assertRevealRecords(event.reveals, event.eventVersion)
     if (event.stage !== 'personal' || event.reveals.length % 2 !== 0) {
       throw new Error('A drawn clash must end with a complete tied reveal round')
     }

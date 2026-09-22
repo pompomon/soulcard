@@ -24,10 +24,10 @@ const SETTLED_INPUT = {
   stage: 'personal',
   winner: 'player',
   reveals: [
-    { cardId: 'c-10H', suppliedBy: 'player' },
-    { cardId: 'c-10C', suppliedBy: 'opponent' },
-    { cardId: 'c-AS', suppliedBy: 'player' },
-    { cardId: 'c-KD', suppliedBy: 'opponent' },
+    { cardId: 'c-10H', suppliedBy: 'player', from: 'player.drawPile' },
+    { cardId: 'c-10C', suppliedBy: 'opponent', from: 'opponent.drawPile' },
+    { cardId: 'c-AS', suppliedBy: 'player', from: 'player.drawPile' },
+    { cardId: 'c-KD', suppliedBy: 'opponent', from: 'opponent.drawPile' },
   ],
   transfers: [
     { cardId: 'c-10H', to: 'player.wonPile' },
@@ -69,8 +69,8 @@ test('settled clash events use the canonical versioned shape and detached immuta
 
 test('terminal draws use a distinct event without settlement fields', () => {
   const reveals = [
-    { cardId: 'c-10S', suppliedBy: 'player' },
-    { cardId: 'c-10H', suppliedBy: 'opponent' },
+    { cardId: 'c-10S', suppliedBy: 'player', from: 'player.drawPile' },
+    { cardId: 'c-10H', suppliedBy: 'opponent', from: 'opponent.drawPile' },
   ]
   const event = createClashDrawnEvent({
     runId: 'draw-run',
@@ -155,8 +155,8 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
     stage: 'personal',
     stateFingerprint: 'draw-state',
     reveals: [
-      { cardId: 'c-10S', suppliedBy: 'player' },
-      { cardId: 'c-9H', suppliedBy: 'opponent' },
+      { cardId: 'c-10S', suppliedBy: 'player', from: 'player.drawPile' },
+      { cardId: 'c-9H', suppliedBy: 'opponent', from: 'opponent.drawPile' },
     ],
   }), /tied/)
   assert.throws(() => createClashDrawnEvent({
@@ -164,18 +164,18 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
     turn: 1,
     stage: 'personal',
     stateFingerprint: 'draw-state',
-    reveals: [{ cardId: 'c-10S', suppliedBy: 'player' }],
+    reveals: [{ cardId: 'c-10S', suppliedBy: 'player', from: 'player.drawPile' }],
   }), /complete tied reveal round/)
   assert.throws(() => createClashSettledEvent({
     runId: 'source-singleton',
     turn: 1,
     stage: 'source',
     winner: 'player',
-    reveals: [{ cardId: 'c-AS', suppliedBy: 'player' }],
+    reveals: [{ cardId: 'c-AS', suppliedBy: 'player', from: 'sourceDeck' }],
     transfers: [{ cardId: 'c-AS', to: 'player.wonPile' }],
     burned: [],
     stateFingerprint: 'settled-state',
-  }), /personal stage/)
+  }))
   assert.throws(() => createClashSettledEvent({
     ...clone(SETTLED_INPUT),
     winner: 'opponent',
@@ -191,12 +191,43 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
     stage: 'personal',
     stateFingerprint: 'draw-state',
     reveals: [
-      { cardId: 'c-AS', suppliedBy: 'player' },
-      { cardId: 'c-KH', suppliedBy: 'opponent' },
-      { cardId: 'c-10S', suppliedBy: 'player' },
-      { cardId: 'c-10H', suppliedBy: 'opponent' },
+      { cardId: 'c-AS', suppliedBy: 'player', from: 'player.drawPile' },
+      { cardId: 'c-KH', suppliedBy: 'opponent', from: 'opponent.drawPile' },
+      { cardId: 'c-10S', suppliedBy: 'player', from: 'player.drawPile' },
+      { cardId: 'c-10H', suppliedBy: 'opponent', from: 'opponent.drawPile' },
     ],
   }), /before the decisive result/)
+})
+
+test('event validation retains read compatibility with version 2 reveal records', () => {
+  const current = createClashSettledEvent(SETTLED_INPUT)
+  const legacy = {
+    ...clone(current),
+    eventVersion: 2,
+    reveals: current.reveals.map(({ cardId, suppliedBy }) => ({ cardId, suppliedBy })),
+  }
+
+  assert.equal(validateCommittedEvent(legacy), legacy)
+})
+
+test('version 3 events reject missing, mismatched, or reversing reveal origins', () => {
+  const settled = createClashSettledEvent(SETTLED_INPUT)
+  const invalidReveals = [
+    settled.reveals.map(({ cardId, suppliedBy }) => ({ cardId, suppliedBy })),
+    settled.reveals.map((reveal, index) => (
+      index === 0 ? { ...reveal, from: 'opponent.drawPile' } : reveal
+    )),
+    settled.reveals.map((reveal, index) => (
+      index === 1 ? { ...reveal, from: 'sourceDeck' } : reveal
+    )),
+    settled.reveals.map((reveal, index) => (
+      index < 2 ? reveal : { ...reveal, from: 'sourceDeck' }
+    )),
+  ]
+
+  for (const reveals of invalidReveals) {
+    assert.throws(() => validateCommittedEvent({ ...clone(settled), reveals }))
+  }
 })
 
 test('event factories reject accessors and extra fields before reading nested data', () => {

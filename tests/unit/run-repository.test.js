@@ -361,7 +361,7 @@ test('load migrates legacy saves and replaces them atomically', async () => {
     assert.equal(loaded.status, 'resumable')
     assert.equal(loaded.migratedFrom, version)
     assert.equal(loaded.match.runId, 'fixture-active')
-    assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v3.json'))
+    assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-legacy-v3.json'))
   }
 })
 

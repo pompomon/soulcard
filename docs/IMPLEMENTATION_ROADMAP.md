@@ -461,17 +461,17 @@ the end overlay likewise remains within Game rather than becoming a fourth scree
 
 ```json
 {
-  "eventVersion": 2,
+  "eventVersion": 3,
   "id": "run-42:clash-17",
   "type": "clashSettled",
   "turn": 17,
   "stage": "personal",
   "winner": "player",
   "reveals": [
-    { "cardId": "c-10H", "suppliedBy": "player" },
-    { "cardId": "c-10C", "suppliedBy": "opponent" },
-    { "cardId": "c-AS", "suppliedBy": "player" },
-    { "cardId": "c-KD", "suppliedBy": "opponent" }
+    { "cardId": "c-10H", "suppliedBy": "player", "from": "player.drawPile" },
+    { "cardId": "c-10C", "suppliedBy": "opponent", "from": "opponent.drawPile" },
+    { "cardId": "c-AS", "suppliedBy": "player", "from": "player.drawPile" },
+    { "cardId": "c-KD", "suppliedBy": "opponent", "from": "opponent.drawPile" }
   ],
   "transfers": [{ "cardId": "c-10H", "to": "player.wonPile" },
                 { "cardId": "c-AS", "to": "player.wonPile" }],
@@ -481,8 +481,9 @@ the end overlay likewise remains within Game rather than becoming a fourth scree
 }
 ```
 
-The event is committed and saved before animation. On restore, presentation replays it
-or marks it skipped; it never reruns settlement or RNG.
+The event is committed and its save attempt settles before animation. A storage failure
+is surfaced but does not deadlock the in-memory presentation. After a successful save,
+restore replays the event or marks it skipped; it never reruns settlement or RNG.
 
 ### Match-machine and event contract (milestone 5)
 
@@ -517,7 +518,11 @@ survives that same player-first transition and continues from personal piles wit
 same action. In the personal stage, each side recycles its complete nonempty `wonPile`
 only when its `drawPile` is empty immediately before that side's required reveal.
 
-`src/domain/events.js` owns `eventVersion: 2` validation and factories. Settlements emit
+`src/domain/events.js` owns `eventVersion: 3` validation and factories, while retaining
+read compatibility with version 2 events. Version 3 binds each chronological reveal's
+`from` origin (`sourceDeck` or the supplying side's personal `drawPile`) into the event
+fingerprint so a single event can present source-to-personal transitions exactly.
+Settlements emit
 `clashSettled` with ID `<runId>:clash-<turn>`, the final committed stage, winner,
 chronological reveals, ordered transfers and burns, and
 an exact canonical `stateFingerprint` binding the event payload to the stable post-commit state, plus
@@ -664,17 +669,17 @@ and pass the stated zone validation.
     "futureModifiers": []
   },
   "pendingEvent": {
-    "eventVersion": 2,
+    "eventVersion": 3,
     "id": "run-42:clash-17",
     "type": "clashSettled",
     "turn": 17,
     "stage": "personal",
     "winner": "player",
     "reveals": [
-      { "cardId": "c-10H", "suppliedBy": "player" },
-      { "cardId": "c-10C", "suppliedBy": "opponent" },
-      { "cardId": "c-AS", "suppliedBy": "player" },
-      { "cardId": "c-KD", "suppliedBy": "opponent" }
+      { "cardId": "c-10H", "suppliedBy": "player", "from": "player.drawPile" },
+      { "cardId": "c-10C", "suppliedBy": "opponent", "from": "opponent.drawPile" },
+      { "cardId": "c-AS", "suppliedBy": "player", "from": "player.drawPile" },
+      { "cardId": "c-KD", "suppliedBy": "opponent", "from": "opponent.drawPile" }
     ],
     "transfers": [
       { "cardId": "c-10H", "to": "player.wonPile" },
@@ -1044,7 +1049,9 @@ reviewable PR.
   snapshots, consumes only their committed `pendingEvent`, deduplicates controller
   notifications by run/event identity, and sequences chronological reveals, tied
   retention, ordered transfers/burns, terminal draws, and final authoritative
-  reconciliation. It scales waits by live animation speed, completes safely when
+  reconciliation. Versioned reveal origins route source-to-personal events from their
+  exact committed piles while legacy version 2 saves remain readable. It scales waits
+  by live animation speed, completes safely when
   reduced motion becomes effective, and supports pause/resume, cancellation,
   idempotent teardown, queue recovery, and adapter-error recovery without invoking
   domain transitions, burn evaluation, or RNG. `src/presentation/battlefield.js`
@@ -1058,7 +1065,7 @@ reviewable PR.
   motion settings, save gating, resource bounds, failures, and teardown. Restore
   integration tests prove normal replay and reduced-motion skipping preserve RNG,
   ordered zones, outcomes, fingerprints, and deterministic continuation.
-- **Validation:** All 211 unit/integration tests and the production build pass locally
+- **Validation:** All 214 unit/integration tests and the production build pass locally
   on Node 24. A text-only headless Chrome check seeded a saved v3 pending event and
   verified normal replay, replay after refresh during animation, immediate
   reduced-motion reconciliation, exactly one canvas under `#app`, unchanged persisted

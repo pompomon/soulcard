@@ -426,6 +426,52 @@ test('battlefield renders committed snapshots and routes event cards through bou
   assert.ok(textures.leases.every(({ releaseCalls }) => releaseCalls === 1))
 })
 
+test('source-to-personal events route each reveal from its committed origin', () => {
+  const host = createHost(1024, 768)
+  const windowObject = createWindow({ width: 1024, height: 768 })
+  const observer = createObserverHarness()
+  const renderer = new FakeRenderer(host, {})
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => renderer,
+    textureCacheFactory: () => createTextureCacheHarness().cache,
+  })
+  let match = createMatch({
+    runId: 'battlefield-stage-transition',
+    seed: 0,
+    ruleset: BASELINE_RULESET,
+  })
+  let transition
+  do {
+    transition = revealOrContinue(match)
+    match = transition.match
+  } while (transition.event.turn < 26)
+
+  assert.equal(transition.event.stage, 'personal')
+  assert.deepEqual(
+    transition.event.reveals.map(({ from }) => from),
+    ['sourceDeck', 'sourceDeck', 'player.drawPile', 'opponent.drawPile'],
+  )
+  const timeline = createEventTimeline(transition.event)
+  handle.beginEvent(transition.event, transition.match)
+
+  const assertOrigin = (stepIndex, zoneId) => {
+    const step = timeline[stepIndex]
+    handle.applyStep(step, { durationMs: 100 })
+    const mesh = renderer.scene.children.find(
+      ({ name }) => name === `battlefield-card:${step.cardId}:front`,
+    )
+    assert.ok(mesh)
+    assert.equal(mesh.position.x, handle.layout.zones[zoneId].x)
+    assert.equal(mesh.position.y, handle.layout.zones[zoneId].y)
+  }
+  assertOrigin(0, 'sourceDeck')
+  assertOrigin(2, 'playerDrawPile')
+
+  handle.teardown()
+})
+
 test('battlefield keeps a bounded terminal draw contest and validates event adapters', () => {
   const host = createHost(800, 600)
   const windowObject = createWindow({ width: 800, height: 600 })
