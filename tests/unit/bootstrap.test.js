@@ -121,6 +121,46 @@ test('bootstrap owns run restoration, lifecycle wiring, and repository teardown'
   assert.deepEqual(root.children, [])
 })
 
+test('bootstrap injects the input controller factory into Game', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const inputs = []
+  let destroyed = 0
+  const app = bootstrap({
+    root: new FakeElement('div'),
+    runRepository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => assert.fail('Unexpected save'),
+    },
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield: () => undefined,
+    inputControllerFactory(options) {
+      inputs.push(options)
+      return {
+        setEnabled() {},
+        setBusy() {},
+        destroy() {
+          destroyed += 1
+        },
+      }
+    },
+  })
+  await app.ready
+  app.navigate('game')
+
+  assert.deepEqual(inputs.map(({ target }) => target.dataset.action), ['reveal', 'pause'])
+  await app.destroy()
+  assert.equal(destroyed, 2)
+})
+
 test('bootstrap enables Resume for restored and pre-populated runs', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
@@ -141,6 +181,7 @@ test('bootstrap enables Resume for restored and pre-populated runs', async (t) =
     discardPendingRestore: () => undefined,
     saveStable: async () => Object.freeze({ status: 'skipped' }),
     subscribe: () => () => undefined,
+    revealOrContinue: () => undefined,
     pause: () => undefined,
     resume: () => undefined,
     destroy: async () => undefined,
@@ -205,6 +246,7 @@ test('bootstrap does not refresh Resume after teardown', async (t) => {
     discardPendingRestore: () => undefined,
     saveStable: async () => Object.freeze({ status: 'skipped' }),
     subscribe: () => () => undefined,
+    revealOrContinue: () => undefined,
     pause: () => undefined,
     resume: () => undefined,
     destroy: async () => undefined,
@@ -252,6 +294,7 @@ test('Start New discards a restoration that is still pending', async (t) => {
     },
     saveStable: async () => Object.freeze({ status: 'skipped' }),
     subscribe: () => () => undefined,
+    revealOrContinue: () => undefined,
     pause: () => undefined,
     resume: () => undefined,
     destroy: async () => undefined,

@@ -1,5 +1,8 @@
 import { createPauseOverlay } from './overlays.js'
 import { createEventPlayer } from '../presentation/event-player.js'
+import { createInputController } from '../presentation/input.js'
+
+const ACTIVE_PRESENTATION_STATUSES = new Set(['queued', 'playing', 'paused'])
 
 function createTextElement(tagName, className, text) {
   const element = document.createElement(tagName)
@@ -68,7 +71,7 @@ function createSidePanel(side, label) {
 }
 
 function assertRunController(runController) {
-  const methods = ['getSnapshot', 'subscribe', 'pause', 'resume']
+  const methods = ['getSnapshot', 'subscribe', 'revealOrContinue', 'pause', 'resume']
   if (
     runController !== null
     && runController !== undefined
@@ -78,6 +81,84 @@ function assertRunController(runController) {
     )
   ) {
     throw new TypeError('runController must implement the Game run controller interface')
+  }
+}
+
+function assertInputControllerFactory(inputControllerFactory) {
+  if (typeof inputControllerFactory !== 'function') {
+    throw new TypeError('inputControllerFactory must be a function')
+  }
+}
+
+function assertInputController(inputController) {
+  const methods = ['setEnabled', 'setBusy', 'destroy']
+  if (
+    inputController === null
+    || typeof inputController !== 'object'
+    || methods.some((method) => typeof inputController[method] !== 'function')
+  ) {
+    throw new TypeError('inputControllerFactory must return a compatible input controller')
+  }
+}
+
+function stageText(stage) {
+  return stage === 'personal' ? 'Personal' : 'Source'
+}
+
+function sideText(side) {
+  return side === 'player' ? 'Player' : 'Opponent'
+}
+
+function countText(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`
+}
+
+function tiedRoundCount(event) {
+  const completeRounds = Math.floor(event.reveals.length / 2)
+  if (event.type === 'clashDrawn' || event.reveals.length % 2 === 1) {
+    return completeRounds
+  }
+  return Math.max(0, completeRounds - 1)
+}
+
+function comparisonText(match) {
+  const event = match?.pendingEvent
+  if (match === null || match === undefined) {
+    return {
+      result: 'No active match',
+      details: 'Start or resume a game to reveal cards.',
+    }
+  }
+  if (event === null) {
+    return {
+      result: 'Ready for the first reveal',
+      details: 'No cards have been revealed yet.',
+    }
+  }
+
+  const ties = tiedRoundCount(event)
+  const burned = event.type === 'clashSettled' ? event.burned.length : 0
+  const details = [
+    `${countText(event.reveals.length, 'card')} revealed`,
+    countText(ties, 'tie'),
+    `${burned} burned`,
+  ].join(' · ')
+
+  if (match.outcome?.result === 'win') {
+    return {
+      result: `${sideText(match.outcome.winner)} won the match`,
+      details: `Final clash: ${details}`,
+    }
+  }
+  if (match.outcome?.result === 'draw') {
+    return {
+      result: 'The match ended in a draw',
+      details: `Final clash: ${details}`,
+    }
+  }
+  return {
+    result: `${sideText(event.winner)} won clash ${event.turn}`,
+    details,
   }
 }
 
@@ -95,11 +176,37 @@ function presentationStatusText(state) {
   return 'Presenting committed clash.'
 }
 
+function presentationProgressText(state) {
+  if (state.status === 'queued') return 'Presentation queued.'
+  if (state.status === 'paused') return 'Presentation paused.'
+  if (state.status === 'completed') return 'Presentation complete.'
+  if (state.status === 'skipped') return 'Presentation skipped.'
+  if (state.status === 'failed') return 'Presentation recovered after a rendering error.'
+  if (state.status !== 'playing') return 'Ready.'
+
+  const step = state.stepIndex === null ? 0 : state.stepIndex + 1
+  const labels = {
+    reveal: 'Revealing cards',
+    transfer: 'Transferring won cards',
+    burn: 'Burning cards',
+    retain: 'Retaining the unresolved contest',
+  }
+  return `${labels[state.stepKind] ?? 'Presenting clash'} · ${step} of ${state.stepCount}`
+}
+
+function terminalStatusText(outcome) {
+  if (outcome?.result === 'win') {
+    return `${sideText(outcome.winner)} won the match.`
+  }
+  return 'The match ended in a draw.'
+}
+
 export function createGameScreen({
   mountBattlefield,
   settingsController,
   runController,
   eventPlayerFactory = createEventPlayer,
+  inputControllerFactory = createInputController,
 } = {}) {
   if (typeof mountBattlefield !== 'function') {
     throw new TypeError('mountBattlefield must be a function')
@@ -108,6 +215,7 @@ export function createGameScreen({
   if (typeof eventPlayerFactory !== 'function') {
     throw new TypeError('eventPlayerFactory must be a function')
   }
+  assertInputControllerFactory(inputControllerFactory)
 
   const element = document.createElement('main')
   element.className = 'screen screen--game'
@@ -145,12 +253,30 @@ export function createGameScreen({
   comparison.setAttribute('aria-labelledby', 'comparison-title')
   const comparisonHeading = createTextElement('h2', 'visually-hidden', 'Reveal comparison')
   comparisonHeading.id = 'comparison-title'
-  const comparisonPlaceholder = createTextElement(
+  const comparisonResult = createTextElement(
     'p',
-    'comparison-placeholder',
-    'Reveal area',
+    'comparison-result',
+    'No active match',
   )
-  comparison.append(comparisonHeading, comparisonPlaceholder)
+  comparisonResult.dataset.comparisonResult = ''
+  const comparisonDetails = createTextElement(
+    'p',
+    'comparison-details',
+    'Start or resume a game to reveal cards.',
+  )
+  comparisonDetails.dataset.comparisonDetails = ''
+  const comparisonProgress = createTextElement(
+    'p',
+    'comparison-progress',
+    'Ready.',
+  )
+  comparisonProgress.dataset.comparisonProgress = ''
+  comparison.append(
+    comparisonHeading,
+    comparisonResult,
+    comparisonDetails,
+    comparisonProgress,
+  )
 
   const pileMetrics = document.createElement('dl')
   pileMetrics.className = 'hud-metrics hud-metrics--piles'
@@ -174,6 +300,10 @@ export function createGameScreen({
   saveWarning.setAttribute('aria-live', 'polite')
   saveWarning.hidden = true
 
+  const feedback = document.createElement('div')
+  feedback.className = 'game-feedback'
+  feedback.append(saveWarning, status)
+
   const controls = document.createElement('div')
   controls.className = 'game-controls'
   controls.dataset.primaryActionHost = ''
@@ -189,7 +319,7 @@ export function createGameScreen({
   pauseButton.disabled = true
 
   controls.append(revealButton, pauseButton)
-  hud.append(header, opponentPanel, comparison, playerPanel, pileMetrics, saveWarning, status, controls)
+  hud.append(header, opponentPanel, comparison, playerPanel, pileMetrics, feedback, controls)
 
   const overlayHost = document.createElement('div')
   overlayHost.className = 'game-overlays'
@@ -256,44 +386,31 @@ export function createGameScreen({
     cancelEvent: (...args) => battlefield.cancelEvent?.(...args),
     setPaused: (...args) => battlefield.setPaused?.(...args),
   })
-  let eventPlayer
-  try {
-    eventPlayer = eventPlayerFactory({
-      adapter: presentationAdapter,
-      settingsController,
-      onStateChange(state) {
-        const message = presentationStatusText(state)
-        if (message !== null) status.textContent = message
-        status.dataset.presentationState = state.status
-      },
-      onError() {
-        status.textContent = 'Presentation skipped after a rendering error.'
-      },
-    })
-    if (
-      eventPlayer === null
-      || typeof eventPlayer !== 'object'
-      || typeof eventPlayer.present !== 'function'
-      || typeof eventPlayer.setPaused !== 'function'
-      || typeof eventPlayer.destroy !== 'function'
-    ) {
-      throw new TypeError('eventPlayerFactory must return a compatible event player')
-    }
-  } catch (error) {
-    pauseOverlay.teardown()
-    battlefield.teardown?.()
-    throw error
-  }
-
-  const handlePause = () => {
-    try {
-      Promise.resolve(runController?.pause()).catch(() => {})
-    } catch {}
-  }
-  pauseButton.addEventListener('click', handlePause)
-
+  let latestSnapshot = runController?.getSnapshot() ?? Object.freeze({
+    match: null,
+    saveStatus: 'idle',
+    saveReason: null,
+  })
+  let presentationState = Object.freeze({
+    status: 'idle',
+    eventId: null,
+    stepIndex: null,
+    stepCount: 0,
+    stepKind: null,
+    reason: null,
+  })
+  let presentationFailure = false
+  let interactionFailure = null
+  let revealActionPending = false
+  let revealActionEventId = null
+  let pauseActionPending = false
+  let revealInput = null
+  let pauseInput = null
   const queuedEventIds = new Set()
+  const requestedEventIds = new Set()
+  const presentationJobs = new Map()
   let saveWarningFailure = null
+
   const renderSaveWarning = () => {
     if (saveWarningFailure !== null) {
       saveWarning.textContent = saveWarningText(saveWarningFailure.reason)
@@ -311,16 +428,301 @@ export function createGameScreen({
     saveWarningFailure = null
     renderSaveWarning()
   }
+
+  function renderMetrics() {
+    const match = latestSnapshot?.match
+    const metrics = match === null || match === undefined
+      ? {
+          stage: '—',
+          'source-count': '—',
+          'player-draw-count': '—',
+          'player-won-count': '—',
+          'opponent-draw-count': '—',
+          'opponent-won-count': '—',
+          'contested-count': '—',
+          'burn-count': '—',
+        }
+      : {
+          stage: stageText(match.stage),
+          'source-count': match.zones.sourceDeck.length,
+          'player-draw-count': match.zones.player.drawPile.length,
+          'player-won-count': match.zones.player.wonPile.length,
+          'opponent-draw-count': match.zones.opponent.drawPile.length,
+          'opponent-won-count': match.zones.opponent.wonPile.length,
+          'contested-count': match.zones.contestedPile.length,
+          'burn-count': match.zones.burnPile.length,
+        }
+    for (const [key, value] of Object.entries(metrics)) {
+      setMetricValue(element, key, value)
+    }
+  }
+
+  function renderComparison() {
+    const copy = comparisonText(latestSnapshot?.match)
+    comparisonResult.textContent = copy.result
+    comparisonDetails.textContent = copy.details
+    comparisonProgress.textContent = latestSnapshot?.match
+      ? presentationProgressText(presentationState)
+      : 'Waiting for a match.'
+  }
+
+  function renderStatus() {
+    const snapshot = latestSnapshot ?? {}
+    const match = snapshot.match
+    let message
+    if (match === null || match === undefined) {
+      message = 'Game setup is not connected yet.'
+    } else if (match.machineState === 'paused') {
+      message = 'Game paused. Resume to continue.'
+    } else if (snapshot.saveStatus === 'saving' && match.pendingEvent !== null) {
+      message = 'Saving committed clash…'
+    } else if (
+      queuedEventIds.size > 0
+      && ACTIVE_PRESENTATION_STATUSES.has(presentationState.status)
+      && queuedEventIds.has(presentationState.eventId)
+    ) {
+      message = presentationStatusText(presentationState)
+    } else if (queuedEventIds.size > 0) {
+      message = 'Committed clash ready to present.'
+    } else if (ACTIVE_PRESENTATION_STATUSES.has(presentationState.status)) {
+      message = presentationStatusText(presentationState)
+    } else if (interactionFailure !== null) {
+      message = interactionFailure
+    } else if (presentationFailure || presentationState.status === 'failed') {
+      message = 'Presentation skipped after a rendering error.'
+    } else if (match.status === 'ended') {
+      message = terminalStatusText(match.outcome)
+    } else if (presentationState.status === 'skipped') {
+      message = 'Presentation skipped for reduced motion.'
+    } else if (presentationState.status === 'completed') {
+      message = 'Clash presentation complete. Reveal / Continue for the next clash.'
+    } else if (match.turn === 0) {
+      message = 'Ready. Reveal the first clash.'
+    } else {
+      message = 'Ready. Reveal / Continue for the next clash.'
+    }
+    status.textContent = message
+    status.dataset.presentationState = presentationState.status
+  }
+
+  function updateControls() {
+    const match = latestSnapshot?.match
+    const matchReady = match?.status === 'active' && match.machineState === 'ready'
+    const presentationActive = (
+      queuedEventIds.size > 0
+      || ACTIVE_PRESENTATION_STATUSES.has(presentationState.status)
+    )
+    const revealBusy = revealActionPending || presentationActive
+    revealInput?.setEnabled(matchReady)
+    revealInput?.setBusy(revealBusy)
+    pauseInput?.setEnabled(matchReady)
+    pauseInput?.setBusy(pauseActionPending)
+    if (revealInput === null) revealButton.disabled = !matchReady || revealBusy
+    if (pauseInput === null) pauseButton.disabled = !matchReady || pauseActionPending
+  }
+
+  function renderHud() {
+    renderMetrics()
+    renderComparison()
+    renderStatus()
+    updateControls()
+  }
+
+  let eventPlayer
+  try {
+    eventPlayer = eventPlayerFactory({
+      adapter: presentationAdapter,
+      settingsController,
+      onStateChange(nextState) {
+        presentationState = nextState
+        if (ACTIVE_PRESENTATION_STATUSES.has(nextState.status)) {
+          presentationFailure = false
+        }
+        renderHud()
+      },
+      onError() {
+        presentationFailure = true
+        renderHud()
+      },
+    })
+    if (
+      eventPlayer === null
+      || typeof eventPlayer !== 'object'
+      || typeof eventPlayer.present !== 'function'
+      || typeof eventPlayer.setPaused !== 'function'
+      || typeof eventPlayer.destroy !== 'function'
+    ) {
+      throw new TypeError('eventPlayerFactory must return a compatible event player')
+    }
+  } catch (error) {
+    pauseOverlay.teardown()
+    battlefield.teardown?.()
+    throw error
+  }
+
   const present = (match) => {
     const eventId = match.pendingEvent?.id
-    if (eventId !== undefined && queuedEventIds.has(eventId)) return
+    if (eventId !== undefined && presentationJobs.has(eventId)) {
+      return presentationJobs.get(eventId)
+    }
+    if (eventId !== undefined && requestedEventIds.has(eventId)) {
+      return Promise.resolve(Object.freeze({
+        status: 'duplicate',
+        eventId,
+        reason: null,
+      }))
+    }
+    if (eventId !== undefined) requestedEventIds.add(eventId)
     if (eventId !== undefined) queuedEventIds.add(eventId)
-    Promise.resolve(eventPlayer.present(match)).catch(() => {
-      status.textContent = 'Presentation skipped after a rendering error.'
-    }).finally(() => {
+    renderHud()
+
+    let presentation
+    try {
+      presentation = eventPlayer.present(match)
+    } catch {
+      presentationFailure = true
       if (eventId !== undefined) queuedEventIds.delete(eventId)
-    })
+      if (eventId === revealActionEventId) {
+        revealActionPending = false
+        revealActionEventId = null
+      }
+      renderHud()
+      return Promise.resolve(Object.freeze({
+        status: 'failed',
+        eventId: eventId ?? null,
+        reason: 'presentation-error',
+      }))
+    }
+
+    const finalized = Promise.resolve(presentation)
+      .then((result) => {
+        if (result?.status === 'failed') presentationFailure = true
+        if (
+          eventId !== undefined
+          && presentationState.eventId === eventId
+          && ['completed', 'skipped', 'failed'].includes(result?.status)
+        ) {
+          presentationState = Object.freeze({
+            ...presentationState,
+            status: result.status,
+            stepIndex: null,
+            stepKind: null,
+            reason: result.reason ?? null,
+          })
+        }
+        return result
+      })
+      .catch(() => {
+        presentationFailure = true
+        return Object.freeze({
+          status: 'failed',
+          eventId: eventId ?? null,
+          reason: 'presentation-error',
+        })
+      })
+      .finally(() => {
+        if (eventId !== undefined) {
+          queuedEventIds.delete(eventId)
+          presentationJobs.delete(eventId)
+        }
+        if (eventId === revealActionEventId) {
+          revealActionPending = false
+          revealActionEventId = null
+        }
+        renderHud()
+      })
+    if (eventId !== undefined) presentationJobs.set(eventId, finalized)
+    return finalized
   }
+
+  const handleReveal = () => {
+    if (revealActionPending) return
+    revealActionPending = true
+    interactionFailure = null
+    presentationFailure = false
+    renderHud()
+
+    let action
+    try {
+      action = runController?.revealOrContinue()
+      revealActionEventId = latestSnapshot?.match?.pendingEvent?.id ?? null
+      renderHud()
+    } catch {
+      revealActionPending = false
+      revealActionEventId = null
+      interactionFailure = 'Reveal could not be completed. Try again.'
+      renderHud()
+      return
+    }
+
+    Promise.resolve(action)
+      .then((result) => {
+        const committedMatch = result?.match
+        if (committedMatch?.pendingEvent !== null && committedMatch?.pendingEvent !== undefined) {
+          revealActionEventId ??= committedMatch.pendingEvent.id
+          return present(committedMatch)
+        }
+        revealActionPending = false
+        revealActionEventId = null
+        renderHud()
+        return undefined
+      })
+      .catch(() => {
+        revealActionPending = false
+        revealActionEventId = null
+        interactionFailure = 'Reveal could not be completed. Try again.'
+        renderHud()
+      })
+  }
+
+  const handlePause = () => {
+    if (pauseActionPending) return
+    pauseActionPending = true
+    interactionFailure = null
+    renderHud()
+
+    let action
+    try {
+      action = runController?.pause()
+    } catch {
+      pauseActionPending = false
+      interactionFailure = 'Pause could not be completed. Try again.'
+      renderHud()
+      return
+    }
+    Promise.resolve(action)
+      .catch(() => {
+        interactionFailure = 'Pause could not be completed. Try again.'
+      })
+      .finally(() => {
+        pauseActionPending = false
+        renderHud()
+      })
+  }
+
+  try {
+    revealInput = inputControllerFactory({
+      target: revealButton,
+      onActivate: handleReveal,
+      enabled: false,
+    })
+    assertInputController(revealInput)
+    pauseInput = inputControllerFactory({
+      target: pauseButton,
+      onActivate: handlePause,
+      enabled: false,
+    })
+    assertInputController(pauseInput)
+  } catch (error) {
+    revealInput?.destroy?.()
+    pauseInput?.destroy?.()
+    pauseOverlay.teardown()
+    eventPlayer.destroy()
+    battlefield.teardown?.()
+    throw error
+  }
+  renderHud()
+
   const unsubscribeSaves = runController?.subscribeToSaves?.(({ match, result }) => {
     if (isSaveFailureStatus(result?.status)) {
       showSaveWarning(result.reason)
@@ -328,8 +730,8 @@ export function createGameScreen({
     if (match.pendingEvent !== null) present(match)
   })
   const unsubscribeRun = runController?.subscribe((snapshot) => {
+    latestSnapshot = snapshot
     const { match } = snapshot
-    pauseButton.disabled = match?.machineState !== 'ready'
     pauseOverlay.element.hidden = match?.machineState !== 'paused'
     pauseOverlay.update(snapshot)
     // Keep failures visible through transient unsaved/saving states until a save succeeds.
@@ -341,29 +743,11 @@ export function createGameScreen({
     const nextPresentationPaused = match?.machineState === 'paused'
     eventPlayer.setPaused(nextPresentationPaused)
 
-    if (match === null || match === undefined) {
-      status.textContent = 'Game setup is not connected yet.'
-      return
-    }
-    const metrics = {
-      stage: match.stage,
-      'source-count': match.zones.sourceDeck.length,
-      'player-draw-count': match.zones.player.drawPile.length,
-      'player-won-count': match.zones.player.wonPile.length,
-      'opponent-draw-count': match.zones.opponent.drawPile.length,
-      'opponent-won-count': match.zones.opponent.wonPile.length,
-      'contested-count': match.zones.contestedPile.length,
-      'burn-count': match.zones.burnPile.length,
-    }
-    for (const [key, value] of Object.entries(metrics)) {
-      setMetricValue(element, key, value)
-    }
+    renderHud()
 
     const saveSettled = snapshot.saveStatus === 'saved' || snapshot.saveStatus === 'failed'
-    if (match.pendingEvent === null || saveSettled) {
+    if (match !== null && match !== undefined && (match.pendingEvent === null || saveSettled)) {
       present(match)
-    } else if (snapshot.saveStatus === 'saving') {
-      status.textContent = 'Saving committed clash…'
     }
   })
 
@@ -372,7 +756,8 @@ export function createGameScreen({
     teardown() {
       unsubscribeRun?.()
       unsubscribeSaves?.()
-      pauseButton.removeEventListener('click', handlePause)
+      revealInput.destroy()
+      pauseInput.destroy()
       pauseOverlay.teardown()
       eventPlayer.destroy()
       battlefield.teardown?.()

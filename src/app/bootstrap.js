@@ -15,6 +15,7 @@ function assertRunController(runController) {
     'discardPendingRestore',
     'saveStable',
     'subscribe',
+    'revealOrContinue',
     'pause',
     'resume',
     'destroy',
@@ -60,6 +61,7 @@ export function bootstrap({
   runController = undefined,
   pageLifecycleFactory = createPageLifecycle,
   eventPlayerFactory = undefined,
+  inputControllerFactory = undefined,
 } = {}) {
   const settingsController = createSettingsController({
     repository: settingsRepository,
@@ -120,6 +122,7 @@ export function bootstrap({
           settingsController,
           runController: activeRunController,
           eventPlayerFactory,
+          inputControllerFactory,
         }),
       },
     })
