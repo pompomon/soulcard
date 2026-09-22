@@ -166,7 +166,7 @@ test('numeric, ace, and face layouts use suit colors and original geometry', () 
       createCanvas: harness.createCanvas,
     })
     assert.ok(canvas.context.operations.some(({ name }) => name === 'arc'))
-    assert.ok(canvas.context.operations.some(({ name }) => name === 'fillRect'))
+    assert.ok(canvas.context.operations.some(({ name }) => name === 'lineTo'))
     assert.ok(textOperations(canvas, cardId.slice(2, -1)).length >= 3)
   }
 })

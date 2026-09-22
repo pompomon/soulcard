@@ -166,6 +166,16 @@ export function createTextureCache({
     const canvas = kind === 'front'
       ? descriptor.create(cardId, generatorOptions)
       : descriptor.create(generatorOptions)
+    if (
+      canvas === null
+      || typeof canvas !== 'object'
+      || !Number.isInteger(canvas.width)
+      || canvas.width < 1
+      || !Number.isInteger(canvas.height)
+      || canvas.height < 1
+    ) {
+      throw new TypeError('Theme generator must return a sized canvas')
+    }
     let texture
     try {
       texture = textureFactory(canvas)
@@ -233,8 +243,12 @@ export function createTextureCache({
       throw new RangeError(`Unknown card ID: ${String(cardId)}`)
     }
     const descriptor = kind === 'front'
-      ? registry.resolveFront(themeId ?? registry.fallbackFrontThemeId)
-      : registry.resolveBack(themeId ?? registry.fallbackBackThemeId)
+      ? registry.resolveFront(
+        themeId === undefined ? registry.fallbackFrontThemeId : themeId,
+      )
+      : registry.resolveBack(
+        themeId === undefined ? registry.fallbackBackThemeId : themeId,
+      )
     const key = textureKey(kind, descriptor.id, cardId, scale)
     let entry = entries.get(key)
     if (entry) {

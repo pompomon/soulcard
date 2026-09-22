@@ -168,6 +168,7 @@ test('registrations validate IDs and contracts and reject collisions per kind', 
   assert.throws(() => createThemeRegistry({ onDiagnostic: null }), /onDiagnostic/)
 
   const registry = createThemeRegistry()
+  registry.registerFront(ALTERNATE_FRONT_THEME)
   assert.throws(() => registry.registerFront(ALTERNATE_FRONT_THEME), /already registered/)
   const sharedFront = registry.registerFront({ id: 'shared-v1', create() {} })
   const sharedBack = registry.registerBack({ id: 'shared-v1', create() {} })

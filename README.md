@@ -2,8 +2,8 @@
 
 A framework-light, fullscreen card-game PWA with a deterministic domain engine and
 Main, Settings, and Game screen shell. The Game screen contains a responsive Three.js
-battlefield with logical zone placeholders while generated card visuals are developed
-incrementally.
+battlefield with logical zone placeholders. Generated classic front/back resources and
+a bounded texture cache are ready for committed-event presentation integration.
 
 ## Development
 

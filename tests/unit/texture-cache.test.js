@@ -232,6 +232,12 @@ test('generation and configuration failures leave no cached or canvas-backed tex
           throw new Error('generation failed')
         },
       },
+      {
+        id: 'empty-front-v1',
+        create() {
+          return {}
+        },
+      },
     ],
   })
   const cache = createTextureCache({
@@ -256,6 +262,17 @@ test('generation and configuration failures leave no cached or canvas-backed tex
       scale: 1,
     }),
     /generation failed/,
+  )
+  assert.equal(partialTextures.length, 0)
+  assert.equal(cache.getStats().entries, 0)
+
+  assert.throws(
+    () => cache.acquireFront({
+      themeId: 'empty-front-v1',
+      cardId: 'c-2S',
+      scale: 1,
+    }),
+    /sized canvas/,
   )
   assert.equal(partialTextures.length, 0)
   assert.equal(cache.getStats().entries, 0)
