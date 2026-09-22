@@ -59,6 +59,7 @@ export function bootstrap({
   runRepository = undefined,
   runController = undefined,
   pageLifecycleFactory = createPageLifecycle,
+  eventPlayerFactory = undefined,
 } = {}) {
   const settingsController = createSettingsController({
     repository: settingsRepository,
@@ -118,6 +119,7 @@ export function bootstrap({
           mountBattlefield,
           settingsController,
           runController: activeRunController,
+          eventPlayerFactory,
         }),
       },
     })

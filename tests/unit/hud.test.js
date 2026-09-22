@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createRunController } from '../../src/app/run-controller.js'
-import { createMatch } from '../../src/domain/match-machine.js'
+import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { createGameScreen } from '../../src/ui/hud.js'
 
@@ -53,6 +53,18 @@ function descendants(element) {
 
 function byAction(screen, action) {
   return descendants(screen.element).find((element) => element.dataset.action === action)
+}
+
+function byValue(screen, value) {
+  return descendants(screen.element).find((element) => element.dataset.value === value)
+}
+
+function deferred() {
+  let resolve
+  const promise = new Promise((settle) => {
+    resolve = settle
+  })
+  return { promise, resolve }
 }
 
 test('Game owns a semantic pause overlay with live save status and Resume', async (t) => {
@@ -187,4 +199,209 @@ test('Game leaves pause disabled without a run controller and still tears down p
   )
   screen.teardown()
   assert.equal(teardowns, 1)
+})
+
+test('Game gates committed presentation on save completion and publishes live progress', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const write = deferred()
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => write.promise,
+    },
+    initialMatch: createMatch({
+      runId: 'hud-presentation',
+      seed: 0,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const presented = []
+  const paused = []
+  let presentationState
+  let destroyed = 0
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => ({
+      syncSnapshot() {},
+      beginEvent() {},
+      applyStep() {},
+      setPaused() {},
+      teardown() {},
+    }),
+    eventPlayerFactory({ onStateChange }) {
+      presentationState = onStateChange
+      return {
+        present(match) {
+          presented.push(match)
+          return Promise.resolve({ status: 'completed' })
+        },
+        setPaused(value) {
+          paused.push(value)
+        },
+        destroy() {
+          destroyed += 1
+        },
+      }
+    },
+  })
+  const status = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'statusHost'),
+  )
+
+  assert.equal(presented.length, 1)
+  assert.equal(presented[0].pendingEvent, null)
+  const clash = controller.revealOrContinue()
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(presented.length, 1)
+  assert.equal(status.textContent, 'Saving committed clash…')
+
+  write.resolve({
+    status: 'saved',
+    savedAt: '2026-09-22T09:00:00.000Z',
+  })
+  await clash
+  await Promise.resolve()
+  assert.equal(presented.length, 2)
+  assert.equal(presented[1].pendingEvent.id, controller.currentMatch.pendingEvent.id)
+  assert.equal(byValue(screen, 'stage').textContent, 'source')
+  assert.equal(
+    byValue(screen, 'source-count').textContent,
+    String(controller.currentMatch.zones.sourceDeck.length),
+  )
+  assert.ok(paused.length > 0)
+  assert.ok(paused.every((value) => value === false))
+
+  presentationState({
+    status: 'playing',
+    eventId: controller.currentMatch.pendingEvent.id,
+    stepIndex: 0,
+    stepCount: 3,
+    stepKind: 'reveal',
+    reason: null,
+  })
+  assert.equal(status.textContent, 'Revealing card 1 of 3.')
+  presentationState({
+    status: 'skipped',
+    eventId: controller.currentMatch.pendingEvent.id,
+    stepIndex: null,
+    stepCount: 3,
+    stepKind: null,
+    reason: 'reduced-motion',
+  })
+  assert.equal(status.textContent, 'Presentation skipped for reduced motion.')
+  assert.equal(status.dataset.presentationState, 'skipped')
+
+  screen.teardown()
+  assert.equal(destroyed, 1)
+})
+
+test('Game queues a restored paused event and tears down player before battlefield', (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const ready = revealOrContinue(createMatch({
+    runId: 'hud-restored-event',
+    seed: 0,
+    ruleset: BASELINE_RULESET,
+  })).match
+  const snapshot = {
+    match: { ...ready, machineState: 'paused' },
+    saveStatus: 'saved',
+    saveReason: null,
+  }
+  const order = []
+  const presented = []
+  const pauses = []
+  const runController = {
+    getSnapshot: () => snapshot,
+    subscribe(listener) {
+      listener(snapshot)
+      return () => order.push('unsubscribe')
+    },
+    pause() {},
+    resume() {},
+  }
+  const screen = createGameScreen({
+    runController,
+    mountBattlefield: () => ({
+      teardown() {
+        order.push('battlefield')
+      },
+    }),
+    eventPlayerFactory() {
+      return {
+        present(match) {
+          presented.push(match.pendingEvent.id)
+          return Promise.resolve({ status: 'queued' })
+        },
+        setPaused(value) {
+          pauses.push(value)
+        },
+        destroy() {
+          order.push('player')
+        },
+      }
+    },
+  })
+
+  assert.deepEqual(presented, [ready.pendingEvent.id])
+  assert.deepEqual(pauses, [true])
+  screen.teardown()
+  assert.deepEqual(order, ['unsubscribe', 'player', 'battlefield'])
+})
+
+test('Game presents a committed event after a failed save without blocking play', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => ({
+        status: 'storage-unavailable',
+        operation: 'save',
+        reason: 'quota-exceeded',
+      }),
+    },
+    initialMatch: createMatch({
+      runId: 'hud-failed-save',
+      seed: 0,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const presented = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: () => ({
+      present(match) {
+        presented.push(match.pendingEvent?.id ?? null)
+        return Promise.resolve({ status: 'completed' })
+      },
+      setPaused() {},
+      destroy() {},
+    }),
+  })
+
+  await controller.revealOrContinue()
+  await Promise.resolve()
+  assert.deepEqual(presented, [null, controller.currentMatch.pendingEvent.id])
+  screen.teardown()
 })
