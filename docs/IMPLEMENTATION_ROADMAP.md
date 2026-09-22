@@ -981,7 +981,7 @@ reviewable PR.
   and bootstrap tests cover boundaries, fitting, immutability, zero-size mounting,
   settings, pause, deterministic domain independence, renderer replacement, and
   idempotent teardown.
-- **Validation:** All 174 Node test executions and the production build pass locally
+- **Validation:** All 176 Node test executions and the production build pass locally
   on Node 24. A text-only headless Chrome check verifies one Game screen and canvas,
   responsive canvas sizing, a render-scale cap of 2, available primary controls, and
   the expected modes at 320×480 phone portrait/DPR 3, 844×390 phone landscape/DPR 3,

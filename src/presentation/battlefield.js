@@ -199,6 +199,10 @@ export function mountBattlefield(host, {
   function disposeRenderer() {
     if (!renderer) return
     renderer.setAnimationLoop(null)
+    floorGeometry.dispose()
+    floorMaterial.dispose()
+    placeholderGeometry.dispose()
+    placeholderMaterial.dispose()
     renderer.dispose()
     renderer.domElement?.remove?.()
     renderer = null
@@ -336,10 +340,6 @@ export function mountBattlefield(host, {
       windowObject?.removeEventListener?.('orientationchange', scheduleResize)
       unsubscribeSettings?.()
       disposeRenderer()
-      floorGeometry.dispose()
-      floorMaterial.dispose()
-      placeholderGeometry.dispose()
-      placeholderMaterial.dispose()
       scene.clear()
     },
     get layout() {

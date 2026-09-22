@@ -309,6 +309,11 @@ button:disabled {
   min-height: 44px;
 }
 
+.game-controls .game-button {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
 .game-button {
   padding: 0.65rem 0.9rem;
   background: rgb(38 27 74 / 84%);
@@ -417,6 +422,24 @@ button:disabled {
   padding: 8px;
 }
 
+.screen--game[data-layout-mode="phone-portrait"] .zone-panel {
+  align-self: stretch;
+}
+
+.screen--game[data-layout-mode="phone-portrait"] .zone-panel__title {
+  margin-bottom: 0.2rem;
+}
+
+.screen--game[data-layout-mode="phone-portrait"] .hud-metrics--piles {
+  align-items: center;
+  padding-block: 0.15rem;
+}
+
+.screen--game[data-layout-mode="phone-portrait"] .game-status {
+  align-self: stretch;
+  padding-block: 0.35rem;
+}
+
 .screen--game[data-layout-mode="phone-landscape"] .game-controls,
 .screen--game[data-layout-mode="tablet"] .game-controls {
   flex-direction: column;
@@ -438,10 +461,6 @@ button:disabled {
 
 .screen--game[data-layout-mode="phone-portrait"] .comparison-area {
   min-height: 4rem;
-}
-
-.screen--game[data-layout-mode="phone-portrait"] .game-controls button {
-  flex: 1;
 }
 
 .screen--game[data-layout-mode="phone-landscape"] .screen-title {

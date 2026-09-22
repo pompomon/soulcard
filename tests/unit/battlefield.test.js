@@ -60,11 +60,13 @@ class FakeRenderer {
     this.sizes.push([width, height, updateStyle])
   }
 
-  render() {
+  render(scene) {
+    this.scene = scene
     this.renderCalls += 1
   }
 
   dispose() {
+    this.onDispose?.()
     this.disposeCalls += 1
   }
 }
@@ -259,6 +261,20 @@ test('quality rebuilds the renderer while pause and reduced motion stop presenta
   windowObject.flushFrames()
 
   assert.equal(typeof renderers[0].animationLoop, 'function')
+  const sceneResources = new Set()
+  renderers[0].scene.traverse((object) => {
+    if (object.geometry) sceneResources.add(object.geometry)
+    if (object.material) sceneResources.add(object.material)
+  })
+  assert.equal(sceneResources.size, 4)
+  const resourceDisposals = new Map(
+    [...sceneResources].map((resource) => [resource, 0]),
+  )
+  for (const resource of sceneResources) {
+    resource.addEventListener('dispose', () => {
+      resourceDisposals.set(resource, resourceDisposals.get(resource) + 1)
+    })
+  }
   handle.setPaused(true)
   assert.equal(renderers[0].animationLoop, null)
 
@@ -270,6 +286,9 @@ test('quality rebuilds the renderer while pause and reduced motion stop presenta
   const expected = revealOrContinue(initialMatch)
   assert.deepEqual(revealOrContinue(initialMatch), expected)
 
+  renderers[0].onDispose = () => {
+    assert.ok([...resourceDisposals.values()].every((count) => count === 1))
+  }
   settingsController.emit({ quality: 'low', renderScaleCap: 1 })
   assert.equal(renderers.length, 2)
   assert.equal(renderers[0].disposeCalls, 1)
@@ -285,6 +304,9 @@ test('quality rebuilds the renderer while pause and reduced motion stop presenta
   assert.ok(renderers[1].renderCalls > 0)
   assert.throws(() => handle.setPaused('yes'), /boolean/)
 
+  renderers[1].onDispose = () => {
+    assert.ok([...resourceDisposals.values()].every((count) => count === 2))
+  }
   handle.teardown()
   assert.equal(renderers[1].disposeCalls, 1)
   assert.equal(host.children.length, 0)
