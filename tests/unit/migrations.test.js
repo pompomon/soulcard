@@ -22,12 +22,12 @@ function allObjects(value) {
   return [value, ...Object.values(value).flatMap(allObjects)]
 }
 
-test('version 1 active saves migrate through each step to the current version 3 fixture', () => {
+test('version 1 active saves migrate through each step without rewriting its event', () => {
   const legacy = fixture('run-save-v1.json')
   const before = clone(legacy)
   const migrated = migrateRunSave(legacy)
 
-  assert.deepEqual(migrated, fixture('run-save-v3.json'))
+  assert.deepEqual(migrated, fixture('run-save-legacy-v3.json'))
   assert.deepEqual(legacy, before)
   assert.ok(allObjects(migrated).every(Object.isFrozen))
   assert.notEqual(migrated, legacy)
@@ -45,8 +45,8 @@ test('current saves are validated, cloned, and frozen without migration', () => 
 
 test('version 2 active and terminal saves migrate without changing domain data', () => {
   for (const [legacyName, currentName] of [
-    ['run-save-v2.json', 'run-save-v3.json'],
-    ['run-save-terminal-v2.json', 'run-save-terminal-v3.json'],
+    ['run-save-v2.json', 'run-save-legacy-v3.json'],
+    ['run-save-terminal-v2.json', 'run-save-terminal-legacy-v3.json'],
   ]) {
     const legacy = fixture(legacyName)
     const migrated = migrateRunSave(legacy)

@@ -59,6 +59,7 @@ export function createRunController({
   let destroyed = false
   let destroyPromise = null
   const listeners = new Set()
+  const saveListeners = new Set()
 
   function assertActive() {
     if (destroyed) {
@@ -126,6 +127,16 @@ export function createRunController({
       .catch((error) => storageFailure('save', error))
 
     const finalized = operation.then((result) => {
+      const completion = Object.freeze({ match: snapshot, result })
+      for (const listener of [...saveListeners]) {
+        try {
+          listener(completion)
+        } catch (error) {
+          try {
+            onSubscriberError(error)
+          } catch {}
+        }
+      }
       if (sequence === latestSaveSequence && saveRevision === revision && !destroyed) {
         if (result.status === 'saved') {
           saveStatus = 'saved'
@@ -282,6 +293,17 @@ export function createRunController({
     }
   }
 
+  function subscribeToSaves(listener) {
+    assertActive()
+    if (typeof listener !== 'function') {
+      throw new TypeError('save listener must be a function')
+    }
+    saveListeners.add(listener)
+    return () => {
+      saveListeners.delete(listener)
+    }
+  }
+
   function whenIdle() {
     return writeTail
   }
@@ -290,6 +312,7 @@ export function createRunController({
     if (destroyPromise) return destroyPromise
     destroyed = true
     listeners.clear()
+    saveListeners.clear()
     destroyPromise = Promise.allSettled([
       writeTail,
       restorePromise ?? Promise.resolve(),
@@ -302,6 +325,7 @@ export function createRunController({
   return Object.freeze({
     getSnapshot,
     subscribe,
+    subscribeToSaves,
     restore,
     setMatch,
     discardPendingRestore,

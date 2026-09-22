@@ -2,8 +2,8 @@
 
 A framework-light, fullscreen card-game PWA with a deterministic domain engine and
 Main, Settings, and Game screen shell. The Game screen contains a responsive Three.js
-battlefield with logical zone placeholders. Generated classic front/back resources and
-a bounded texture cache are ready for committed-event presentation integration.
+battlefield that reconciles authoritative match snapshots and presents already-committed
+events with generated classic card fronts/backs from a bounded texture cache.
 
 ## Development
 
@@ -29,6 +29,20 @@ material.map = null
 lease.release()
 material.dispose()
 ```
+
+## Committed-event presentation
+
+`src/presentation/event-player.js` reads only a stable match snapshot's
+`pendingEvent`. Game waits for the corresponding save attempt to settle before
+presentation, but a storage failure does not block in-memory play. Duplicate
+controller notifications are suppressed within one Game mount; restoring the same
+pending event in a fresh mount replays it.
+
+Animation speed scales presentation time, while effective reduced motion skips
+transitions and immediately reconciles the battlefield to the committed snapshot.
+Presentation never advances the match machine, evaluates burn rules, or consumes RNG.
+Current events record each reveal's source/personal pile origin; version 2 saved events
+remain readable.
 
 ## Tests
 
@@ -93,7 +107,7 @@ npm run simulate --silent > tests/fixtures/simulation-report.json
 
 The algorithm and shuffle order are compatibility contracts; see the
 [roadmap's RNG contract](docs/IMPLEMENTATION_ROADMAP.md#rng-contract-milestone-2).
-The RNG is not yet wired into the visual prototype.
+Presentation consumes committed snapshots and events without advancing the RNG.
 
 ### Manual seed replay
 

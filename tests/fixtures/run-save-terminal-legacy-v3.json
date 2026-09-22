@@ -96,7 +96,7 @@
     "futureModifiers": []
   },
   "pendingEvent": {
-    "eventVersion": 3,
+    "eventVersion": 2,
     "id": "fixture-terminal:clash-46",
     "type": "clashSettled",
     "turn": 46,
@@ -105,18 +105,15 @@
     "reveals": [
       {
         "cardId": "c-AC",
-        "suppliedBy": "player",
-        "from": "player.drawPile"
+        "suppliedBy": "player"
       },
       {
         "cardId": "c-AS",
-        "suppliedBy": "opponent",
-        "from": "opponent.drawPile"
+        "suppliedBy": "opponent"
       },
       {
         "cardId": "c-QS",
-        "suppliedBy": "player",
-        "from": "player.drawPile"
+        "suppliedBy": "player"
       }
     ],
     "transfers": [
@@ -132,7 +129,7 @@
     "burned": [
       "c-AS"
     ],
-    "stateFingerprint": "[\"fixture-terminal\",{\"burn\":{\"decisiveWinningCard\":\"winner.wonPile\",\"eligibleScope\":\"all-losing-side-cards-in-resolved-contested-pile\",\"enabled\":true},\"id\":\"mvp-baseline-v1\"},\"mulberry32\",12345,1000342597,\"personal\",\"ended\",46,\"ended\",[\"win\",\"player\",\"opponentUnableToReveal\"],[],[\"c-AH\",\"c-AD\"],[\"c-AC\",\"c-QS\"],[],[],[],[\"c-6D\",\"c-7D\",\"c-3H\",\"c-5D\",\"c-4C\",\"c-2H\",\"c-KS\",\"c-2S\",\"c-8C\",\"c-2C\",\"c-8S\",\"c-4S\",\"c-7S\",\"c-3S\",\"c-7H\",\"c-9H\",\"c-2D\",\"c-6H\",\"c-JS\",\"c-5C\",\"c-8H\",\"c-6C\",\"c-5S\",\"c-5H\",\"c-3C\",\"c-4H\",\"c-QC\",\"c-3D\",\"c-9S\",\"c-6S\",\"c-10C\",\"c-9C\",\"c-10D\",\"c-8D\",\"c-7C\",\"c-QD\",\"c-4D\",\"c-KD\",\"c-JD\",\"c-9D\",\"c-QH\",\"c-KH\",\"c-KC\",\"c-10S\",\"c-JH\",\"c-JC\",\"c-10H\",\"c-AS\"],[],[\"clashSettled\",\"player\",[[\"c-AC\",\"player\",\"player.drawPile\"],[\"c-AS\",\"opponent\",\"opponent.drawPile\"],[\"c-QS\",\"player\",\"player.drawPile\"]],[[\"c-AC\",\"player.wonPile\"],[\"c-QS\",\"player.wonPile\"]],[\"c-AS\"]]]",
+    "stateFingerprint": "[\"fixture-terminal\",{\"burn\":{\"decisiveWinningCard\":\"winner.wonPile\",\"eligibleScope\":\"all-losing-side-cards-in-resolved-contested-pile\",\"enabled\":true},\"id\":\"mvp-baseline-v1\"},\"mulberry32\",12345,1000342597,\"personal\",\"ended\",46,\"ended\",[\"win\",\"player\",\"opponentUnableToReveal\"],[],[\"c-AH\",\"c-AD\"],[\"c-AC\",\"c-QS\"],[],[],[],[\"c-6D\",\"c-7D\",\"c-3H\",\"c-5D\",\"c-4C\",\"c-2H\",\"c-KS\",\"c-2S\",\"c-8C\",\"c-2C\",\"c-8S\",\"c-4S\",\"c-7S\",\"c-3S\",\"c-7H\",\"c-9H\",\"c-2D\",\"c-6H\",\"c-JS\",\"c-5C\",\"c-8H\",\"c-6C\",\"c-5S\",\"c-5H\",\"c-3C\",\"c-4H\",\"c-QC\",\"c-3D\",\"c-9S\",\"c-6S\",\"c-10C\",\"c-9C\",\"c-10D\",\"c-8D\",\"c-7C\",\"c-QD\",\"c-4D\",\"c-KD\",\"c-JD\",\"c-9D\",\"c-QH\",\"c-KH\",\"c-KC\",\"c-10S\",\"c-JH\",\"c-JC\",\"c-10H\",\"c-AS\"],[],[\"clashSettled\",\"player\",[[\"c-AC\",\"player\"],[\"c-AS\",\"opponent\"],[\"c-QS\",\"player\"]],[[\"c-AC\",\"player.wonPile\"],[\"c-QS\",\"player.wonPile\"]],[\"c-AS\"]]]",
     "pendingPresentation": "settlement-v1"
   }
 }
