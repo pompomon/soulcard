@@ -186,6 +186,9 @@ button:disabled {
   display: block;
   width: 100%;
   height: 100%;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .game-hud {
@@ -250,12 +253,16 @@ button:disabled {
 .comparison-area {
   grid-area: comparison;
   display: grid;
+  align-self: center;
   align-content: center;
+  justify-self: center;
   gap: 0.35rem;
-  min-height: 8rem;
-  padding: 0.75rem;
-  background: transparent;
-  backdrop-filter: none;
+  width: min(88%, 22rem);
+  min-height: 0;
+  padding: 0.55rem 0.75rem;
+  border-color: rgb(255 255 255 / 12%);
+  background: rgb(6 5 20 / 52%);
+  backdrop-filter: blur(4px);
   text-align: center;
 }
 
@@ -497,6 +504,50 @@ button:disabled {
 .screen--game[data-layout-mode="tablet"] .game-controls {
   flex-direction: column;
   align-items: stretch;
+}
+
+.screen--game[data-layout-mode="tablet"] .game-hud__header {
+  padding: 0.45rem 0.7rem;
+}
+
+.screen--game[data-layout-mode="tablet"] .screen-title {
+  font-size: 1.35rem;
+}
+
+.screen--game[data-layout-mode="tablet"] .zone-panel {
+  padding: 0.5rem;
+}
+
+.screen--game[data-layout-mode="tablet"] .zone-panel__title {
+  margin-bottom: 0.3rem;
+  font-size: 0.8rem;
+}
+
+.screen--game[data-layout-mode="tablet"] .hud-metrics {
+  gap: 0.45rem;
+}
+
+.screen--game[data-layout-mode="tablet"] .hud-metric dt {
+  font-size: 0.62rem;
+}
+
+.screen--game[data-layout-mode="tablet"] .comparison-area {
+  width: min(82%, 20rem);
+}
+
+.screen--game[data-layout-mode="tablet"] .hud-metrics--piles,
+.screen--game[data-layout-mode="tablet"] .game-feedback {
+  padding: 0.4rem 0.5rem;
+}
+
+.screen--game[data-layout-mode="tablet"] .game-controls {
+  gap: 4px;
+  padding: 4px;
+}
+
+.screen--game[data-layout-mode="tablet"] .game-status,
+.screen--game[data-layout-mode="tablet"] .game-save-warning {
+  font-size: 0.7rem;
 }
 
 .screen--game[data-layout-mode="phone-landscape"] .game-controls .game-button {

@@ -156,3 +156,84 @@ test('one pointer action commits, saves, and presents exactly one deterministic 
   screen.teardown()
   await controller.destroy()
 })
+
+test('source and personal active-deck activation each use the guarded Reveal flow', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const source = createMatch({
+    runId: 'deck-source-integration',
+    seed: 0,
+    ruleset: BASELINE_RULESET,
+  })
+  let personal = createMatch({
+    runId: 'deck-personal-integration',
+    seed: 0,
+    ruleset: BASELINE_RULESET,
+  })
+  while (personal.stage === 'source') {
+    personal = revealOrContinue(personal).match
+  }
+
+  for (const initial of [source, personal]) {
+    const expected = revealOrContinue(initial).match
+    const saves = []
+    const controller = createRunController({
+      repository: {
+        load: async () => ({ status: 'empty' }),
+        async save(match) {
+          saves.push(match)
+          return {
+            status: 'saved',
+            savedAt: '2026-09-22T21:00:00.000Z',
+          }
+        },
+      },
+      initialMatch: initial,
+    })
+    const deckStates = []
+    let activateDeck
+    const screen = createGameScreen({
+      runController: controller,
+      mountBattlefield: (host, options) => {
+        activateDeck = options.onDeckActivate
+        return {
+          syncSnapshot() {},
+          beginEvent() {},
+          applyStep() {},
+          setPaused() {},
+          setDeckInputState(state) {
+            deckStates.push(state)
+          },
+          teardown() {},
+        }
+      },
+      eventPlayerFactory: (options) => createEventPlayer({
+        ...options,
+        timing: ZERO_TIMING,
+      }),
+    })
+
+    await waitFor(() => {
+      const state = deckStates.at(-1)
+      return state?.enabled === true && state.busy === false
+    })
+    activateDeck({ pointerType: 'touch' })
+    activateDeck({ pointerType: 'touch' })
+    assert.equal(controller.currentMatch.turn, initial.turn + 1)
+    assert.deepEqual(deckStates.at(-1), { enabled: true, busy: true })
+
+    await controller.whenIdle()
+    await waitFor(() => deckStates.at(-1)?.busy === false)
+    assert.equal(saves.length, 1)
+    assert.deepEqual(controller.currentMatch, expected)
+
+    screen.teardown()
+    await controller.destroy()
+  }
+})

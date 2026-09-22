@@ -330,6 +330,86 @@ test('Game resolves one pointer reveal, locks input through save and presentatio
   await controller.destroy()
 })
 
+test('Game routes active-deck and button activation through one Reveal busy gate', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const saves = []
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      async save(match) {
+        saves.push(match.turn)
+        return {
+          status: 'saved',
+          savedAt: '2026-09-22T20:00:00.000Z',
+        }
+      },
+    },
+    initialMatch: createMatch({
+      runId: 'hud-deck-reveal',
+      seed: 1,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const deckStates = []
+  const presented = []
+  let activateDeck
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: (host, options) => {
+      activateDeck = options.onDeckActivate
+      return {
+        setDeckInputState(state) {
+          deckStates.push(state)
+        },
+        teardown() {},
+      }
+    },
+    eventPlayerFactory: () => ({
+      present(match) {
+        if (match.pendingEvent !== null) presented.push(match.pendingEvent.id)
+        return Promise.resolve({
+          status: 'completed',
+          eventId: match.pendingEvent?.id ?? null,
+          reason: null,
+        })
+      },
+      setPaused() {},
+      destroy() {},
+    }),
+  })
+  const reveal = byAction(screen, 'reveal')
+
+  assert.equal(typeof activateDeck, 'function')
+  assert.deepEqual(deckStates.at(-1), { enabled: true, busy: false })
+  activateDeck()
+  activateDeck()
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(reveal.disabled, true)
+  assert.deepEqual(deckStates.at(-1), { enabled: true, busy: true })
+
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.equal(reveal.disabled, false)
+  reveal.dispatch('click')
+  assert.equal(controller.currentMatch.turn, 2)
+  await controller.whenIdle()
+  await flushMicrotasks()
+
+  assert.deepEqual(saves, [1, 2])
+  assert.equal(new Set(presented).size, 2)
+  assert.deepEqual(deckStates.at(-1), { enabled: true, busy: false })
+
+  screen.teardown()
+  await controller.destroy()
+})
+
 test('Game gates committed presentation on save completion and publishes live progress', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {

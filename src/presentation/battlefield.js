@@ -12,12 +12,15 @@ import { validateCommittedEvent } from '../domain/events.js'
 import { validateMatchState } from '../domain/match-machine.js'
 import { createTextureCache } from './texture-cache.js'
 import { createThemeRegistry } from './themes/registry.js'
+import { createInputController } from './input.js'
 
 const FALLBACK_SETTINGS = createSettingsSnapshot(DEFAULT_SETTINGS, false)
 const MAX_TRANSIENT_CARDS = 8
 const MAX_CONTEST_CARDS = 4
 const TEXTURE_CACHE_ENTRIES = 24
 const LEGACY_REVEAL_ORIGIN_ZONE = 'contestedPile'
+const DEFAULT_CARD_COLOR = 0xffffff
+const ACTIVE_DECK_COLOR = 0xd9fbff
 const TEXTURE_SCALE_BY_QUALITY = Object.freeze({
   low: 1,
   balanced: 2,
@@ -78,6 +81,27 @@ function assertTextureCache(cache) {
   ) {
     throw new TypeError('textureCacheFactory must return a compatible texture cache')
   }
+}
+
+function assertInputController(controller) {
+  const methods = ['setEnabled', 'setBusy', 'destroy']
+  if (
+    controller === null
+    || typeof controller !== 'object'
+    || methods.some((method) => typeof controller[method] !== 'function')
+  ) {
+    throw new TypeError('inputControllerFactory must return a compatible input controller')
+  }
+}
+
+function actionableDeckZone(match) {
+  if (match?.status !== 'active') return null
+  if (match.stage === 'source') {
+    return match.zones.sourceDeck.length > 0 ? 'sourceDeck' : null
+  }
+  if (match.zones.player.drawPile.length > 0) return 'playerDrawPile'
+  if (match.zones.player.wonPile.length > 0) return 'playerWonPile'
+  return null
 }
 
 function parsePixel(value) {
@@ -147,9 +171,11 @@ function getMeasuredSize(host, windowObject) {
 export function mountBattlefield(host, {
   settingsController,
   onLayout,
+  onDeckActivate,
   windowObject = globalThis.window,
   ResizeObserverClass = windowObject?.ResizeObserver ?? globalThis.ResizeObserver,
   rendererFactory = (options) => new THREE.WebGLRenderer(options),
+  inputControllerFactory = createInputController,
   themeRegistry = createThemeRegistry(),
   themeSelection = undefined,
   textureCacheFactory = createTextureCache,
@@ -159,8 +185,14 @@ export function mountBattlefield(host, {
   if (onLayout !== undefined && typeof onLayout !== 'function') {
     throw new TypeError('onLayout must be a function')
   }
+  if (onDeckActivate !== undefined && typeof onDeckActivate !== 'function') {
+    throw new TypeError('onDeckActivate must be a function')
+  }
   if (typeof rendererFactory !== 'function') {
     throw new TypeError('rendererFactory must be a function')
+  }
+  if (typeof inputControllerFactory !== 'function') {
+    throw new TypeError('inputControllerFactory must be a function')
   }
   assertThemeRegistry(themeRegistry)
   if (typeof textureCacheFactory !== 'function') {
@@ -205,9 +237,16 @@ export function mountBattlefield(host, {
     scene.add(group)
   }
   const cardGeometry = new THREE.PlaneGeometry(1.05, 1.45)
+  const deckPointer = new THREE.Vector2()
+  const deckRaycaster = new THREE.Raycaster()
 
   let currentSettings = settingsController?.getSnapshot() ?? FALLBACK_SETTINGS
   let renderer = null
+  let deckInput = null
+  let deckInputEnabled = false
+  let deckInputBusy = false
+  let activeDeckZoneId = null
+  let activeDeckVisual = null
   let textureCache = null
   let currentLayout = null
   let currentMatch = null
@@ -236,6 +275,73 @@ export function mountBattlefield(host, {
     host.dataset.presentationCard = cardId ?? ''
     host.dataset.presentationTurn = currentMatch === null ? '' : String(currentMatch.turn)
     host.dataset.presentationCards = String(staticVisuals.size + transientVisuals.size)
+  }
+
+  function publishDeckInput() {
+    if (!host.dataset) return
+    host.dataset.activeDeckZone = activeDeckZoneId ?? ''
+    host.dataset.deckInputEnabled = String(deckInputEnabled)
+    host.dataset.deckInputBusy = String(deckInputBusy)
+  }
+
+  function visualScale(visual) {
+    if (currentLayout === null) return 1
+    if (visual.transient) return currentLayout.visuals.revealScale
+    if (visual.zoneId === activeDeckZoneId) {
+      return currentLayout.visuals.activeDeckScale
+    }
+    return currentLayout.visuals.secondaryPileScale
+  }
+
+  function applyVisualAppearance(visual) {
+    const scale = visualScale(visual)
+    visual.mesh.scale.set(scale, scale, 1)
+    visual.material.color.setHex(
+      !visual.transient && visual.zoneId === activeDeckZoneId
+        ? ACTIVE_DECK_COLOR
+        : DEFAULT_CARD_COLOR,
+    )
+  }
+
+  function syncActiveDeckVisual() {
+    activeDeckVisual = [...staticVisuals].find(
+      (visual) => visual.zoneId === activeDeckZoneId,
+    ) ?? null
+    for (const visual of [...staticVisuals, ...transientVisuals.values()]) {
+      applyVisualAppearance(visual)
+    }
+    publishDeckInput()
+  }
+
+  function hitTestActiveDeck(event) {
+    const canvas = renderer?.domElement
+    if (
+      activeDeckVisual === null
+      || canvas === null
+      || canvas === undefined
+      || !Number.isFinite(event.clientX)
+      || !Number.isFinite(event.clientY)
+      || typeof canvas.getBoundingClientRect !== 'function'
+    ) {
+      return false
+    }
+    const bounds = canvas.getBoundingClientRect()
+    if (
+      !Number.isFinite(bounds.width)
+      || bounds.width <= 0
+      || !Number.isFinite(bounds.height)
+      || bounds.height <= 0
+    ) {
+      return false
+    }
+    deckPointer.set(
+      (event.clientX - bounds.left) / bounds.width * 2 - 1,
+      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+    )
+    scene.updateMatrixWorld(true)
+    camera.updateMatrixWorld(true)
+    deckRaycaster.setFromCamera(deckPointer, camera)
+    return deckRaycaster.intersectObject(activeDeckVisual.mesh, false).length > 0
   }
 
   function ensureTextureCache() {
@@ -294,6 +400,7 @@ export function mountBattlefield(host, {
     transientVisuals.clear()
     tweens.clear()
     settledVisuals.clear()
+    activeDeckVisual = null
   }
 
   function createCardVisual({
@@ -320,7 +427,7 @@ export function mountBattlefield(host, {
     mesh.name = `battlefield-card:${cardId}:${faceUp ? 'front' : 'back'}`
     mesh.position.set(offset.x, offset.y, offset.z)
     parent.add(mesh)
-    return {
+    const visual = {
       cardId,
       faceUp,
       parent,
@@ -332,6 +439,8 @@ export function mountBattlefield(host, {
       lease,
       tween: null,
     }
+    applyVisualAppearance(visual)
+    return visual
   }
 
   function firstVisibleCard(pile, excluded) {
@@ -363,6 +472,7 @@ export function mountBattlefield(host, {
 
   function renderSnapshotCards(match, excluded = new Set()) {
     for (const placeholder of placeholderMeshes.values()) placeholder.visible = false
+    activeDeckZoneId = actionableDeckZone(match)
     const { zones } = match
     addPileRepresentative(
       'sourceDeck',
@@ -393,6 +503,7 @@ export function mountBattlefield(host, {
       lastVisibleCard(zones.burnPile, excluded),
       true,
     )
+    syncActiveDeckVisual()
     publishPresentation(currentEvent === null ? 'snapshot' : 'prepared')
   }
 
@@ -558,10 +669,17 @@ export function mountBattlefield(host, {
 
   function disposeRenderer() {
     if (!renderer) return
-    renderer.setAnimationLoop(null)
-    renderer.dispose()
-    renderer.domElement?.remove?.()
+    const currentDeckInput = deckInput
+    deckInput = null
+    const currentRenderer = renderer
     renderer = null
+    try {
+      currentDeckInput?.destroy()
+    } finally {
+      currentRenderer.setAnimationLoop(null)
+      currentRenderer.dispose()
+      currentRenderer.domElement?.remove?.()
+    }
   }
 
   function createRenderer() {
@@ -584,8 +702,26 @@ export function mountBattlefield(host, {
     }
     nextRenderer.domElement.setAttribute?.('aria-hidden', 'true')
     nextRenderer.domElement.setAttribute?.('role', 'presentation')
+    nextRenderer.domElement.disabled = false
     host.append(nextRenderer.domElement)
     renderer = nextRenderer
+    if (onDeckActivate !== undefined) {
+      try {
+        deckInput = inputControllerFactory({
+          target: nextRenderer.domElement,
+          onActivate: onDeckActivate,
+          hitTest: hitTestActiveDeck,
+          enabled: deckInputEnabled,
+          busy: deckInputBusy,
+        })
+        assertInputController(deckInput)
+      } catch (error) {
+        deckInput?.destroy?.()
+        deckInput = null
+        disposeRenderer()
+        throw error
+      }
+    }
   }
 
   function resize() {
@@ -618,6 +754,9 @@ export function mountBattlefield(host, {
     for (const [zoneId, group] of zoneGroups) {
       const position = layout.zones[zoneId]
       group.position.set(position.x, position.y, position.z)
+    }
+    for (const visual of [...staticVisuals, ...transientVisuals.values()]) {
+      applyVisualAppearance(visual)
     }
     for (const visual of transientVisuals.values()) {
       if (visual.tween === null) {
@@ -652,6 +791,7 @@ export function mountBattlefield(host, {
 
   function rebuildRenderer() {
     disposeRenderer()
+    publishDeckInput()
     createRenderer()
     resize()
     syncAnimationLoop()
@@ -787,11 +927,23 @@ export function mountBattlefield(host, {
     renderCurrentFrame()
   }
 
+  function setDeckInputState({ enabled, busy } = {}) {
+    if (typeof enabled !== 'boolean' || typeof busy !== 'boolean') {
+      throw new TypeError('deck input enabled and busy must be booleans')
+    }
+    deckInputEnabled = enabled
+    deckInputBusy = busy
+    deckInput?.setEnabled(enabled)
+    deckInput?.setBusy(busy)
+    publishDeckInput()
+  }
+
   const handle = {
     syncSnapshot,
     beginEvent,
     applyStep,
     cancelEvent,
+    setDeckInputState,
     setPaused(nextPaused) {
       if (typeof nextPaused !== 'boolean') {
         throw new TypeError('paused must be a boolean')
@@ -841,6 +993,13 @@ export function mountBattlefield(host, {
         transientCards: transientVisuals.size,
         tweens: tweens.size,
         cacheEntries: textureCache?.getStats?.().entries ?? 0,
+      })
+    },
+    getDeckInputState() {
+      return Object.freeze({
+        activeZone: activeDeckZoneId,
+        enabled: deckInputEnabled,
+        busy: deckInputBusy,
       })
     },
     get layout() {

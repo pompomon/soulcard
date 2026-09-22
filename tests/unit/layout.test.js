@@ -42,7 +42,41 @@ test('layout exposes immutable logical anchors for every battlefield zone', () =
   assert.ok(layout.zones.opponentReveal.y > layout.zones.playerReveal.y)
   assert.ok(layout.zones.opponentDrawPile.y > 0)
   assert.ok(layout.zones.playerDrawPile.y < 0)
+  assert.deepEqual(layout.visuals, {
+    activeDeckScale: 1.75,
+    revealScale: 1.75,
+    secondaryPileScale: 1.2,
+  })
   assert.ok(allObjects(layout).every(Object.isFrozen))
+})
+
+test('prominent cards fit their world and reveal zones remain separated in every mode', () => {
+  const viewports = [
+    { width: 320, height: 480 },
+    { width: 844, height: 390 },
+    { width: 768, height: 1024 },
+    { width: 1440, height: 900 },
+  ]
+  const activeZones = ['sourceDeck', 'playerDrawPile', 'playerWonPile']
+
+  for (const viewport of viewports) {
+    const layout = createBattlefieldLayout(viewport)
+    const halfActiveWidth = 1.05 * layout.visuals.activeDeckScale / 2
+    const halfActiveHeight = 1.45 * layout.visuals.activeDeckScale / 2
+    assert.ok(layout.visuals.activeDeckScale > layout.visuals.secondaryPileScale)
+    assert.ok(layout.visuals.revealScale > layout.visuals.secondaryPileScale)
+
+    for (const zoneId of activeZones) {
+      const zone = layout.zones[zoneId]
+      assert.ok(Math.abs(zone.x) + halfActiveWidth <= layout.world.width / 2)
+      assert.ok(Math.abs(zone.y) + halfActiveHeight <= layout.world.height / 2)
+    }
+
+    const revealHeight = 1.45 * layout.visuals.revealScale
+    assert.ok(
+      layout.zones.opponentReveal.y - layout.zones.playerReveal.y >= revealHeight,
+    )
+  }
 })
 
 test('safe areas and HUD reserves leave a positive camera-fitting battlefield rectangle', () => {
@@ -106,7 +140,9 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(landscape.hud.footer.height, 114)
 
   const tablet = createBattlefieldLayout({ width: 768, height: 1024 })
-  assert.equal(tablet.hud.footer.height, 114)
+  assert.equal(tablet.hud.header.height, 60)
+  assert.equal(tablet.hud.footer.height, 108)
+  assert.equal(tablet.hud.leftPanel.width, 120)
 
   const smallerLandscape = createBattlefieldLayout({ width: 400, height: 280 })
   assert.equal(smallerLandscape.viewport.letterboxed, true)

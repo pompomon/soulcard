@@ -46,12 +46,16 @@ function isPointerInside(target, event) {
 export function createInputController({
   target,
   onActivate,
+  hitTest,
   enabled = true,
   busy = false,
 } = {}) {
   assertTarget(target)
   if (typeof onActivate !== 'function') {
     throw new TypeError('onActivate must be a function')
+  }
+  if (hitTest !== undefined && typeof hitTest !== 'function') {
+    throw new TypeError('hitTest must be a function')
   }
   assertBoolean(enabled, 'enabled')
   assertBoolean(busy, 'busy')
@@ -71,6 +75,7 @@ export function createInputController({
     : null
 
   const canActivate = () => !destroyed && currentEnabled && !currentBusy
+  const hitsTarget = (event) => hitTest?.(event) ?? true
 
   function syncTarget() {
     target.disabled = !currentEnabled || currentBusy
@@ -81,7 +86,7 @@ export function createInputController({
   }
 
   function handlePointerDown(event) {
-    if (!canActivate() || !isPrimaryPointer(event)) return
+    if (!canActivate() || !isPrimaryPointer(event) || !hitsTarget(event)) return
     suppressCompatibilityClick = false
     pendingPointerId = event.pointerId
   }
@@ -96,7 +101,13 @@ export function createInputController({
     }
     pendingPointerId = null
     suppressCompatibilityClick = true
-    if (!canActivate() || !isPointerInside(target, event)) return
+    if (
+      !canActivate()
+      || !isPointerInside(target, event)
+      || !hitsTarget(event)
+    ) {
+      return
+    }
     onActivate(event)
   }
 
@@ -123,6 +134,7 @@ export function createInputController({
     if (
       !canActivate()
       || (event.button !== undefined && event.button !== 0)
+      || !hitsTarget(event)
     ) {
       return
     }
