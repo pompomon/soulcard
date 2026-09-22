@@ -91,6 +91,61 @@ test('committed clashes and explicit pauses autosave stable snapshots', async ()
   assert.equal(repository.closeCalls, 1)
 })
 
+test('run controller delegates exactly one clash to the injected AI before saving', async () => {
+  const initialMatch = createActiveMatch('injected-ai')
+  const expected = revealOrContinue(initialMatch)
+  const repository = createRepository()
+  const calls = []
+  const controller = createRunController({
+    repository,
+    initialMatch,
+    aiController: {
+      advanceEncounter(match) {
+        calls.push(match)
+        return expected
+      },
+    },
+  })
+
+  const result = await controller.revealOrContinue()
+
+  assert.deepEqual(calls, [initialMatch])
+  assert.deepEqual(result.match, expected.match)
+  assert.equal(result.event, expected.event)
+  assert.deepEqual(repository.saves, [expected.match])
+  assert.equal(controller.currentMatch, expected.match)
+})
+
+test('invalid AI dependencies and failures leave the current run unchanged and unsaved', () => {
+  const repository = createRepository()
+  assert.throws(
+    () => createRunController({ repository, aiController: null }),
+    /aiController must expose advanceEncounter/,
+  )
+  assert.throws(
+    () => createRunController({ repository, aiController: {} }),
+    /aiController must expose advanceEncounter/,
+  )
+
+  for (const advanceEncounter of [
+    () => {
+      throw new Error('AI failed')
+    },
+    (match) => ({ match, event: match.pendingEvent }),
+  ]) {
+    const initialMatch = createActiveMatch('atomic-ai-failure')
+    const controller = createRunController({
+      repository,
+      initialMatch,
+      aiController: { advanceEncounter },
+    })
+    assert.throws(() => controller.revealOrContinue())
+    assert.equal(controller.currentMatch, initialMatch)
+    assert.equal(controller.getSnapshot().saveStatus, 'unsaved')
+  }
+  assert.deepEqual(repository.saves, [])
+})
+
 test('restore adopts ready or paused snapshots without replaying RNG', async () => {
   const ready = revealOrContinue(createActiveMatch('restored-run')).match
   const paused = pauseMatch(ready)
