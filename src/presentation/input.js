@@ -82,6 +82,7 @@ export function createInputController({
 
   function handlePointerDown(event) {
     if (!canActivate() || !isPrimaryPointer(event)) return
+    suppressCompatibilityClick = false
     pendingPointerId = event.pointerId
   }
 
@@ -94,8 +95,8 @@ export function createInputController({
       return
     }
     pendingPointerId = null
-    if (!canActivate() || !isPointerInside(target, event)) return
     suppressCompatibilityClick = true
+    if (!canActivate() || !isPointerInside(target, event)) return
     onActivate(event)
   }
 

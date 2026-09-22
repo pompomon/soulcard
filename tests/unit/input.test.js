@@ -118,8 +118,10 @@ test('release outside the target cancels mouse and implicit-capture pointer sequ
     pointerType: 'touch',
     clientX: 150,
   })
+  const compatibilityClick = target.dispatch('click', { detail: 1 })
 
   assert.equal(activations, 0)
+  assert.equal(compatibilityClick.defaultPrevented, true)
 })
 
 test('busy and enabled gates update synchronously and allow later legitimate actions', () => {
