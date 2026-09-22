@@ -475,8 +475,8 @@ test('source-to-personal events route each reveal from its committed origin', ()
   const legacyMesh = renderer.scene.children.find(
     ({ name }) => name === `battlefield-card:${timeline[0].cardId}:front`,
   )
-  assert.equal(legacyMesh.position.x, handle.layout.zones.sourceDeck.x)
-  assert.equal(legacyMesh.position.y, handle.layout.zones.sourceDeck.y)
+  assert.equal(legacyMesh.position.x, handle.layout.zones.contestedPile.x)
+  assert.equal(legacyMesh.position.y, handle.layout.zones.contestedPile.y)
 
   handle.teardown()
 })

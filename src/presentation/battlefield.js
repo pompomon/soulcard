@@ -17,6 +17,7 @@ const FALLBACK_SETTINGS = createSettingsSnapshot(DEFAULT_SETTINGS, false)
 const MAX_TRANSIENT_CARDS = 8
 const MAX_CONTEST_CARDS = 4
 const TEXTURE_CACHE_ENTRIES = 24
+const LEGACY_REVEAL_ORIGIN_ZONE = 'contestedPile'
 const TEXTURE_SCALE_BY_QUALITY = Object.freeze({
   low: 1,
   balanced: 2,
@@ -743,7 +744,9 @@ export function mountBattlefield(host, {
           ? 'playerDrawPile'
           : step.from === 'opponent.drawPile'
             ? 'opponentDrawPile'
-            : 'sourceDeck'
+            : currentEvent.stage === 'source'
+              ? 'sourceDeck'
+              : LEGACY_REVEAL_ORIGIN_ZONE
       visual.zoneId = originZone
       visual.offset = Object.freeze({ x: 0, y: 0, z: 0.1 })
       placeTransient(visual)
