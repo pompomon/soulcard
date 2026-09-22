@@ -188,6 +188,30 @@ test('complete-deck traversal plus a back remains bounded and regenerable', () =
   assert.equal(textures.filter(({ disposeCalls }) => disposeCalls === 1).length, 53)
 })
 
+test('back acquisitions ignore card IDs and reuse the same texture', () => {
+  const { cache, textures } = createHarness()
+  const first = cache.acquireBack({
+    themeId: ALTERNATE_BACK_THEME.id,
+    cardId: 'c-2S',
+    scale: 1,
+  })
+  const second = cache.acquireBack({
+    themeId: ALTERNATE_BACK_THEME.id,
+    cardId: 'c-AS',
+    scale: 1,
+  })
+
+  assert.equal(textures.length, 1)
+  assert.equal(second.texture, first.texture)
+  assert.equal(second.key, first.key)
+  assert.equal(first.cardId, null)
+  assert.equal(second.cardId, null)
+
+  first.release()
+  second.release()
+  cache.destroy()
+})
+
 test('theme invalidation and clear dispose active entries and permit regeneration', () => {
   const { cache, textures } = createHarness({ maxEntries: 4 })
   const front = cache.acquireFront(frontOptions('c-AS'))

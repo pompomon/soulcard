@@ -242,6 +242,7 @@ export function createTextureCache({
     if (kind === 'front' && !isCardId(cardId)) {
       throw new RangeError(`Unknown card ID: ${String(cardId)}`)
     }
+    const normalizedCardId = kind === 'front' ? cardId : null
     const descriptor = kind === 'front'
       ? registry.resolveFront(
         themeId === undefined ? registry.fallbackFrontThemeId : themeId,
@@ -249,12 +250,12 @@ export function createTextureCache({
       : registry.resolveBack(
         themeId === undefined ? registry.fallbackBackThemeId : themeId,
       )
-    const key = textureKey(kind, descriptor.id, cardId, scale)
+    const key = textureKey(kind, descriptor.id, normalizedCardId, scale)
     let entry = entries.get(key)
     if (entry) {
       touch(key, entry)
     } else {
-      entry = createEntry({ kind, descriptor, cardId, scale, key })
+      entry = createEntry({ kind, descriptor, cardId: normalizedCardId, scale, key })
     }
     return createLease(entry)
   }
