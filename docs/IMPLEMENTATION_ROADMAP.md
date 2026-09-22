@@ -1018,14 +1018,21 @@ reviewable PR.
   mirrored labels, suit colors, face geometry, back generation, alternate registration,
   independent fallback diagnostics, accessor safety, lazy reuse, scale variants,
   complete-deck boundedness, leased-capacity failure, LRU order, partial failures,
-  invalidation, clearing, regeneration, and disposal. A text-only headless Chrome check
-  generated 52 fronts and one back at 600×840, verified nontransparent multicolor pixel
-  data, traversed every card plus the back with an eight-entry cache, cleared and
-  regenerated resources, retained one Three.js canvas under `#app`, and reported zero
-  severe console messages. Browser and development-server processes stopped cleanly;
-  no screenshots were produced. Milestone 12 remains open pending its visual
-  high-DPI/manual memory checks; broader cross-device sign-off remains in the milestone
-  18 device matrix.
+  invalidation, clearing, regeneration, and disposal. A one-off text-only Chrome 152
+  high-DPI inspection generated all 52 fronts and the back at each supported 1×–4×
+  scale (300×420 through 1200×1680 backing pixels) while displaying each at its 300×420
+  logical size. Raster and text-metric checks confirmed unclipped mirrored indices,
+  red/black suits, all 880 expected numeric/Ace pip positions, distinct J/Q/K geometry,
+  and rotationally symmetric back detail with no browser errors.
+  A real WebGL/CanvasTexture resource inspection traversed all 52 fronts and the back
+  for five cycles through an eight-entry cache. Resident cache entries, live generated
+  resources, and GPU texture counts each remained at eight with zero active leases;
+  leased-capacity failure created no texture. LRU eviction, theme invalidation,
+  clearing, regeneration, and idempotent teardown released all 267 generated textures
+  and their canvas references, leaving zero resident cache or GPU textures. The final
+  production smoke check retained one Three.js canvas under `#app` with no relevant
+  console errors. Broader cross-device, frame-pacing, and context-loss sign-off remains
+  in the milestone 18 device matrix; no screenshots were produced.
 
 ### 13. Committed-event-to-animation pipeline
 - **Goal/files:** Add event player and renderer adapters; depends on 5, 8, 11–12.
