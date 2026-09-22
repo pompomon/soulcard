@@ -608,6 +608,53 @@ test('battlefield scales prominent cards and hit tests only the enabled active d
   assert.ok([...canvas.listeners.values()].every((listeners) => listeners.size === 0))
 })
 
+test('active deck hit testing preserves a 44px target at minimum orientations', () => {
+  for (const [width, height] of [[320, 480], [480, 320]]) {
+    const host = createHost(width, height)
+    const windowObject = createWindow({ width, height })
+    const observer = createObserverHarness()
+    const renderer = new FakeRenderer(host, {})
+    let activations = 0
+    const handle = mountBattlefield(host, {
+      windowObject,
+      ResizeObserverClass: observer.FakeResizeObserver,
+      rendererFactory: () => renderer,
+      textureCacheFactory: () => createTextureCacheHarness().cache,
+      onDeckActivate() {
+        activations += 1
+      },
+    })
+    windowObject.flushFrames()
+    const match = createMatch({
+      runId: `minimum-target-${width}x${height}`,
+      seed: 0,
+      ruleset: BASELINE_RULESET,
+    })
+    handle.syncSnapshot(match)
+    handle.setDeckInputState({ enabled: true, busy: false })
+    const source = renderer.scene.getObjectByName(
+      `battlefield-card:${match.zones.sourceDeck[0]}:back`,
+    )
+    const center = clientPointFor(source, renderer, host)
+    const canvas = renderer.domElement
+
+    for (const offset of [-21.9, 21.9]) {
+      const point = { ...center, clientX: center.clientX + offset }
+      canvas.dispatch('pointerdown', { ...point, pointerId: activations + 1 })
+      canvas.dispatch('pointerup', { ...point, pointerId: activations + 1 })
+      canvas.dispatch('click', { ...point, detail: 1 })
+    }
+    assert.equal(activations, 2)
+
+    const outside = { ...center, clientX: center.clientX + 23.5 }
+    canvas.dispatch('pointerdown', { ...outside, pointerId: 3 })
+    canvas.dispatch('pointerup', { ...outside, pointerId: 3 })
+    canvas.dispatch('click', { ...outside, detail: 1 })
+    assert.equal(activations, 2)
+    handle.teardown()
+  }
+})
+
 test('source-to-personal events route each reveal from its committed origin', () => {
   const host = createHost(1024, 768)
   const windowObject = createWindow({ width: 1024, height: 768 })

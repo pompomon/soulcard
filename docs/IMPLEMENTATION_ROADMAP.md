@@ -1088,18 +1088,19 @@ reviewable PR.
   `src/presentation/layout.js` and `src/presentation/battlefield.js` enlarge active decks
   and revealed cards per responsive mode, keep secondary piles bounded, identify the
   source deck or the player's drawable/recyclable pile from stable snapshots, and
-  raycast that one visual as a supplemental action target. `src/ui/hud.js` routes both
-  the deck shortcut and Reveal/Continue through one guarded `run-controller` action,
-  holds them through save and presentation settlement, and derives responsive counts,
-  human-readable stage, latest-clash/tie/burn summary, presentation progress, next
-  action, save warning, and terminal outcome from stable snapshots and committed events.
+  raycast that one visual with a 44×44 CSS-pixel minimum screen-space target.
+  `src/ui/hud.js` routes both the deck shortcut and Reveal/Continue through one guarded
+  `run-controller` action, holds them through save and presentation settlement, and
+  derives responsive counts, human-readable stage, latest-clash/tie/burn summary,
+  presentation progress, next action, save warning, and terminal outcome from stable
+  snapshots and committed events.
   `src/style.css` keeps the battlefield visually dominant while preserving visible focus
   indicators, deliberate `touch-action`, safe-area/layout reserves, and physical 44×44
   CSS-pixel controls, including letterboxed layouts. `src/app/new-match.js` creates a
   baseline seeded run from Web Crypto entropy, and `src/app/bootstrap.js` installs it and
   queues its stable save before Start New Game opens Game. Focused
-  input/HUD/bootstrap tests cover pointer types, hit-tested active-deck
-  source/personal/recycle selection,
+  input/HUD/bootstrap tests cover   pointer types, hit-tested active-deck source/personal/recycle selection and minimum
+  target size,
   secondary/non-primary rejection, cancellation and drag-off, duplicate suppression,
   native fallback, shared button/deck gating, teardown, save/presentation ordering,
   skipped and failed presentation, terminal state, injected ownership, initial-run
@@ -1107,7 +1108,7 @@ reviewable PR.
   from replaced runs. Integration tests prove button and active-deck actions each
   produce one deterministic clash, save, and presentation while renderer callbacks
   receive detached frozen state.
-- **Validation:** All 239 unit/integration tests and the production build pass locally on
+- **Validation:** All 240 unit/integration tests and the production build pass locally on
   Node 24. A text-only headless Chrome 152 check at 320×480/DPR 3, 844×390/DPR 3,
   768×1024/DPR 2, 1280×800/DPR 1, and 900×1000/DPR 2 verified the declared layout
   modes, exactly one full-viewport canvas, compact comparison bounds, active source-deck
@@ -1115,8 +1116,10 @@ reviewable PR.
   deck, and another exact single activation there. It also confirmed
   `touch-action: manipulation`, physical controls of at least 44×44 CSS px, deck input
   disabled without advancing a turn while paused, successful resume, and zero relevant
-  console errors. Earlier text-only checks cover letterboxed 280×400/DPR 2, visible
-  focus outlines, pointer cancellation and out-of-target release, fresh-start
+  console errors. A post-review rerun at 320×480, the minimum 480×320 landscape
+  orientation, and 900×1000 confirmed the expanded deck target, exact single activation,
+  and drag-onto-deck rejection. Earlier text-only checks cover letterboxed 280×400/DPR 2,
+  visible focus outlines, pointer cancellation and out-of-target release, fresh-start
   persistence, and replacement confirmation. A user-provided portrait screenshot from
   a physical Android target device confirmed touch navigation and responsive HUD
   rendering while exposing the now-fixed missing new-match initialization. A post-fix

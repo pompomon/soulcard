@@ -51,7 +51,8 @@ Game screen's semantic Reveal/Continue and Pause buttons and the supplemental
 hit-tested active-deck shortcut. It accepts only primary press-and-release sequences
 that finish inside the target, handles cancellation, suppresses the following
 compatibility click, and retains native click fallback for assistive or programmatic
-button activation. It does not capture pointers or add drag/swipe gestures.
+button activation. The deck keeps a 44×44 CSS-pixel screen-space hit target even when
+its rendered card is smaller. It does not capture pointers or add drag/swipe gestures.
 
 The Game HUD routes both the button and active source/player deck through the same
 `run-controller` Reveal action, disables both through the corresponding save and

@@ -19,6 +19,7 @@ const MAX_TRANSIENT_CARDS = 8
 const MAX_CONTEST_CARDS = 4
 const TEXTURE_CACHE_ENTRIES = 24
 const LEGACY_REVEAL_ORIGIN_ZONE = 'contestedPile'
+const MINIMUM_DECK_TARGET_SIZE = 44
 const DEFAULT_CARD_COLOR = 0xffffff
 const ACTIVE_DECK_COLOR = 0xd9fbff
 const TEXTURE_SCALE_BY_QUALITY = Object.freeze({
@@ -239,6 +240,9 @@ export function mountBattlefield(host, {
   const cardGeometry = new THREE.PlaneGeometry(1.05, 1.45)
   const deckPointer = new THREE.Vector2()
   const deckRaycaster = new THREE.Raycaster()
+  const deckCenter = new THREE.Vector3()
+  const deckRightEdge = new THREE.Vector3()
+  const deckTopEdge = new THREE.Vector3()
 
   let currentSettings = settingsController?.getSnapshot() ?? FALLBACK_SETTINGS
   let renderer = null
@@ -341,7 +345,28 @@ export function mountBattlefield(host, {
     scene.updateMatrixWorld(true)
     camera.updateMatrixWorld(true)
     deckRaycaster.setFromCamera(deckPointer, camera)
-    return deckRaycaster.intersectObject(activeDeckVisual.mesh, false).length > 0
+    if (deckRaycaster.intersectObject(activeDeckVisual.mesh, false).length > 0) {
+      return true
+    }
+
+    const mesh = activeDeckVisual.mesh
+    mesh.localToWorld(deckCenter.set(0, 0, 0)).project(camera)
+    mesh.localToWorld(deckRightEdge.set(0.525, 0, 0)).project(camera)
+    mesh.localToWorld(deckTopEdge.set(0, 0.725, 0)).project(camera)
+    const centerX = bounds.left + (deckCenter.x + 1) / 2 * bounds.width
+    const centerY = bounds.top + (1 - deckCenter.y) / 2 * bounds.height
+    const halfWidth = Math.max(
+      Math.abs(deckRightEdge.x - deckCenter.x) * bounds.width / 2,
+      MINIMUM_DECK_TARGET_SIZE / 2,
+    )
+    const halfHeight = Math.max(
+      Math.abs(deckTopEdge.y - deckCenter.y) * bounds.height / 2,
+      MINIMUM_DECK_TARGET_SIZE / 2,
+    )
+    return (
+      Math.abs(event.clientX - centerX) <= halfWidth
+      && Math.abs(event.clientY - centerY) <= halfHeight
+    )
   }
 
   function ensureTextureCache() {
