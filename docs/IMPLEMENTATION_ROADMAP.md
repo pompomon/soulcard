@@ -1077,6 +1077,31 @@ reviewable PR.
   sizes, cancellation, focus styles, and no duplicate activation.
 - **Checks/risks:** Playwright/device-emulation plus real touch manual checks; keyboard
   remains explicitly post-MVP.
+- **Acceptance evidence:** `src/presentation/input.js` owns primary mouse, touch, and pen
+  press/release sequences for semantic Game buttons, cancels explicit and out-of-target
+  completions without pointer capture, suppresses compatibility clicks, preserves native
+  click fallback, gates enabled/busy state synchronously, and removes target/document
+  listeners idempotently. `src/ui/hud.js` routes Reveal/Continue and Pause only through
+  `run-controller`, holds Reveal/Continue through save and presentation settlement, and
+  derives responsive counts, human-readable stage, latest-clash/tie/burn summary,
+  presentation progress, next action, save warning, and terminal outcome from stable
+  snapshots and committed events. `src/style.css` preserves visible focus indicators,
+  deliberate `touch-action`, safe-area/layout reserves, and physical 44×44 CSS-pixel
+  controls, including letterboxed layouts. Focused input/HUD/bootstrap tests cover
+  pointer types, secondary/non-primary rejection, cancellation and drag-off, duplicate
+  suppression, native fallback, gating, teardown, save/presentation ordering, skipped
+  and failed presentation, terminal state, and injected ownership. An integration test
+  proves one pointer action produces one deterministic clash, save, and presentation
+  while renderer callbacks receive detached frozen state.
+- **Validation:** All 228 unit/integration tests and the production build pass locally on
+  Node 24. A text-only Playwright Chromium check at 320×480/DPR 3, 844×390/DPR 3,
+  768×1024/DPR 2, and 1280×800/DPR 1 verified the declared layout modes, exactly one
+  canvas, mouse/touch/pen activation, pointer cancellation and out-of-target release,
+  one turn/save per activation, pause, live HUD results, `touch-action: manipulation`,
+  physical targets of at least 44×44 CSS px, 3 px visible focus outlines, and zero
+  relevant console errors. No screenshots were produced. A representative real-device
+  touch pass remains outstanding, so `MILESTONES.md` does not yet mark milestone 14
+  complete.
 
 ### 15. AI and complete source-to-personal-stage match flow
 - **Goal/files:** Add AI controller/encounter wiring and integration tests; depends on 5,

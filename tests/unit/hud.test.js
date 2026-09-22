@@ -40,10 +40,24 @@ class FakeElement {
     this.listeners.get(type)?.delete(listener)
   }
 
-  dispatch(type) {
-    for (const listener of [...(this.listeners.get(type) ?? [])]) {
-      listener({ type, target: this, currentTarget: this })
+  dispatch(type, values = {}) {
+    const event = {
+      type,
+      target: this,
+      currentTarget: this,
+      button: undefined,
+      detail: 0,
+      isPrimary: true,
+      pointerId: 1,
+      pointerType: 'mouse',
+      preventDefault() {},
+      stopPropagation() {},
+      ...values,
     }
+    for (const listener of [...(this.listeners.get(type) ?? [])]) {
+      listener(event)
+    }
+    return event
   }
 }
 
@@ -65,6 +79,12 @@ function deferred() {
     resolve = settle
   })
   return { promise, resolve }
+}
+
+async function flushMicrotasks(rounds = 6) {
+  for (let index = 0; index < rounds; index += 1) {
+    await Promise.resolve()
+  }
 }
 
 test('Game owns a semantic pause overlay with live save status and Resume', async (t) => {
@@ -163,6 +183,7 @@ test('Game owns a semantic pause overlay with live save status and Resume', asyn
   assert.equal(saveStatus.textContent, 'Game saved.')
 
   resume.dispatch('click')
+  await Promise.resolve()
   assert.equal(controller.currentMatch.machineState, 'ready')
   assert.equal(overlay.hidden, true)
   assert.equal(pause.disabled, false)
@@ -199,6 +220,114 @@ test('Game leaves pause disabled without a run controller and still tears down p
   )
   screen.teardown()
   assert.equal(teardowns, 1)
+})
+
+test('Game resolves one pointer reveal, locks input through save and presentation, and updates HUD', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const write = deferred()
+  const animation = deferred()
+  const saves = []
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save(match) {
+        saves.push(match)
+        return write.promise
+      },
+    },
+    initialMatch: createMatch({
+      runId: 'hud-pointer-reveal',
+      seed: 0,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const presented = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: ({ onStateChange }) => ({
+      present(match) {
+        if (match.pendingEvent === null) {
+          return Promise.resolve({ status: 'synchronized' })
+        }
+        const eventId = match.pendingEvent.id
+        presented.push(eventId)
+        onStateChange({
+          status: 'playing',
+          eventId,
+          stepIndex: 0,
+          stepCount: 3,
+          stepKind: 'reveal',
+          reason: null,
+        })
+        return animation.promise.then(() => {
+          onStateChange({
+            status: 'completed',
+            eventId,
+            stepIndex: null,
+            stepCount: 3,
+            stepKind: null,
+            reason: null,
+          })
+          return { status: 'completed', eventId, reason: null }
+        })
+      },
+      setPaused() {},
+      destroy() {},
+    }),
+  })
+  const reveal = byAction(screen, 'reveal')
+  const comparisonResult = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'comparisonResult'),
+  )
+  const comparisonDetails = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'comparisonDetails'),
+  )
+  const comparisonProgress = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'comparisonProgress'),
+  )
+
+  assert.equal(reveal.disabled, false)
+  assert.equal(comparisonResult.textContent, 'Ready for the first reveal')
+  reveal.dispatch('pointerdown', { pointerType: 'touch', pointerId: 7, button: 0 })
+  reveal.dispatch('pointerup', { pointerType: 'touch', pointerId: 7, button: 0 })
+  reveal.dispatch('click', { detail: 1, button: 0 })
+
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(reveal.disabled, true)
+  assert.match(comparisonResult.textContent, /won clash 1/)
+  assert.match(comparisonDetails.textContent, /cards? revealed · \d+ ties? · \d+ burned/)
+
+  await flushMicrotasks()
+  assert.equal(saves.length, 1)
+  write.resolve({
+    status: 'saved',
+    savedAt: '2026-09-22T17:00:00.000Z',
+  })
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.deepEqual(presented, [controller.currentMatch.pendingEvent.id])
+  assert.equal(reveal.disabled, true)
+  assert.equal(comparisonProgress.textContent, 'Revealing cards · 1 of 3')
+
+  reveal.dispatch('pointerdown', { pointerType: 'pen', pointerId: 8, button: 0 })
+  reveal.dispatch('pointerup', { pointerType: 'pen', pointerId: 8, button: 0 })
+  assert.equal(controller.currentMatch.turn, 1)
+
+  animation.resolve()
+  await flushMicrotasks()
+  assert.equal(reveal.disabled, false)
+  assert.equal(comparisonProgress.textContent, 'Presentation complete.')
+
+  screen.teardown()
+  await controller.destroy()
 })
 
 test('Game gates committed presentation on save completion and publishes live progress', async (t) => {
@@ -254,6 +383,10 @@ test('Game gates committed presentation on save completion and publishes live pr
   const status = descendants(screen.element).find(
     (element) => Object.hasOwn(element.dataset, 'statusHost'),
   )
+  const reveal = byAction(screen, 'reveal')
+  const comparisonProgress = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'comparisonProgress'),
+  )
 
   assert.equal(presented.length, 1)
   assert.equal(presented[0].pendingEvent, null)
@@ -270,7 +403,7 @@ test('Game gates committed presentation on save completion and publishes live pr
   await Promise.resolve()
   assert.equal(presented.length, 2)
   assert.equal(presented[1].pendingEvent.id, controller.currentMatch.pendingEvent.id)
-  assert.equal(byValue(screen, 'stage').textContent, 'source')
+  assert.equal(byValue(screen, 'stage').textContent, 'Source')
   assert.equal(
     byValue(screen, 'source-count').textContent,
     String(controller.currentMatch.zones.sourceDeck.length),
@@ -287,6 +420,8 @@ test('Game gates committed presentation on save completion and publishes live pr
     reason: null,
   })
   assert.equal(status.textContent, 'Revealing committed card.')
+  assert.equal(comparisonProgress.textContent, 'Revealing cards · 1 of 3')
+  assert.equal(reveal.disabled, true)
   presentationState({
     status: 'skipped',
     eventId: controller.currentMatch.pendingEvent.id,
@@ -297,6 +432,8 @@ test('Game gates committed presentation on save completion and publishes live pr
   })
   assert.equal(status.textContent, 'Presentation skipped for reduced motion.')
   assert.equal(status.dataset.presentationState, 'skipped')
+  assert.equal(comparisonProgress.textContent, 'Presentation skipped.')
+  assert.equal(reveal.disabled, false)
 
   screen.teardown()
   assert.equal(destroyed, 1)
@@ -330,6 +467,7 @@ test('Game queues a restored paused event and tears down player before battlefie
       listener(snapshot)
       return () => order.push('unsubscribe')
     },
+    revealOrContinue() {},
     pause() {},
     resume() {},
   }
@@ -403,7 +541,7 @@ test('Game presents a committed event after a failed save without blocking play'
             reason: null,
           })
         }
-        return Promise.resolve({ status: 'completed' })
+        return Promise.resolve({ status: 'failed', reason: 'adapter-error' })
       },
       setPaused() {},
       destroy() {},
@@ -419,12 +557,62 @@ test('Game presents a committed event after a failed save without blocking play'
   await controller.revealOrContinue()
   await Promise.resolve()
   assert.deepEqual(presented, [null, controller.currentMatch.pendingEvent.id])
-  assert.equal(status.textContent, 'Revealing committed card.')
+  assert.equal(
+    status.textContent,
+    'Presentation skipped after a rendering error.',
+  )
+  assert.equal(byAction(screen, 'reveal').disabled, false)
   assert.equal(saveWarning.hidden, false)
   assert.equal(
     saveWarning.textContent,
     'Save failed (quota-exceeded). Your game remains available in this session.',
   )
+  screen.teardown()
+})
+
+test('Game exposes terminal outcome details and disables primary actions', (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  let terminal = createMatch({
+    runId: 'hud-terminal',
+    seed: 0,
+    ruleset: BASELINE_RULESET,
+  })
+  while (terminal.status === 'active') {
+    terminal = revealOrContinue(terminal).match
+  }
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => ({ status: 'saved', savedAt: '2026-09-22T17:10:00.000Z' }),
+    },
+    initialMatch: terminal,
+  })
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+  })
+  const result = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'comparisonResult'),
+  )
+  const details = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'comparisonDetails'),
+  )
+  const status = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'statusHost'),
+  )
+
+  assert.match(result.textContent, /won the match|ended in a draw/)
+  assert.match(details.textContent, /^Final clash:/)
+  assert.match(status.textContent, /won the match|ended in a draw/)
+  assert.equal(byAction(screen, 'reveal').disabled, true)
+  assert.equal(byAction(screen, 'pause').disabled, true)
   screen.teardown()
 })
 

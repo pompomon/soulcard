@@ -44,6 +44,20 @@ Presentation never advances the match machine, evaluates burn rules, or consumes
 Current events record each reveal's source/personal pile origin; version 2 saved events
 remain readable.
 
+## Pointer input and HUD ownership
+
+`src/presentation/input.js` owns mouse, touch, and pen pointer sequences for the
+Game screen's semantic Reveal/Continue and Pause buttons. It accepts only primary
+press-and-release sequences that finish inside the target, handles cancellation,
+suppresses the following compatibility click, and retains native click fallback for
+assistive or programmatic activation. It does not capture pointers or add battlefield
+gestures.
+
+The Game HUD invokes actions only through `run-controller`, disables Reveal/Continue
+through the corresponding save and committed-event presentation, and derives counts,
+comparison results, progress, and outcomes from stable snapshots and committed events.
+Input and presentation never settle rules or consume domain RNG.
+
 ## Tests
 
 ```sh
