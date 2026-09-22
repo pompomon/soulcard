@@ -16,6 +16,20 @@ npm run dev
 
 Build the production site with `npm run build`; serve it with `npm run preview`.
 
+## Texture cache ownership
+
+Keep an acquired texture lease while a material references its texture. Release it only
+after the map is replaced or the material is no longer used:
+
+```js
+const lease = cache.acquireFront({ cardId: 'c-AS' })
+material.map = lease.texture
+
+material.map = null
+lease.release()
+material.dispose()
+```
+
 ## Tests
 
 ```sh

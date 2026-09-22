@@ -114,6 +114,23 @@ test('cache lazily reuses keyed textures and applies documented sampler settings
   assert.ok(textures.every(({ disposeCalls, image }) => disposeCalls === 1 && image === null))
 })
 
+test('cache uses baseline anisotropy when the renderer reports no extension support', () => {
+  const { cache } = createHarness({
+    anisotropy: 8,
+    renderer: {
+      capabilities: {
+        getMaxAnisotropy: () => 0,
+      },
+    },
+  })
+
+  assert.equal(cache.getStats().anisotropy, 1)
+  const lease = cache.acquireFront(frontOptions('c-2S'))
+  assert.equal(lease.texture.anisotropy, 1)
+  lease.release()
+  cache.destroy()
+})
+
 test('LRU eviction refreshes reused entries and disposes released textures once', () => {
   const { cache, textures } = createHarness({ maxEntries: 2 })
   const first = cache.acquireFront(frontOptions('c-2S'))
@@ -322,6 +339,14 @@ test('cache validates adapters, limits, acquisition data, and invalidation data'
     () => createTextureCache({ renderer: {} }),
     /getMaxAnisotropy/,
   )
+  for (const supported of [-1, Number.NaN]) {
+    assert.throws(
+      () => createTextureCache({
+        renderer: { capabilities: { getMaxAnisotropy: () => supported } },
+      }),
+      /finite non-negative/,
+    )
+  }
 
   const { cache } = createHarness()
   assert.throws(() => cache.acquireFront(null), /options/)

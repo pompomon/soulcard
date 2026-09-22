@@ -56,10 +56,10 @@ function supportedAnisotropy(renderer) {
     throw new TypeError('renderer must expose capabilities.getMaxAnisotropy')
   }
   const supported = capabilities.getMaxAnisotropy()
-  if (!Number.isFinite(supported) || supported < 1) {
-    throw new TypeError('renderer anisotropy capability must be at least 1')
+  if (!Number.isFinite(supported) || supported < 0) {
+    throw new TypeError('renderer anisotropy capability must be a finite non-negative number')
   }
-  return supported
+  return Math.max(1, supported)
 }
 
 function defaultTextureFactory(canvas) {

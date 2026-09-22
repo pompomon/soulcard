@@ -1013,7 +1013,7 @@ reviewable PR.
   capacity pressure, disposes released entries exactly once, clears image references,
   and supports explicit theme invalidation, reusable context-recovery clearing, and
   idempotent teardown.
-- **Validation:** All 193 Node test executions and the production build pass on Node 24.
+- **Validation:** All 195 Node test executions and the production build pass on Node 24.
   Focused tests cover every canonical identity, deterministic high-DPI dimensions,
   mirrored labels, suit colors, face geometry, back generation, alternate registration,
   independent fallback diagnostics, accessor safety, lazy reuse, scale variants,
@@ -1023,8 +1023,9 @@ reviewable PR.
   data, traversed every card plus the back with an eight-entry cache, cleared and
   regenerated resources, retained one Three.js canvas under `#app`, and reported zero
   severe console messages. Browser and development-server processes stopped cleanly;
-  no screenshots were produced. Subjective cross-device visual sign-off remains in the
-  milestone 18 device matrix.
+  no screenshots were produced. Milestone 12 remains open pending its visual
+  high-DPI/manual memory checks; broader cross-device sign-off remains in the milestone
+  18 device matrix.
 
 ### 13. Committed-event-to-animation pipeline
 - **Goal/files:** Add event player and renderer adapters; depends on 5, 8, 11–12.

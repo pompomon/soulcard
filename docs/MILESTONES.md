@@ -18,7 +18,7 @@ dependency-map sections.
       (depends on: 2–5)
 - [x] 10. Pause/resume/autosave/page lifecycle (depends on: 7, 9)
 - [x] 11. Three.js battlefield and responsive layout (depends on: 5, 7–8)
-- [x] 12. Generated classic fronts/back, registry, cache, disposal (depends on: 3, 11)
+- [ ] 12. Generated classic fronts/back, registry, cache, disposal (depends on: 3, 11)
 - [ ] 13. Committed-event-to-animation pipeline (depends on: 5, 8, 11–12)
 - [ ] 14. Pointer interactions and responsive HUD (depends on: 7, 11, 13)
 - [ ] 15. AI and complete source-to-personal-stage match flow (depends on: 5, 13–14)
