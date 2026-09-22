@@ -1040,6 +1040,29 @@ reviewable PR.
   shorten/skip presentation without changing results; pending event restores safely.
 - **Checks/risks:** Unit adapter ordering and browser skip/refresh tests; no engine
   calls from callbacks.
+- **Acceptance evidence:** `src/presentation/event-player.js` validates detached stable
+  snapshots, consumes only their committed `pendingEvent`, deduplicates controller
+  notifications by run/event identity, and sequences chronological reveals, tied
+  retention, ordered transfers/burns, terminal draws, and final authoritative
+  reconciliation. It scales waits by live animation speed, completes safely when
+  reduced motion becomes effective, and supports pause/resume, cancellation,
+  idempotent teardown, queue recovery, and adapter-error recovery without invoking
+  domain transitions, burn evaluation, or RNG. `src/presentation/battlefield.js`
+  renders bounded pile representatives and transient generated-card meshes through
+  logical anchors, retains tied and terminal-draw contests, routes recorded settlement
+  destinations, reconciles every completion or skip, and releases renderer, texture,
+  mesh, material, geometry, timer, listener, and tween ownership. Game gates pending
+  events until their save attempt reports `saved` or `failed`, propagates pause, replays
+  restored events once per fresh mount, and exposes concise live presentation status.
+  Focused event-player, battlefield, and HUD tests cover ordering, terminal cases,
+  motion settings, save gating, resource bounds, failures, and teardown. Restore
+  integration tests prove normal replay and reduced-motion skipping preserve RNG,
+  ordered zones, outcomes, fingerprints, and deterministic continuation.
+- **Validation:** All 211 unit/integration tests and the production build pass locally
+  on Node 24. A text-only headless Chrome check seeded a saved v3 pending event and
+  verified normal replay, replay after refresh during animation, immediate
+  reduced-motion reconciliation, exactly one canvas under `#app`, unchanged persisted
+  state, and zero relevant console errors. No screenshots were produced.
 
 ### 14. Pointer interactions and responsive HUD
 - **Goal/files:** Add input controller and complete HUD; depends on 7, 11, 13.
