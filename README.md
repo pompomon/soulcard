@@ -60,7 +60,8 @@ Input and presentation never settle rules or consume domain RNG.
 
 Start New Game creates a baseline 52-card match from Web Crypto entropy, records the
 seed in the domain RNG snapshot, and immediately queues the stable turn-zero run for
-IndexedDB persistence before play continues.
+IndexedDB persistence before play continues. Replacing a current or still-restoring
+saved run requires confirmation.
 
 ## Tests
 

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { bootstrap } from '../../src/app/bootstrap.js'
+import { createRunController } from '../../src/app/run-controller.js'
 import { createMatch } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { createSettingsRepository } from '../../src/persistence/settings-repository.js'
@@ -225,6 +226,107 @@ test('Start New creates, saves, and opens a playable baseline match', async (t) 
   await app.destroy()
 })
 
+test('Start New requires confirmation before replacing a current run', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const currentMatch = createMatch({
+    runId: 'existing-game',
+    seed: 1,
+    ruleset: BASELINE_RULESET,
+  })
+  const controller = createRunController({
+    repository: {
+      load: async () => assert.fail('A current run should not be restored'),
+      save: async () => assert.fail('A declined replacement should not be saved'),
+    },
+    initialMatch: currentMatch,
+  })
+  let confirmations = 0
+  const root = new FakeElement('div')
+  const app = bootstrap({
+    root,
+    runController: controller,
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield: () => undefined,
+    confirmStartOver() {
+      confirmations += 1
+      return false
+    },
+    newMatchFactory: () => assert.fail('A declined replacement should not create a match'),
+  })
+
+  byAction(root, 'start').dispatch('click')
+
+  assert.equal(confirmations, 1)
+  assert.equal(app.activeScreen, 'main')
+  assert.equal(controller.currentMatch, currentMatch)
+  assert.equal(app.resumeAvailable, true)
+  await app.destroy()
+})
+
+test('declining Start New while restoration is pending preserves the saved run', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const savedMatch = createMatch({
+    runId: 'pending-saved-game',
+    seed: 2,
+    ruleset: BASELINE_RULESET,
+  })
+  let resolveLoad
+  const loading = new Promise((resolve) => {
+    resolveLoad = resolve
+  })
+  let confirmations = 0
+  const root = new FakeElement('div')
+  const app = bootstrap({
+    root,
+    runRepository: {
+      load: () => loading,
+      save: async () => assert.fail('A declined replacement should not be saved'),
+    },
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield: () => undefined,
+    confirmStartOver() {
+      confirmations += 1
+      return false
+    },
+    newMatchFactory: () => assert.fail('A declined replacement should not create a match'),
+  })
+
+  byAction(root, 'start').dispatch('click')
+  assert.equal(confirmations, 1)
+  assert.equal(app.activeScreen, 'main')
+
+  const restoreResult = Object.freeze({
+    status: 'resumable',
+    savedAt: '2026-09-22T19:50:00.000Z',
+    migratedFrom: null,
+    match: savedMatch,
+  })
+  resolveLoad(restoreResult)
+  assert.equal(await app.ready, restoreResult)
+  assert.equal(app.runSnapshot.match, savedMatch)
+  assert.equal(app.resumeAvailable, true)
+
+  await app.destroy()
+})
+
 test('bootstrap injects the input controller factory into Game', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
@@ -417,6 +519,7 @@ test('Start New wins races with pending restore results', async (t) => {
       destroy: async () => undefined,
     }
     const root = new FakeElement('div')
+    let confirmations = 0
     const app = bootstrap({
       root,
       runController,
@@ -424,10 +527,15 @@ test('Start New wins races with pending restore results', async (t) => {
       matchMedia: null,
       pageLifecycleFactory: () => ({ destroy() {} }),
       mountBattlefield: () => undefined,
+      confirmStartOver() {
+        confirmations += 1
+        return true
+      },
     })
 
     byAction(root, 'start').dispatch('click')
     const newMatch = runController.currentMatch
+    assert.equal(confirmations, 1)
     assert.equal(discarded, true)
     assert.equal(app.activeScreen, 'game')
 

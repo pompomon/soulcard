@@ -9,6 +9,12 @@ import { createSettingsController } from '../ui/settings-controller.js'
 import { createGameScreen } from '../ui/hud.js'
 import { mountBattlefield as mountResponsiveBattlefield } from '../presentation/battlefield.js'
 
+const START_OVER_MESSAGE = 'Start a new game? Your current saved game will be replaced.'
+
+function defaultConfirmStartOver() {
+  return globalThis.confirm?.(START_OVER_MESSAGE) === true
+}
+
 function assertRunController(runController) {
   const methods = [
     'getSnapshot',
@@ -65,9 +71,13 @@ export function bootstrap({
   eventPlayerFactory = undefined,
   inputControllerFactory = undefined,
   newMatchFactory = createNewMatch,
+  confirmStartOver = defaultConfirmStartOver,
 } = {}) {
   if (typeof newMatchFactory !== 'function') {
     throw new TypeError('newMatchFactory must be a function')
+  }
+  if (typeof confirmStartOver !== 'function') {
+    throw new TypeError('confirmStartOver must be a function')
   }
   const settingsController = createSettingsController({
     repository: settingsRepository,
@@ -84,6 +94,7 @@ export function bootstrap({
     throw error
   }
 
+  let restorePending = activeRunController.currentMatch === null
   let pageLifecycle
   try {
     if (typeof pageLifecycleFactory !== 'function') {
@@ -113,6 +124,12 @@ export function bootstrap({
         main: ({ navigate, resumeAvailable: canResume }) => createMainScreen({
           resumeAvailable: canResume,
           onStart: () => {
+            if (
+              (restorePending || activeRunController.currentMatch !== null)
+              && !confirmStartOver()
+            ) {
+              return
+            }
             const match = newMatchFactory()
             activeRunController.discardPendingRestore()
             activeRunController.setMatch(match)
@@ -148,12 +165,14 @@ export function bootstrap({
     throw error
   }
   let destroyed = false
-  const ready = activeRunController.currentMatch === null
+  const ready = restorePending
     ? activeRunController.restore().then((result) => {
       if (!destroyed) {
         coordinator.setResumeAvailable(activeRunController.currentMatch !== null)
       }
       return result
+    }).finally(() => {
+      restorePending = false
     })
     : Promise.resolve(Object.freeze({ status: 'current' }))
   registerServiceWorker()
