@@ -38,6 +38,14 @@ function saveWarningText(reason) {
   return `Save failed${reason ? ` (${reason})` : ''}. Your game remains available in this session.`
 }
 
+function isSaveFailureStatus(status) {
+  return status === 'failed' || status === 'storage-unavailable'
+}
+
+function clearsSaveWarning(status) {
+  return status === 'saved' || status === 'idle'
+}
+
 function createSidePanel(side, label) {
   const panel = document.createElement('section')
   panel.className = `zone-panel zone-panel--${side}`
@@ -292,7 +300,6 @@ export function createGameScreen({
       saveWarning.hidden = true
     }
   }
-  const saveResultFailed = (result) => result?.status !== undefined && result.status !== 'saved'
   const present = (match) => {
     const eventId = match.pendingEvent?.id
     if (eventId !== undefined && queuedEventIds.has(eventId)) return
@@ -304,7 +311,7 @@ export function createGameScreen({
     })
   }
   const unsubscribeSaves = runController?.subscribeToSaves?.(({ match, result }) => {
-    if (saveResultFailed(result)) {
+    if (isSaveFailureStatus(result?.status)) {
       setSaveWarning(true, result.reason)
     }
     if (match.pendingEvent !== null) present(match)
@@ -314,9 +321,10 @@ export function createGameScreen({
     pauseButton.disabled = match?.machineState !== 'ready'
     pauseOverlay.element.hidden = match?.machineState !== 'paused'
     pauseOverlay.update(snapshot)
-    if (snapshot.saveStatus === 'failed') {
+    // Keep failures visible through transient unsaved/saving states until a save succeeds.
+    if (isSaveFailureStatus(snapshot.saveStatus)) {
       setSaveWarning(true, snapshot.saveReason)
-    } else if (snapshot.saveStatus === 'saved' || snapshot.saveStatus === 'idle') {
+    } else if (clearsSaveWarning(snapshot.saveStatus)) {
       setSaveWarning(false)
     }
     const nextPresentationPaused = match?.machineState === 'paused'
