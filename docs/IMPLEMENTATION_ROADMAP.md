@@ -995,6 +995,37 @@ reviewable PR.
 - **Acceptance:** All classic faces/back readable; saved theme IDs validate/fallback;
   alternate fixture theme works without domain edits.
 - **Checks/risks:** Registry/cache unit tests and visual high-DPI/manual memory checks.
+- **Acceptance evidence:** `src/presentation/themes/classic.js` deterministically
+  generates all 52 canonical fronts and one symmetric back on 300×420 logical canvases
+  at bounded 1×–4× backing scale. Mirrored 34 px rank/32 px suit corner indices, 57 px
+  numeric pips, red/black suit colors, and distinct geometric J/Q/K treatments provide
+  the recorded readability baseline without external artwork. The separate front/back
+  registry validates descriptors, resolves serialized ID selections independently,
+  emits immutable diagnostics for missing, malformed, or unknown IDs, and falls back to
+  stable classic IDs. The alternate test fixture registers both kinds without changing
+  cards, matches, rules, or RNG. Theme selection is not yet a user setting, so this
+  milestone validates selection IDs at the registry boundary and intentionally leaves
+  save schema v3 and graphics settings unchanged; a future selection feature must store
+  these IDs rather than generated image data.
+  `src/presentation/texture-cache.js` lazily creates sRGB `CanvasTexture` resources with
+  linear magnification, mipmapped linear minification, renderer-clamped anisotropy, and
+  scale-aware keys. Its configurable LRU bound never evicts active leases during
+  capacity pressure, disposes released entries exactly once, clears image references,
+  and supports explicit theme invalidation, reusable context-recovery clearing, and
+  idempotent teardown.
+- **Validation:** All 195 Node test executions and the production build pass on Node 24.
+  Focused tests cover every canonical identity, deterministic high-DPI dimensions,
+  mirrored labels, suit colors, face geometry, back generation, alternate registration,
+  independent fallback diagnostics, accessor safety, lazy reuse, scale variants,
+  complete-deck boundedness, leased-capacity failure, LRU order, partial failures,
+  invalidation, clearing, regeneration, and disposal. A text-only headless Chrome check
+  generated 52 fronts and one back at 600×840, verified nontransparent multicolor pixel
+  data, traversed every card plus the back with an eight-entry cache, cleared and
+  regenerated resources, retained one Three.js canvas under `#app`, and reported zero
+  severe console messages. Browser and development-server processes stopped cleanly;
+  no screenshots were produced. Milestone 12 remains open pending its visual
+  high-DPI/manual memory checks; broader cross-device sign-off remains in the milestone
+  18 device matrix.
 
 ### 13. Committed-event-to-animation pipeline
 - **Goal/files:** Add event player and renderer adapters; depends on 5, 8, 11–12.

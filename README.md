@@ -2,8 +2,8 @@
 
 A framework-light, fullscreen card-game PWA with a deterministic domain engine and
 Main, Settings, and Game screen shell. The Game screen contains a responsive Three.js
-battlefield with logical zone placeholders while generated card visuals are developed
-incrementally.
+battlefield with logical zone placeholders. Generated classic front/back resources and
+a bounded texture cache are ready for committed-event presentation integration.
 
 ## Development
 
@@ -15,6 +15,20 @@ npm run dev
 ```
 
 Build the production site with `npm run build`; serve it with `npm run preview`.
+
+## Texture cache ownership
+
+Keep an acquired texture lease while a material references its texture. Release it only
+after the map is replaced or the material is no longer used:
+
+```js
+const lease = cache.acquireFront({ cardId: 'c-AS' })
+material.map = lease.texture
+
+material.map = null
+lease.release()
+material.dispose()
+```
 
 ## Tests
 
