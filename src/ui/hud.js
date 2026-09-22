@@ -292,6 +292,7 @@ export function createGameScreen({
       saveWarning.hidden = true
     }
   }
+  const saveResultFailed = (result) => result?.status !== undefined && result.status !== 'saved'
   const present = (match) => {
     const eventId = match.pendingEvent?.id
     if (eventId !== undefined && queuedEventIds.has(eventId)) return
@@ -303,7 +304,7 @@ export function createGameScreen({
     })
   }
   const unsubscribeSaves = runController?.subscribeToSaves?.(({ match, result }) => {
-    if (result?.status === 'storage-unavailable') {
+    if (saveResultFailed(result)) {
       setSaveWarning(true, result.reason)
     }
     if (match.pendingEvent !== null) present(match)
