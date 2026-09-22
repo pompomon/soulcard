@@ -670,3 +670,70 @@ test('Game queues every committed event after its save attempt settles', async (
 
   screen.teardown()
 })
+
+test('Game ignores save completions from a replaced run', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const writes = [deferred(), deferred()]
+  let writeIndex = 0
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => writes[writeIndex++].promise,
+    },
+    initialMatch: createMatch({
+      runId: 'replaced-old-run',
+      seed: 0,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const oldSave = controller.revealOrContinue()
+  await Promise.resolve()
+  const newMatch = createMatch({
+    runId: 'replacement-new-run',
+    seed: 1,
+    ruleset: BASELINE_RULESET,
+  })
+  controller.setMatch(newMatch)
+  const newSave = controller.saveStable()
+  const presentedRunIds = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: () => ({
+      present(match) {
+        presentedRunIds.push(match.runId)
+        return Promise.resolve({ status: 'synchronized' })
+      },
+      setPaused() {},
+      destroy() {},
+    }),
+  })
+
+  assert.deepEqual(presentedRunIds, [newMatch.runId])
+  writes[0].resolve({
+    status: 'saved',
+    savedAt: '2026-09-22T20:00:00.000Z',
+  })
+  await oldSave
+  await flushMicrotasks()
+  assert.deepEqual(presentedRunIds, [newMatch.runId])
+
+  writes[1].resolve({
+    status: 'saved',
+    savedAt: '2026-09-22T20:00:01.000Z',
+  })
+  await newSave
+  await flushMicrotasks()
+  assert.ok(presentedRunIds.length >= 1)
+  assert.ok(presentedRunIds.every((runId) => runId === newMatch.runId))
+
+  screen.teardown()
+  await controller.destroy()
+})

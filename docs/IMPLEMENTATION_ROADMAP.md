@@ -1093,10 +1093,10 @@ reviewable PR.
   pointer types, secondary/non-primary rejection, cancellation and drag-off, duplicate
   suppression, native fallback, gating, teardown, save/presentation ordering, skipped
   and failed presentation, terminal state, injected ownership, initial-run persistence,
-  overwrite confirmation, and pending-restore races. An integration test proves one
-  pointer action produces one deterministic clash, save, and presentation while renderer
-  callbacks receive detached frozen state.
-- **Validation:** All 233 unit/integration tests and the production build pass locally on
+  overwrite confirmation, pending-restore races, and stale completions from replaced
+  runs. An integration test proves one pointer action produces one deterministic clash,
+  save, and presentation while renderer callbacks receive detached frozen state.
+- **Validation:** All 234 unit/integration tests and the production build pass locally on
   Node 24. A text-only headless Chromium check at 320×480/DPR 3, 844×390/DPR 3,
   768×1024/DPR 2, 1280×800/DPR 1, and letterboxed 280×400/DPR 2 verified the declared
   layout modes, exactly one canvas, touch Start New from empty storage, an immediately
