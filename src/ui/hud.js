@@ -38,6 +38,8 @@ function saveWarningText(reason) {
   return `Save failed${reason ? ` (${reason})` : ''}. Your game remains available in this session.`
 }
 
+// Run snapshots use idle/unsaved/saving/saved/failed; save completions use
+// saved/storage-unavailable. Transient unsaved/saving states preserve warnings.
 function isSaveFailureStatus(status) {
   return status === 'failed' || status === 'storage-unavailable'
 }
@@ -291,14 +293,23 @@ export function createGameScreen({
   pauseButton.addEventListener('click', handlePause)
 
   const queuedEventIds = new Set()
-  const setSaveWarning = (hasFailure, saveReason) => {
-    if (hasFailure) {
-      saveWarning.textContent = saveWarningText(saveReason)
+  let saveWarningFailure = null
+  const renderSaveWarning = () => {
+    if (saveWarningFailure !== null) {
+      saveWarning.textContent = saveWarningText(saveWarningFailure.reason)
       saveWarning.hidden = false
     } else {
       saveWarning.textContent = ''
       saveWarning.hidden = true
     }
+  }
+  const showSaveWarning = (saveReason) => {
+    saveWarningFailure = { reason: saveReason ?? null }
+    renderSaveWarning()
+  }
+  const clearSaveWarning = () => {
+    saveWarningFailure = null
+    renderSaveWarning()
   }
   const present = (match) => {
     const eventId = match.pendingEvent?.id
@@ -312,7 +323,7 @@ export function createGameScreen({
   }
   const unsubscribeSaves = runController?.subscribeToSaves?.(({ match, result }) => {
     if (isSaveFailureStatus(result?.status)) {
-      setSaveWarning(true, result.reason)
+      showSaveWarning(result.reason)
     }
     if (match.pendingEvent !== null) present(match)
   })
@@ -323,9 +334,9 @@ export function createGameScreen({
     pauseOverlay.update(snapshot)
     // Keep failures visible through transient unsaved/saving states until a save succeeds.
     if (isSaveFailureStatus(snapshot.saveStatus)) {
-      setSaveWarning(true, snapshot.saveReason)
+      showSaveWarning(snapshot.saveReason)
     } else if (clearsSaveWarning(snapshot.saveStatus)) {
-      setSaveWarning(false)
+      clearSaveWarning()
     }
     const nextPresentationPaused = match?.machineState === 'paused'
     eventPlayer.setPaused(nextPresentationPaused)
