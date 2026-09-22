@@ -63,6 +63,18 @@ seed in the domain RNG snapshot, and immediately queues the stable turn-zero run
 IndexedDB persistence before play continues. Replacing a current or still-restoring
 saved run requires confirmation.
 
+## AI encounter flow
+
+`src/domain/ai-controller.js` is the automatic-opponent policy boundary. One player
+Reveal/Continue activation advances exactly one complete deterministic clash through the
+match machine, including ties, the one-time source-to-personal transition, personal-pile
+recycling, or a terminal inability. The AI controller does not use timers, browser state,
+presentation callbacks, `Math.random`, or any RNG beyond the serialized domain RNG.
+
+`run-controller` validates the injected AI controller and its committed match/event pair,
+then queues the stable save before the HUD presents that event. The empty persisted
+`futureModifiers` field remains reserved; no modifier behavior is implemented.
+
 ## Tests
 
 ```sh
