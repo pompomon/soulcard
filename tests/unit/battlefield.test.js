@@ -466,6 +466,62 @@ test('battlefield keeps a bounded terminal draw contest and validates event adap
   assert.throws(() => handle.syncSnapshot(match), /destroyed/)
 })
 
+test('long tie settlements do not cascade texture recreation and live speed rescales tweens', () => {
+  const host = createHost(1024, 768)
+  const windowObject = createWindow({ width: 1024, height: 768 })
+  const observer = createObserverHarness()
+  const settings = createSettings({ animationSpeed: 1 })
+  const textures = createTextureCacheHarness()
+  const renderer = new FakeRenderer(host, {})
+  const handle = mountBattlefield(host, {
+    settingsController: settings,
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => renderer,
+    textureCacheFactory: () => textures.cache,
+  })
+  let match = createMatch({
+    runId: 'battlefield-long-tie',
+    seed: 444,
+    ruleset: BASELINE_RULESET,
+  })
+  let transition
+  do {
+    transition = revealOrContinue(match)
+    match = transition.match
+  } while (transition.event.turn < 30)
+  assert.equal(transition.event.reveals.length, 10)
+
+  const timeline = createEventTimeline(transition.event)
+  handle.beginEvent(transition.event, transition.match)
+  handle.applyStep(timeline[0], { durationMs: 200 })
+  renderer.animationLoop(0)
+  renderer.animationLoop(50)
+  assert.equal(handle.getPresentationState().tweens, 1)
+  settings.emit({ animationSpeed: 2 })
+  renderer.animationLoop(125)
+  renderer.animationLoop(200)
+  assert.equal(handle.getPresentationState().tweens, 0)
+
+  for (const step of timeline.slice(1)) {
+    handle.applyStep(step, { durationMs: 0 })
+  }
+  const revealIds = new Set(transition.event.reveals.map(({ cardId }) => cardId))
+  const eventFronts = textures.acquisitions
+    .filter(([kind, options]) => kind === 'front' && revealIds.has(options.cardId))
+    .map(([, options]) => options.cardId)
+  const acquisitionCounts = new Map()
+  for (const cardId of eventFronts) {
+    acquisitionCounts.set(cardId, (acquisitionCounts.get(cardId) ?? 0) + 1)
+  }
+  assert.equal(eventFronts.length, 12)
+  assert.equal([...acquisitionCounts.values()].filter((count) => count === 2).length, 2)
+  assert.ok([...acquisitionCounts.values()].every((count) => count <= 2))
+  assert.ok(handle.getPresentationState().transientCards <= 8)
+
+  handle.teardown()
+})
+
 test('battlefield validates its adapters before creating renderer resources', () => {
   const host = createHost(320, 480)
   assert.throws(() => mountBattlefield(null), /host/)

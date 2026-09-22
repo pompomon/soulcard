@@ -219,6 +219,7 @@ export function mountBattlefield(host, {
   const staticVisuals = new Set()
   const transientVisuals = new Map()
   const tweens = new Set()
+  const settledVisuals = new Set()
 
   const requestFrame = typeof windowObject?.requestAnimationFrame === 'function'
     ? windowObject.requestAnimationFrame.bind(windowObject)
@@ -266,6 +267,7 @@ export function mountBattlefield(host, {
     for (const visual of transientVisuals.values()) releaseVisual(visual)
     transientVisuals.clear()
     tweens.clear()
+    settledVisuals.clear()
   }
 
   function createCardVisual({
@@ -472,6 +474,42 @@ export function mountBattlefield(host, {
     return visual
   }
 
+  function releaseSettledVisuals() {
+    for (const visual of settledVisuals) {
+      if (transientVisuals.get(visual.cardId) === visual) {
+        transientVisuals.delete(visual.cardId)
+      }
+      releaseVisual(visual)
+    }
+    settledVisuals.clear()
+  }
+
+  function ensureSettlementCard(cardId, suppliedBy) {
+    const existing = transientVisuals.get(cardId)
+    if (existing) return existing
+    const visual = createCardVisual({
+      cardId,
+      faceUp: true,
+      parent: scene,
+      zoneId: 'contestedPile',
+      offset: Object.freeze({ x: 0, y: 0, z: 0.12 }),
+      transient: true,
+    })
+    transientVisuals.set(cardId, visual)
+    placeTransient(visual)
+    return visual
+  }
+
+  function rescaleTweens(previousSpeed, nextSpeed) {
+    if (Object.is(previousSpeed, nextSpeed)) return
+    for (const visual of tweens) {
+      const tween = visual.tween
+      if (tween === null) continue
+      const remaining = Math.max(0, tween.durationMs - tween.elapsedMs)
+      tween.durationMs = tween.elapsedMs + remaining * previousSpeed / nextSpeed
+    }
+  }
+
   function renderCurrentFrame() {
     if (!renderer) return
     placeholderMaterial.opacity = 0.18 + Math.sin(animationTime * 0.0015) * 0.035
@@ -619,6 +657,7 @@ export function mountBattlefield(host, {
   const unsubscribeSettings = settingsController?.subscribe((settings) => {
     if (disposed) return
     const qualityChanged = settings.quality !== currentSettings.quality
+    rescaleTweens(currentSettings.animationSpeed, settings.animationSpeed)
     currentSettings = settings
     if (qualityChanged) {
       rebuildRenderer()
@@ -699,13 +738,15 @@ export function mountBattlefield(host, {
     } else if (step.kind === 'transfer' || step.kind === 'burn') {
       const reveal = currentEvent.reveals.find(({ cardId }) => cardId === step.cardId)
       if (!reveal) throw new Error('Settlement step must reference a revealed card')
-      const visual = ensureTransientCard(step.cardId, reveal.suppliedBy)
+      releaseSettledVisuals()
+      const visual = ensureSettlementCard(step.cardId, reveal.suppliedBy)
       startTween(
         visual,
         destinationZone(step.to),
         Object.freeze({ x: 0, y: 0, z: 0.14 }),
         context.durationMs,
       )
+      settledVisuals.add(visual)
       publishPresentation(step.kind, step.cardId)
     } else if (step.kind === 'retain') {
       publishPresentation('retained-draw')

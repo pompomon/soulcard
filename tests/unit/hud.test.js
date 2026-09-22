@@ -286,7 +286,7 @@ test('Game gates committed presentation on save completion and publishes live pr
     stepKind: 'reveal',
     reason: null,
   })
-  assert.equal(status.textContent, 'Revealing card 1 of 3.')
+  assert.equal(status.textContent, 'Revealing committed card.')
   presentationState({
     status: 'skipped',
     eventId: controller.currentMatch.pendingEvent.id,

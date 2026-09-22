@@ -407,10 +407,12 @@ export function createEventPlayer({
       }
       return immutableResult(resultStatus, event.id, reason)
     } catch (error) {
-      try {
-        adapter.cancelEvent?.('adapter-error')
-      } catch (cancelError) {
-        reportError(cancelError)
+      if (!destroyed) {
+        try {
+          adapter.cancelEvent?.('adapter-error')
+        } catch (cancelError) {
+          reportError(cancelError)
+        }
       }
       if (!destroyed) {
         try {
@@ -541,7 +543,6 @@ export function createEventPlayer({
     }
     for (const job of queue.splice(0)) {
       jobs.delete(job.key)
-      presented.add(job.key)
       job.resolve(immutableResult('cancelled', job.event.id, reason))
     }
     wakeResumeWaiters()

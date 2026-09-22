@@ -74,9 +74,7 @@ function presentationStatusText(state) {
   if (state.status === 'completed') return 'Clash presentation complete.'
   if (state.status === 'failed') return 'Presentation skipped after a rendering error.'
   if (state.status !== 'playing') return null
-  if (state.stepKind === 'reveal') {
-    return `Revealing card ${state.stepIndex + 1} of ${state.stepCount}.`
-  }
+  if (state.stepKind === 'reveal') return 'Revealing committed card.'
   if (state.stepKind === 'transfer') return 'Transferring committed cards.'
   if (state.stepKind === 'burn') return 'Burning committed cards.'
   if (state.stepKind === 'retain') return 'The unresolved contest is retained.'
@@ -238,27 +236,33 @@ export function createGameScreen({
     cancelEvent: (...args) => battlefield.cancelEvent?.(...args),
     setPaused: (...args) => battlefield.setPaused?.(...args),
   })
-  const eventPlayer = eventPlayerFactory({
-    adapter: presentationAdapter,
-    settingsController,
-    onStateChange(state) {
-      const message = presentationStatusText(state)
-      if (message !== null) status.textContent = message
-      status.dataset.presentationState = state.status
-    },
-    onError() {
-      status.textContent = 'Presentation skipped after a rendering error.'
-    },
-  })
-  if (
-    eventPlayer === null
-    || typeof eventPlayer !== 'object'
-    || typeof eventPlayer.present !== 'function'
-    || typeof eventPlayer.setPaused !== 'function'
-    || typeof eventPlayer.destroy !== 'function'
-  ) {
+  let eventPlayer
+  try {
+    eventPlayer = eventPlayerFactory({
+      adapter: presentationAdapter,
+      settingsController,
+      onStateChange(state) {
+        const message = presentationStatusText(state)
+        if (message !== null) status.textContent = message
+        status.dataset.presentationState = state.status
+      },
+      onError() {
+        status.textContent = 'Presentation skipped after a rendering error.'
+      },
+    })
+    if (
+      eventPlayer === null
+      || typeof eventPlayer !== 'object'
+      || typeof eventPlayer.present !== 'function'
+      || typeof eventPlayer.setPaused !== 'function'
+      || typeof eventPlayer.destroy !== 'function'
+    ) {
+      throw new TypeError('eventPlayerFactory must return a compatible event player')
+    }
+  } catch (error) {
+    pauseOverlay.teardown()
     battlefield.teardown?.()
-    throw new TypeError('eventPlayerFactory must return a compatible event player')
+    throw error
   }
 
   const handlePause = () => {
