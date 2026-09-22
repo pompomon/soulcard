@@ -272,6 +272,20 @@ export function createGameScreen({
   }
   pauseButton.addEventListener('click', handlePause)
 
+  const queuedEventIds = new Set()
+  const present = (match) => {
+    const eventId = match.pendingEvent?.id
+    if (eventId !== undefined && queuedEventIds.has(eventId)) return
+    if (eventId !== undefined) queuedEventIds.add(eventId)
+    Promise.resolve(eventPlayer.present(match)).catch(() => {
+      status.textContent = 'Presentation skipped after a rendering error.'
+    }).finally(() => {
+      if (eventId !== undefined) queuedEventIds.delete(eventId)
+    })
+  }
+  const unsubscribeSaves = runController?.subscribeToSaves?.(({ match }) => {
+    if (match.pendingEvent !== null) present(match)
+  })
   const unsubscribeRun = runController?.subscribe((snapshot) => {
     const { match } = snapshot
     pauseButton.disabled = match?.machineState !== 'ready'
@@ -300,9 +314,7 @@ export function createGameScreen({
 
     const saveSettled = snapshot.saveStatus === 'saved' || snapshot.saveStatus === 'failed'
     if (match.pendingEvent === null || saveSettled) {
-      Promise.resolve(eventPlayer.present(match)).catch(() => {
-        status.textContent = 'Presentation skipped after a rendering error.'
-      })
+      present(match)
     } else if (snapshot.saveStatus === 'saving') {
       status.textContent = 'Saving committed clash…'
     }
@@ -312,6 +324,7 @@ export function createGameScreen({
     element,
     teardown() {
       unsubscribeRun?.()
+      unsubscribeSaves?.()
       pauseButton.removeEventListener('click', handlePause)
       pauseOverlay.teardown()
       eventPlayer.destroy()

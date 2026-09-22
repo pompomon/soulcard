@@ -392,6 +392,9 @@ test('battlefield renders committed snapshots and routes event cards through bou
     cacheEntries: 1,
   })
   assert.equal(textures.acquisitions[0][0], 'back')
+  settingsController.emit({ quality: 'high' })
+  assert.equal(textures.acquisitions.at(-1)[1].scale, 3)
+  assert.equal(textures.leases[0].releaseCalls, 1)
 
   const transition = revealOrContinue(initial)
   const timeline = createEventTimeline(transition.event)
@@ -404,7 +407,7 @@ test('battlefield renders committed snapshots and routes event cards through bou
       stepCount: timeline.length,
       durationMs: 10,
     })
-    renderers[0].animationLoop(index * 20)
+    renderers.at(-1).animationLoop(index * 20)
   }
 
   const active = handle.getPresentationState()
@@ -414,7 +417,7 @@ test('battlefield renders committed snapshots and routes event cards through bou
   assert.ok(active.transientCards <= 8)
   assert.equal(active.phase, timeline.at(-1).kind)
   assert.ok(textures.acquisitions.some(([kind]) => kind === 'front'))
-  assert.ok(textures.acquisitions.every(([, options]) => options.scale === 2))
+  assert.ok(textures.acquisitions.slice(1).every(([, options]) => options.scale === 3))
 
   handle.syncSnapshot(transition.match, { reason: 'completed' })
   assert.equal(handle.getPresentationState().transientCards, 0)
@@ -468,6 +471,12 @@ test('source-to-personal events route each reveal from its committed origin', ()
   }
   assertOrigin(0, 'sourceDeck')
   assertOrigin(2, 'playerDrawPile')
+  handle.applyStep({ ...timeline[0], from: null }, { durationMs: 100 })
+  const legacyMesh = renderer.scene.children.find(
+    ({ name }) => name === `battlefield-card:${timeline[0].cardId}:front`,
+  )
+  assert.equal(legacyMesh.position.x, handle.layout.zones.sourceDeck.x)
+  assert.equal(legacyMesh.position.y, handle.layout.zones.sourceDeck.y)
 
   handle.teardown()
 })

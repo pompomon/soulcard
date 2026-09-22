@@ -253,6 +253,31 @@ export function mountBattlefield(host, {
     return TEXTURE_SCALE_BY_QUALITY[currentSettings.quality]
   }
 
+  function acquireVisualLease(visual) {
+    const cache = ensureTextureCache()
+    const scale = textureScale()
+    return visual.faceUp
+      ? cache.acquireFront({
+          themeId: selectedThemes.frontThemeId,
+          cardId: visual.cardId,
+          scale,
+        })
+      : cache.acquireBack({
+          themeId: selectedThemes.backThemeId,
+          scale,
+        })
+  }
+
+  function refreshVisualTextures() {
+    for (const visual of [...staticVisuals, ...transientVisuals.values()]) {
+      const previousLease = visual.lease
+      visual.lease = acquireVisualLease(visual)
+      visual.material.map = visual.lease.texture
+      visual.material.needsUpdate = true
+      previousLease.release()
+    }
+  }
+
   function releaseVisual(visual) {
     tweens.delete(visual)
     visual.parent.remove(visual.mesh)
@@ -278,18 +303,7 @@ export function mountBattlefield(host, {
     offset = Object.freeze({ x: 0, y: 0, z: 0 }),
     transient = false,
   }) {
-    const cache = ensureTextureCache()
-    const scale = textureScale()
-    const lease = faceUp
-      ? cache.acquireFront({
-          themeId: selectedThemes.frontThemeId,
-          cardId,
-          scale,
-        })
-      : cache.acquireBack({
-          themeId: selectedThemes.backThemeId,
-          scale,
-        })
+    const lease = acquireVisualLease({ cardId, faceUp })
     let material
     try {
       material = new THREE.MeshBasicMaterial({
@@ -660,6 +674,7 @@ export function mountBattlefield(host, {
     rescaleTweens(currentSettings.animationSpeed, settings.animationSpeed)
     currentSettings = settings
     if (qualityChanged) {
+      refreshVisualTextures()
       rebuildRenderer()
     } else {
       resize()
@@ -728,9 +743,7 @@ export function mountBattlefield(host, {
           ? 'playerDrawPile'
           : step.from === 'opponent.drawPile'
             ? 'opponentDrawPile'
-            : currentEvent.stage === 'source'
-              ? 'sourceDeck'
-              : `${step.suppliedBy}DrawPile`
+            : 'sourceDeck'
       visual.zoneId = originZone
       visual.offset = Object.freeze({ x: 0, y: 0, z: 0.1 })
       placeTransient(visual)

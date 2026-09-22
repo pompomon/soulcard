@@ -405,3 +405,58 @@ test('Game presents a committed event after a failed save without blocking play'
   assert.deepEqual(presented, [null, controller.currentMatch.pendingEvent.id])
   screen.teardown()
 })
+
+test('Game queues every committed event after its save attempt settles', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const writes = [deferred(), deferred()]
+  let writeIndex = 0
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => writes[writeIndex++].promise,
+    },
+    initialMatch: createMatch({
+      runId: 'hud-ordered-presentation',
+      seed: 0,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const presented = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: () => ({
+      present(match) {
+        presented.push(match.pendingEvent?.id ?? null)
+        return Promise.resolve({ status: 'queued' })
+      },
+      setPaused() {},
+      destroy() {},
+    }),
+  })
+
+  const first = controller.revealOrContinue()
+  const firstEventId = controller.currentMatch.pendingEvent.id
+  const second = controller.revealOrContinue()
+  const secondEventId = controller.currentMatch.pendingEvent.id
+  assert.deepEqual(presented, [null])
+
+  writes[0].resolve({ status: 'saved', savedAt: '2026-09-22T10:00:00.000Z' })
+  await first
+  await Promise.resolve()
+  assert.deepEqual(presented, [null, firstEventId])
+
+  writes[1].resolve({ status: 'saved', savedAt: '2026-09-22T10:00:01.000Z' })
+  await second
+  await Promise.resolve()
+  assert.deepEqual(presented, [null, firstEventId, secondEventId])
+
+  screen.teardown()
+})
