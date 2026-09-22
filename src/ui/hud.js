@@ -729,6 +729,7 @@ export function createGameScreen({
   renderHud()
 
   const unsubscribeSaves = runController?.subscribeToSaves?.(({ match, result }) => {
+    if (match.runId !== latestSnapshot?.match?.runId) return
     if (isSaveFailureStatus(result?.status)) {
       showSaveWarning(result.reason)
     }

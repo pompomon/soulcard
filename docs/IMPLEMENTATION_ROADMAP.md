@@ -1087,21 +1087,29 @@ reviewable PR.
   presentation progress, next action, save warning, and terminal outcome from stable
   snapshots and committed events. `src/style.css` preserves visible focus indicators,
   deliberate `touch-action`, safe-area/layout reserves, and physical 44×44 CSS-pixel
-  controls, including letterboxed layouts. Focused input/HUD/bootstrap tests cover
+  controls, including letterboxed layouts. `src/app/new-match.js` creates a baseline
+  seeded run from Web Crypto entropy, and `src/app/bootstrap.js` installs it and queues
+  its stable save before Start New Game opens Game. Focused input/HUD/bootstrap tests cover
   pointer types, secondary/non-primary rejection, cancellation and drag-off, duplicate
   suppression, native fallback, gating, teardown, save/presentation ordering, skipped
-  and failed presentation, terminal state, and injected ownership. An integration test
-  proves one pointer action produces one deterministic clash, save, and presentation
-  while renderer callbacks receive detached frozen state.
-- **Validation:** All 228 unit/integration tests and the production build pass locally on
-  Node 24. A text-only Playwright Chromium check at 320×480/DPR 3, 844×390/DPR 3,
-  768×1024/DPR 2, and 1280×800/DPR 1 verified the declared layout modes, exactly one
-  canvas, mouse/touch/pen activation, pointer cancellation and out-of-target release,
-  one turn/save per activation, pause, live HUD results, `touch-action: manipulation`,
-  physical targets of at least 44×44 CSS px, 3 px visible focus outlines, and zero
-  relevant console errors. No screenshots were produced. A representative real-device
-  touch pass remains outstanding, so `MILESTONES.md` does not yet mark milestone 14
-  complete.
+  and failed presentation, terminal state, injected ownership, initial-run persistence,
+  overwrite confirmation, pending-restore races, and stale completions from replaced
+  runs. An integration test proves one pointer action produces one deterministic clash,
+  save, and presentation while renderer callbacks receive detached frozen state.
+- **Validation:** All 234 unit/integration tests and the production build pass locally on
+  Node 24. A text-only headless Chromium check at 320×480/DPR 3, 844×390/DPR 3,
+  768×1024/DPR 2, 1280×800/DPR 1, and letterboxed 280×400/DPR 2 verified the declared
+  layout modes, exactly one canvas, touch Start New from empty storage, an immediately
+  saved seeded 52-card run, mouse/touch/pen activation, pointer cancellation and
+  out-of-target release, busy duplicate suppression, pause/resume, live HUD results,
+  `touch-action: manipulation`, physical targets of at least 44×44 CSS px, 3 px visible
+  focus outlines, and zero relevant console errors. A separate 390×844/DPR 3 check
+  verified fresh-start persistence, decline/accept replacement confirmation, one clash,
+  and pause/resume. A user-provided portrait screenshot from a physical Android target
+  device confirmed touch navigation and responsive HUD rendering while exposing the
+  now-fixed missing new-match initialization. A post-fix target-device Reveal/Continue
+  and Pause pass remains outstanding, so `MILESTONES.md` does not yet mark milestone 14
+  complete. No validation screenshots were generated.
 
 ### 15. AI and complete source-to-personal-stage match flow
 - **Goal/files:** Add AI controller/encounter wiring and integration tests; depends on 5,
