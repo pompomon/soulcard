@@ -283,11 +283,11 @@ export function createGameScreen({
   pauseButton.addEventListener('click', handlePause)
 
   const queuedEventIds = new Set()
-  const updateSaveWarning = (saveStatus, saveReason) => {
-    if (saveStatus === 'failed') {
+  const setSaveWarning = (hasFailure, saveReason) => {
+    if (hasFailure) {
       saveWarning.textContent = saveWarningText(saveReason)
       saveWarning.hidden = false
-    } else if (saveStatus === 'saved' || saveStatus === 'idle') {
+    } else {
       saveWarning.textContent = ''
       saveWarning.hidden = true
     }
@@ -304,7 +304,7 @@ export function createGameScreen({
   }
   const unsubscribeSaves = runController?.subscribeToSaves?.(({ match, result }) => {
     if (result?.status === 'storage-unavailable') {
-      updateSaveWarning('failed', result.reason)
+      setSaveWarning(true, result.reason)
     }
     if (match.pendingEvent !== null) present(match)
   })
@@ -313,7 +313,11 @@ export function createGameScreen({
     pauseButton.disabled = match?.machineState !== 'ready'
     pauseOverlay.element.hidden = match?.machineState !== 'paused'
     pauseOverlay.update(snapshot)
-    updateSaveWarning(snapshot.saveStatus, snapshot.saveReason)
+    if (snapshot.saveStatus === 'failed') {
+      setSaveWarning(true, snapshot.saveReason)
+    } else if (snapshot.saveStatus === 'saved' || snapshot.saveStatus === 'idle') {
+      setSaveWarning(false)
+    }
     const nextPresentationPaused = match?.machineState === 'paused'
     eventPlayer.setPaused(nextPresentationPaused)
 
