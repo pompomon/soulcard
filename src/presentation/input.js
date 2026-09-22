@@ -26,6 +26,23 @@ function isPrimaryPointer(event) {
   )
 }
 
+function isPointerInside(target, event) {
+  if (
+    !Number.isFinite(event.clientX)
+    || !Number.isFinite(event.clientY)
+    || typeof target.getBoundingClientRect !== 'function'
+  ) {
+    return true
+  }
+  const bounds = target.getBoundingClientRect()
+  return (
+    event.clientX >= bounds.left
+    && event.clientX <= bounds.right
+    && event.clientY >= bounds.top
+    && event.clientY <= bounds.bottom
+  )
+}
+
 export function createInputController({
   target,
   onActivate,
@@ -44,6 +61,14 @@ export function createInputController({
   let pendingPointerId = null
   let suppressCompatibilityClick = false
   let destroyed = false
+  const pointerRoot = (
+    target.ownerDocument !== null
+    && typeof target.ownerDocument === 'object'
+    && typeof target.ownerDocument.addEventListener === 'function'
+    && typeof target.ownerDocument.removeEventListener === 'function'
+  )
+    ? target.ownerDocument
+    : null
 
   const canActivate = () => !destroyed && currentEnabled && !currentBusy
 
@@ -69,12 +94,18 @@ export function createInputController({
       return
     }
     pendingPointerId = null
-    if (!canActivate()) return
+    if (!canActivate() || !isPointerInside(target, event)) return
     suppressCompatibilityClick = true
     onActivate(event)
   }
 
   function handlePointerCancel(event) {
+    if (event.pointerId === pendingPointerId) {
+      pendingPointerId = null
+    }
+  }
+
+  function handleRootPointerEnd(event) {
     if (event.pointerId === pendingPointerId) {
       pendingPointerId = null
     }
@@ -101,6 +132,8 @@ export function createInputController({
   target.addEventListener('pointerup', handlePointerUp)
   target.addEventListener('pointercancel', handlePointerCancel)
   target.addEventListener('click', handleClick)
+  pointerRoot?.addEventListener('pointerup', handleRootPointerEnd)
+  pointerRoot?.addEventListener('pointercancel', handleRootPointerEnd)
   syncTarget()
 
   return Object.freeze({
@@ -127,6 +160,8 @@ export function createInputController({
       target.removeEventListener('pointerup', handlePointerUp)
       target.removeEventListener('pointercancel', handlePointerCancel)
       target.removeEventListener('click', handleClick)
+      pointerRoot?.removeEventListener('pointerup', handleRootPointerEnd)
+      pointerRoot?.removeEventListener('pointercancel', handleRootPointerEnd)
     },
     getState() {
       return Object.freeze({

@@ -7,6 +7,7 @@ class FakeTarget {
     this.dataset = {}
     this.disabled = false
     this.listeners = new Map()
+    this.ownerDocument = null
   }
 
   addEventListener(type, listener) {
@@ -27,6 +28,8 @@ class FakeTarget {
       isPrimary: true,
       pointerId: 1,
       pointerType: 'mouse',
+      clientX: 50,
+      clientY: 50,
       defaultPrevented: false,
       propagationStopped: false,
       preventDefault() {
@@ -39,6 +42,10 @@ class FakeTarget {
     }
     for (const listener of [...(this.listeners.get(type) ?? [])]) listener(event)
     return event
+  }
+
+  getBoundingClientRect() {
+    return { top: 0, right: 100, bottom: 100, left: 0 }
   }
 }
 
@@ -85,6 +92,32 @@ test('secondary, non-primary, mismatched, and cancelled pointers do not activate
   target.dispatch('pointerup', { pointerId: 3 })
   target.dispatch('pointerdown', { pointerId: 5, pointerType: 'unknown' })
   target.dispatch('pointerup', { pointerId: 5, pointerType: 'unknown' })
+
+  assert.equal(activations, 0)
+})
+
+test('release outside the target cancels mouse and implicit-capture pointer sequences', () => {
+  const root = new FakeTarget()
+  const target = new FakeTarget()
+  target.ownerDocument = root
+  let activations = 0
+  createInputController({
+    target,
+    onActivate: () => {
+      activations += 1
+    },
+  })
+
+  target.dispatch('pointerdown', { pointerId: 1 })
+  root.dispatch('pointerup', { pointerId: 1, clientX: 150 })
+  target.dispatch('pointerup', { pointerId: 1 })
+
+  target.dispatch('pointerdown', { pointerId: 2, pointerType: 'touch' })
+  target.dispatch('pointerup', {
+    pointerId: 2,
+    pointerType: 'touch',
+    clientX: 150,
+  })
 
   assert.equal(activations, 0)
 })
@@ -153,6 +186,17 @@ test('teardown is idempotent and removes every listener', () => {
   assert.equal(activations, 0)
   assert.equal(controller.getState().destroyed, true)
   assert.ok([...target.listeners.values()].every((listeners) => listeners.size === 0))
+})
+
+test('teardown removes document-level pointer termination listeners', () => {
+  const root = new FakeTarget()
+  const target = new FakeTarget()
+  target.ownerDocument = root
+  const controller = createInputController({ target, onActivate() {} })
+
+  controller.destroy()
+
+  assert.ok([...root.listeners.values()].every((listeners) => listeners.size === 0))
 })
 
 test('invalid construction and gate values are rejected', () => {

@@ -407,7 +407,7 @@ export function createGameScreen({
   let revealInput = null
   let pauseInput = null
   const queuedEventIds = new Set()
-  const requestedEventIds = new Set()
+  const settledEventIds = new Set()
   const presentationJobs = new Map()
   let saveWarningFailure = null
 
@@ -565,14 +565,13 @@ export function createGameScreen({
     if (eventId !== undefined && presentationJobs.has(eventId)) {
       return presentationJobs.get(eventId)
     }
-    if (eventId !== undefined && requestedEventIds.has(eventId)) {
+    if (eventId !== undefined && settledEventIds.has(eventId)) {
       return Promise.resolve(Object.freeze({
         status: 'duplicate',
         eventId,
         reason: null,
       }))
     }
-    if (eventId !== undefined) requestedEventIds.add(eventId)
     if (eventId !== undefined) queuedEventIds.add(eventId)
     renderHud()
 
@@ -597,6 +596,12 @@ export function createGameScreen({
     const finalized = Promise.resolve(presentation)
       .then((result) => {
         if (result?.status === 'failed') presentationFailure = true
+        if (
+          eventId !== undefined
+          && ['completed', 'skipped', 'cancelled', 'duplicate'].includes(result?.status)
+        ) {
+          settledEventIds.add(eventId)
+        }
         if (
           eventId !== undefined
           && presentationState.eventId === eventId
