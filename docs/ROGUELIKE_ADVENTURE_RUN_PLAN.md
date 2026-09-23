@@ -26,13 +26,16 @@ complete before sub-milestone 21.1 begins.
   instance, replace an instance, or remove one. Every instance must belong to exactly
   one campaign/run zone.
 - Every instance carries immutable `campaignOwner` provenance (`player` or `opponent`)
-  independent of its current encounter zone. During an encounter, the ordered player
-  campaign-deck IDs are retained as metadata, not a second card zone. Hold also records
-  the exact campaign-deck index from which its player-provenance instance was removed.
-  Capturing into an empty Hold slot removes that ID and records its index. Replacing
-  Hold substitutes the displaced held ID at the selected ID's campaign-deck index and
-  records that index with the newly held instance. Playing from Hold first reinserts
-  its ID at the recorded index, then clears Hold before supplying the card.
+  independent of its current encounter zone. During an encounter, an ordered player
+  campaign layout is retained as metadata, not a second card zone. It contains every
+  non-held player ID and, while Hold is occupied, exactly one `holdPosition` token for
+  the held instance. Capturing into an empty Hold slot replaces the selected ID with the
+  token at that exact index. Replacing Hold puts the displaced held ID at the selected
+  ID's layout index while the existing token is rebound to the newly held instance.
+  Playing from Hold replaces the token with the held ID before supplying the card.
+  Deck rewards mutate only ID entries; they cannot target the token, which shifts
+  naturally with ordered insertions and removals. Validation requires exactly one token
+  if and only if Hold is occupied.
 - Encounter teardown first validates that every player-provenance instance occurs
   exactly once across both sides' source, draw, and won piles, `burnPile`,
   `contestedPile`, and Hold. The held instance remains in Hold; every other player
@@ -43,7 +46,7 @@ complete before sub-milestone 21.1 begins.
   boundary, so `inPlay` is empty and an unsettled terminal contest remains represented
   by `contestedPile`. This same teardown runs before a retry or encounter advance.
   Hold persists into that next encounter, and its instance is excluded from the player
-  source pile because it is absent from the retained campaign-deck order.
+  source pile because the campaign layout contains its token instead of its ID.
 - An encounter uses player and opponent source piles rather than the current shared
   alternating `sourceDeck`. This is necessary for source-stage Hold use while retaining
   player campaign ownership. The player source pile is constructed from the persistent
@@ -60,8 +63,8 @@ complete before sub-milestone 21.1 begins.
   Before calculating a reveal round, peek at the player's top candidate without
   removing it and enter a stable `awaitingHoldChoice` state whose persisted metadata
   identifies that instance, its source zone, and index `0`. If the player uses Hold,
-  the candidate remains at index `0` unchanged and the held instance is reinserted into
-  the campaign order before it supplies the player reveal. This works in source and
+  the candidate remains at index `0` unchanged and the held instance replaces its
+  campaign-layout token before it supplies the player reveal. This works in source and
   personal stages.
 - Base Hold access ends before the opponent reveals. Starting in 21.2, the
   Hold-information boon reverses that reveal order for the decision only: peek at the
@@ -82,7 +85,7 @@ complete before sub-milestone 21.1 begins.
   the selected instance's exact former index in its player-controlled ordered encounter
   zone, and the selected instance enters Hold. Capture and replacement targets must
   have `campaignOwner: player`; eligibility modifiers may narrow but never remove that
-  requirement. The transition validates conservation and the recorded campaign index.
+  requirement. The transition validates conservation and the campaign-layout token.
   A Hold choice must be saved before presentation can advance.
 - Encounter losses reduce run health and retry the same encounter with the persistent
   deck. A terminal encounter draw has the same campaign transition: it reduces health
