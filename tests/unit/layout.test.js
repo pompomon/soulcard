@@ -93,8 +93,17 @@ test('safe areas and HUD reserves leave a positive camera-fitting battlefield re
     width: 1380,
     height: 76,
   })
+  assert.deepEqual(layout.hud.comparison, {
+    x: 40,
+    y: 86,
+    width: 1380,
+    height: 84,
+  })
   assert.equal(layout.hud.footer.y + layout.hud.footer.height, 870)
-  assert.equal(layout.hud.battlefield.y, layout.hud.header.y + layout.hud.header.height)
+  assert.equal(
+    layout.hud.battlefield.y,
+    layout.hud.comparison.y + layout.hud.comparison.height,
+  )
   assert.equal(
     layout.hud.battlefield.y + layout.hud.battlefield.height,
     layout.hud.footer.y,
@@ -137,10 +146,12 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(landscape.viewport.logicalHeight, 390)
   assert.equal(landscape.viewport.minimumWidth, 480)
   assert.equal(landscape.viewport.minimumHeight, 320)
+  assert.equal(landscape.hud.comparison.height, 80)
   assert.equal(landscape.hud.footer.height, 114)
 
   const tablet = createBattlefieldLayout({ width: 768, height: 1024 })
   assert.equal(tablet.hud.header.height, 60)
+  assert.equal(tablet.hud.comparison.height, 84)
   assert.equal(tablet.hud.footer.height, 108)
   assert.equal(tablet.hud.leftPanel.width, 120)
 
@@ -152,6 +163,7 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.ok(Math.abs(smallerLandscape.hud.footer.height - 131.6) < Number.EPSILON * 100)
 
   assert.equal(minimum.hud.footer.height, 210)
+  assert.equal(minimum.hud.comparison.height, 80)
   assert.ok(
     Math.abs(smaller.hud.footer.height - 218.8) < Number.EPSILON * 100,
   )

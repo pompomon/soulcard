@@ -131,6 +131,7 @@ test('Game owns a semantic pause overlay with live save status and Resume', asyn
         safeArea: { top: 1, right: 2, bottom: 3, left: 4 },
         hud: {
           header: { height: 72 },
+          comparison: { height: 80 },
           footer: { height: 210 },
           leftPanel: { width: 0 },
         },
@@ -166,6 +167,7 @@ test('Game owns a semantic pause overlay with live save status and Resume', asyn
   assert.equal(screen.element.dataset.layoutMode, 'phone-portrait')
   assert.equal(screen.element.dataset.letterboxed, 'false')
   assert.equal(screen.element.style.values.get('--hud-header-reserve'), '72px')
+  assert.equal(screen.element.style.values.get('--hud-comparison-reserve'), '80px')
   assert.equal(screen.element.style.values.get('--hud-control-min-size'), '44px')
   assert.equal(screen.element.style.values.get('--battlefield-logical-width'), '320px')
   assert.equal(screen.element.style.values.get('--safe-area-left'), '4px')

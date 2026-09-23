@@ -309,6 +309,7 @@ test('battlefield remeasures a zero-size mount and responds to resize and orient
   assert.equal(renderers[0].pixelRatios.at(-1), 1.5)
   assert.equal(handle.layout.mode, 'phone-portrait')
   assert.equal(host.dataset.layoutMode, 'phone-portrait')
+  assert.equal(host.style.getPropertyValue('--hud-comparison-reserve'), '80px')
   assert.equal(host.children.length, 1)
   assert.equal(host.children[0].attributes['aria-hidden'], 'true')
   assert.equal(observer.instances[0].target, host)
