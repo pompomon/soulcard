@@ -920,7 +920,10 @@ export function createGameScreen({
 
         const active = autoRevealChainActive && !destroyed
         const enabled = autoRevealCheckbox.checked
-        const blocked = hud.inert === true
+        const blocked = (
+          hud.inert === true
+          || rendererContextState.status !== 'ready'
+        )
         const continuationExpected = (
           active
           && enabled

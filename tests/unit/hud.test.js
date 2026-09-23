@@ -784,6 +784,66 @@ test('Auto-reveal continues after a reduced-motion presentation skip', async (t)
   await controller.destroy()
 })
 
+test('Auto-reveal stops when presentation settles during graphics recovery', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => ({
+        status: 'saved',
+        savedAt: '2026-09-23T12:01:30.000Z',
+      }),
+    },
+    initialMatch: createMatch({
+      runId: 'hud-auto-context-recovery',
+      seed: 12345,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const presentations = []
+  let publishContext
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: (host, options) => {
+      publishContext = options.onContextStatus
+    },
+    eventPlayerFactory: createControlledEventPlayerFactory(presentations),
+  })
+  const autoReveal = byAction(screen, 'auto-reveal')
+  const reveal = byAction(screen, 'reveal')
+
+  autoReveal.checked = true
+  autoReveal.dispatch('change')
+  reveal.dispatch('click')
+  await waitFor(() => presentations.length === 1)
+  assert.equal(controller.currentMatch.turn, 1)
+
+  publishContext({ status: 'lost', recoveryCount: 0, reason: null })
+  presentations[0].completion.resolve({
+    status: 'skipped',
+    reason: 'reduced-motion',
+  })
+  await flushMicrotasks()
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(presentations.length, 1)
+  assert.equal(reveal.disabled, true)
+
+  publishContext({ status: 'ready', recoveryCount: 1, reason: null })
+  await waitFor(() => reveal.disabled === false)
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(presentations.length, 1)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
 test('Auto-reveal stops after failed or cancelled presentation', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
