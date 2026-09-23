@@ -4,6 +4,7 @@ import { createRunController } from '../../src/app/run-controller.js'
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { createGameScreen } from '../../src/ui/hud.js'
+import { createUpdateNotice } from '../../src/ui/update-notice.js'
 
 class FakeElement {
   constructor(tagName) {
@@ -14,6 +15,8 @@ class FakeElement {
     this.listeners = new Map()
     this.className = ''
     this.textContent = ''
+    this.type = ''
+    this.checked = false
     this.hidden = false
     this.disabled = false
     this.style = {
@@ -59,6 +62,11 @@ class FakeElement {
     }
     return event
   }
+
+  dispatchEvent(event) {
+    this.dispatch(event.type, event)
+    return true
+  }
 }
 
 function descendants(element) {
@@ -85,6 +93,48 @@ async function flushMicrotasks(rounds = 6) {
   for (let index = 0; index < rounds; index += 1) {
     await Promise.resolve()
   }
+}
+
+async function waitFor(predicate, rounds = 100) {
+  for (let index = 0; index < rounds; index += 1) {
+    if (predicate()) return
+    await Promise.resolve()
+  }
+  assert.fail('Condition did not settle')
+}
+
+function createControlledEventPlayerFactory(presentations) {
+  return ({ onStateChange }) => ({
+    present(match) {
+      if (match.pendingEvent === null) {
+        return Promise.resolve({ status: 'synchronized', eventId: null, reason: null })
+      }
+      const eventId = match.pendingEvent.id
+      const completion = deferred()
+      presentations.push({ match, completion })
+      onStateChange({
+        status: 'playing',
+        eventId,
+        stepIndex: 0,
+        stepCount: 1,
+        stepKind: 'reveal',
+        reason: null,
+      })
+      return completion.promise.then(({ status = 'completed', reason = null } = {}) => {
+        onStateChange({
+          status,
+          eventId,
+          stepIndex: null,
+          stepCount: 1,
+          stepKind: null,
+          reason,
+        })
+        return { status, eventId, reason }
+      })
+    },
+    setPaused() {},
+    destroy() {},
+  })
 }
 
 test('Game owns a semantic pause overlay with live save status and Resume', async (t) => {
@@ -477,6 +527,558 @@ test('Pause restart remains open when replacement is declined', async (t) => {
   assert.equal(restart.disabled, false)
   screen.teardown()
   await controller.destroy()
+})
+
+test('Game renders a mount-local Auto-reveal checkbox beside Reveal / Continue', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => assert.fail('Auto-reveal setup should not save'),
+    },
+    initialMatch: createMatch({
+      runId: 'hud-auto-control',
+      seed: 12345,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const eventPlayerFactory = () => ({
+    present: async () => ({ status: 'synchronized', eventId: null, reason: null }),
+    setPaused() {},
+    destroy() {},
+  })
+  const createScreen = () => createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory,
+  })
+  const screen = createScreen()
+  const controls = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'primaryActionHost'),
+  )
+  const reveal = byAction(screen, 'reveal')
+  const autoReveal = byAction(screen, 'auto-reveal')
+  const pause = byAction(screen, 'pause')
+  const label = controls.children[1]
+
+  assert.deepEqual(controls.children, [reveal, label, pause])
+  assert.equal(label.tagName, 'LABEL')
+  assert.equal(label.children[0], autoReveal)
+  assert.equal(label.children[1].textContent, 'Auto-reveal')
+  assert.equal(autoReveal.tagName, 'INPUT')
+  assert.equal(autoReveal.type, 'checkbox')
+  assert.equal(autoReveal.checked, false)
+  assert.equal(autoReveal.disabled, false)
+  assert.equal(autoReveal.listeners.get('change')?.size, 1)
+
+  autoReveal.checked = true
+  autoReveal.dispatch('change')
+  assert.equal(autoReveal.checked, true)
+  screen.teardown()
+  assert.equal(autoReveal.listeners.get('change')?.size, 0)
+
+  const remounted = createScreen()
+  assert.equal(byAction(remounted, 'auto-reveal').checked, false)
+  remounted.teardown()
+  await controller.destroy()
+})
+
+test('Auto-reveal waits for presentation and disabling it stops the active chain', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const saves = []
+  const automaticSave = deferred()
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      async save(match) {
+        saves.push(match.turn)
+        if (match.turn === 2) return automaticSave.promise
+        return {
+          status: 'saved',
+          savedAt: `2026-09-23T12:00:${String(match.turn).padStart(2, '0')}.000Z`,
+        }
+      },
+    },
+    initialMatch: createMatch({
+      runId: 'hud-auto-chain',
+      seed: 12345,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const presentations = []
+  const deckStates = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => ({
+      setDeckInputState(state) {
+        deckStates.push(state)
+      },
+      teardown() {},
+    }),
+    eventPlayerFactory: createControlledEventPlayerFactory(presentations),
+  })
+  const autoReveal = byAction(screen, 'auto-reveal')
+  const reveal = byAction(screen, 'reveal')
+
+  autoReveal.checked = true
+  autoReveal.dispatch('change')
+  reveal.dispatch('click')
+  await waitFor(() => presentations.length === 1)
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(reveal.disabled, true)
+  assert.deepEqual(deckStates.at(-1), { enabled: true, busy: true })
+  await flushMicrotasks()
+  assert.equal(presentations.length, 1)
+
+  presentations[0].completion.resolve({ status: 'completed' })
+  await waitFor(() => controller.currentMatch.turn === 2)
+  assert.equal(reveal.disabled, true)
+  reveal.dispatch('click')
+  assert.equal(controller.currentMatch.turn, 2)
+  automaticSave.resolve({
+    status: 'saved',
+    savedAt: '2026-09-23T12:00:02.000Z',
+  })
+  await waitFor(() => presentations.length === 2)
+  assert.equal(controller.currentMatch.turn, 2)
+  assert.deepEqual(saves, [1, 2])
+  assert.equal(reveal.disabled, true)
+  assert.deepEqual(deckStates.at(-1), { enabled: true, busy: true })
+
+  autoReveal.checked = false
+  autoReveal.dispatch('change')
+  presentations[1].completion.resolve({ status: 'completed' })
+  await waitFor(() => reveal.disabled === false)
+  await flushMicrotasks()
+  assert.equal(controller.currentMatch.turn, 2)
+  assert.equal(presentations.length, 2)
+  assert.deepEqual(deckStates.at(-1), { enabled: true, busy: false })
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Auto-reveal stops when the committed clash save fails', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  let saveCount = 0
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      async save() {
+        saveCount += 1
+        return {
+          status: 'storage-unavailable',
+          operation: 'save',
+          reason: 'quota-exceeded',
+        }
+      },
+    },
+    initialMatch: createMatch({
+      runId: 'hud-auto-save-failure',
+      seed: 12345,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const presentations = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createControlledEventPlayerFactory(presentations),
+  })
+  const autoReveal = byAction(screen, 'auto-reveal')
+  const reveal = byAction(screen, 'reveal')
+
+  autoReveal.checked = true
+  autoReveal.dispatch('change')
+  reveal.dispatch('click')
+  await waitFor(() => presentations.length === 1)
+  presentations[0].completion.resolve({ status: 'completed' })
+  await waitFor(() => reveal.disabled === false)
+  await flushMicrotasks()
+
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(presentations.length, 1)
+  assert.equal(saveCount, 1)
+
+  reveal.dispatch('click')
+  await waitFor(() => presentations.length === 2)
+  assert.equal(controller.currentMatch.turn, 2)
+  assert.equal(saveCount, 2)
+  presentations[1].completion.resolve({ status: 'completed' })
+  await waitFor(() => reveal.disabled === false)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Auto-reveal continues after a reduced-motion presentation skip', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => ({
+        status: 'saved',
+        savedAt: '2026-09-23T12:01:00.000Z',
+      }),
+    },
+    initialMatch: createMatch({
+      runId: 'hud-auto-reduced-motion',
+      seed: 12345,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const presentations = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createControlledEventPlayerFactory(presentations),
+  })
+  const autoReveal = byAction(screen, 'auto-reveal')
+
+  autoReveal.checked = true
+  autoReveal.dispatch('change')
+  byAction(screen, 'reveal').dispatch('click')
+  await waitFor(() => presentations.length === 1)
+  presentations[0].completion.resolve({
+    status: 'skipped',
+    reason: 'reduced-motion',
+  })
+  await waitFor(() => presentations.length === 2)
+  assert.equal(controller.currentMatch.turn, 2)
+
+  autoReveal.checked = false
+  autoReveal.dispatch('change')
+  presentations[1].completion.resolve({ status: 'completed' })
+  await waitFor(() => byAction(screen, 'reveal').disabled === false)
+  assert.equal(presentations.length, 2)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Auto-reveal stops after failed or cancelled presentation', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  for (const status of ['failed', 'cancelled']) {
+    const controller = createRunController({
+      repository: {
+        load: async () => ({ status: 'empty' }),
+        save: async () => ({
+          status: 'saved',
+          savedAt: '2026-09-23T12:02:00.000Z',
+        }),
+      },
+      initialMatch: createMatch({
+        runId: `hud-auto-${status}`,
+        seed: 12345,
+        ruleset: BASELINE_RULESET,
+      }),
+    })
+    const presentations = []
+    const screen = createGameScreen({
+      runController: controller,
+      mountBattlefield: () => undefined,
+      eventPlayerFactory: createControlledEventPlayerFactory(presentations),
+    })
+    const autoReveal = byAction(screen, 'auto-reveal')
+
+    autoReveal.checked = true
+    autoReveal.dispatch('change')
+    byAction(screen, 'reveal').dispatch('click')
+    await waitFor(() => presentations.length === 1)
+    presentations[0].completion.resolve({
+      status,
+      reason: status === 'failed' ? 'adapter-error' : 'navigation',
+    })
+    await waitFor(() => byAction(screen, 'reveal').disabled === false)
+    await flushMicrotasks()
+    assert.equal(controller.currentMatch.turn, 1)
+    assert.equal(presentations.length, 1)
+
+    screen.teardown()
+    await controller.destroy()
+  }
+})
+
+test('Pause disarms Auto-reveal, including after the run resumes', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => ({
+        status: 'saved',
+        savedAt: '2026-09-23T12:03:00.000Z',
+      }),
+    },
+    initialMatch: createMatch({
+      runId: 'hud-auto-pause',
+      seed: 12345,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const presentations = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createControlledEventPlayerFactory(presentations),
+  })
+  const autoReveal = byAction(screen, 'auto-reveal')
+
+  autoReveal.checked = true
+  autoReveal.dispatch('change')
+  byAction(screen, 'reveal').dispatch('click')
+  await waitFor(() => presentations.length === 1)
+  byAction(screen, 'pause').dispatch('click')
+  await controller.whenIdle()
+  assert.equal(controller.currentMatch.machineState, 'paused')
+  assert.equal(autoReveal.disabled, true)
+
+  presentations[0].completion.resolve({ status: 'completed' })
+  await flushMicrotasks()
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(presentations.length, 1)
+
+  byAction(screen, 'resume').dispatch('click')
+  await flushMicrotasks()
+  assert.equal(controller.currentMatch.machineState, 'ready')
+  assert.equal(autoReveal.disabled, false)
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(presentations.length, 1)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('update preparation disarms Auto-reveal through the mounted notice event', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => ({
+        status: 'saved',
+        savedAt: '2026-09-23T12:03:30.000Z',
+      }),
+    },
+    initialMatch: createMatch({
+      runId: 'hud-auto-update-barrier',
+      seed: 12345,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const presentations = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createControlledEventPlayerFactory(presentations),
+  })
+  const autoReveal = byAction(screen, 'auto-reveal')
+  let updateSubscriber
+  const notice = createUpdateNotice({
+    host: screen.element,
+    updateController: {
+      getSnapshot: () => ({ status: 'current', reason: null, canActivate: false }),
+      subscribe(subscriber) {
+        updateSubscriber = subscriber
+        subscriber(this.getSnapshot())
+        return () => {}
+      },
+      requestActivation: async () => {},
+    },
+  })
+
+  autoReveal.checked = true
+  autoReveal.dispatch('change')
+  byAction(screen, 'reveal').dispatch('click')
+  await waitFor(() => presentations.length === 1)
+  updateSubscriber({ status: 'preparing', reason: null, canActivate: false })
+  presentations[0].completion.resolve({ status: 'completed' })
+  await waitFor(() => byAction(screen, 'reveal').disabled === false)
+  await flushMicrotasks()
+
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(presentations.length, 1)
+
+  notice.teardown()
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Auto-reveal stops at a terminal match', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  let penultimate = createMatch({
+    runId: 'hud-auto-terminal',
+    seed: 0,
+    ruleset: BASELINE_RULESET,
+  })
+  while (true) {
+    const transition = revealOrContinue(penultimate)
+    if (transition.match.status === 'ended') break
+    penultimate = transition.match
+  }
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => ({
+        status: 'saved',
+        savedAt: '2026-09-23T12:04:00.000Z',
+      }),
+    },
+    initialMatch: penultimate,
+  })
+  const presentations = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createControlledEventPlayerFactory(presentations),
+  })
+
+  const autoReveal = byAction(screen, 'auto-reveal')
+  autoReveal.checked = true
+  autoReveal.dispatch('change')
+  byAction(screen, 'reveal').dispatch('click')
+  await waitFor(() => presentations.length === 1)
+  assert.equal(controller.currentMatch.status, 'ended')
+  presentations[0].completion.resolve({ status: 'completed' })
+  await flushMicrotasks()
+
+  assert.equal(presentations.length, 1)
+  assert.equal(byAction(screen, 'reveal').disabled, true)
+  assert.equal(autoReveal.disabled, true)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Auto-reveal ignores stale and post-teardown presentation completions', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const repository = {
+    load: async () => ({ status: 'empty' }),
+    save: async () => ({
+      status: 'saved',
+      savedAt: '2026-09-23T12:05:00.000Z',
+    }),
+  }
+  const staleController = createRunController({
+    repository,
+    initialMatch: createMatch({
+      runId: 'hud-auto-stale-old',
+      seed: 12345,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const stalePresentations = []
+  const staleScreen = createGameScreen({
+    runController: staleController,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createControlledEventPlayerFactory(stalePresentations),
+  })
+  const staleToggle = byAction(staleScreen, 'auto-reveal')
+  staleToggle.checked = true
+  staleToggle.dispatch('change')
+  byAction(staleScreen, 'reveal').dispatch('click')
+  await waitFor(() => stalePresentations.length === 1)
+
+  const replacement = createMatch({
+    runId: 'hud-auto-stale-new',
+    seed: 1,
+    ruleset: BASELINE_RULESET,
+  })
+  staleController.setMatch(replacement)
+  stalePresentations[0].completion.resolve({ status: 'completed' })
+  await flushMicrotasks()
+  assert.equal(staleController.currentMatch.runId, replacement.runId)
+  assert.equal(staleController.currentMatch.turn, 0)
+  assert.equal(stalePresentations.length, 1)
+  staleScreen.teardown()
+  await staleController.destroy()
+
+  const teardownController = createRunController({
+    repository,
+    initialMatch: createMatch({
+      runId: 'hud-auto-teardown',
+      seed: 12345,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const teardownPresentations = []
+  const teardownScreen = createGameScreen({
+    runController: teardownController,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createControlledEventPlayerFactory(teardownPresentations),
+  })
+  const teardownToggle = byAction(teardownScreen, 'auto-reveal')
+  teardownToggle.checked = true
+  teardownToggle.dispatch('change')
+  byAction(teardownScreen, 'reveal').dispatch('click')
+  await waitFor(() => teardownPresentations.length === 1)
+  teardownScreen.teardown()
+  teardownPresentations[0].completion.resolve({ status: 'completed' })
+  await flushMicrotasks()
+  assert.equal(teardownController.currentMatch.turn, 1)
+  assert.equal(teardownPresentations.length, 1)
+  await teardownController.destroy()
 })
 
 test('Game resolves one pointer reveal, locks input through save and presentation, and updates HUD', async (t) => {

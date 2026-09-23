@@ -1,4 +1,5 @@
 const BLOCKING_STATUSES = new Set(['preparing', 'activating'])
+export const UPDATE_BLOCKED_EVENT = 'soulcard:update-blocked'
 
 function assertUpdateController(updateController) {
   const methods = ['getSnapshot', 'subscribe', 'requestActivation']
@@ -87,6 +88,7 @@ export function createUpdateNotice({ updateController, host } = {}) {
     }
     if (blocked) {
       host.dataset.updateBlocked = 'true'
+      host.dispatchEvent?.(new Event(UPDATE_BLOCKED_EVENT))
     } else {
       delete host.dataset.updateBlocked
     }
