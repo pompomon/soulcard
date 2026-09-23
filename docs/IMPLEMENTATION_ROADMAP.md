@@ -1213,11 +1213,12 @@ reviewable PR.
   SVG, 192/512 PNG, maskable, and Apple touch assets, and all update/install surfaces
   honor safe areas. Cache Storage contains application assets only; active runs remain
   in IndexedDB.
-- **Validation:** The Node 24 test runner reports 291 passing unit/integration tests,
+- **Validation:** The Node 24 test runner reports 297 passing unit/integration tests,
   including service-worker policy, build injection, manifest assets, update lifecycle,
-  update notice, superseded cache bounds, replacement-worker selection, pending-write and
-  recovery-discard ordering, empty/paused/ended runs, save retry, and exact pending-event
-  restore coverage; the production build passes. A text-only headless
+  update notice, superseded cache bounds, runtime-cache failure fallback, replacement
+  offers, redundant-worker withdrawal, pending-write and recovery-discard ordering,
+  empty/paused/ended runs, save retry, and exact pending-event restore coverage; the
+  production build passes. A text-only headless
   Chrome 152 check served two revisions under `/soulcard/`: installability reported no
   errors, the first revision launched offline and resumed its exact IndexedDB run, the
   second waited for explicit activation and a stable turn-one save, reloaded once,
