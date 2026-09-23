@@ -9,19 +9,19 @@ remains unchecked.
 
 | Item | Value |
 |---|---|
-| Measured implementation revision | `cc967cea69df6e8b60b1aa4c65ae7b23bbc715ac` |
+| Measured implementation revision | `df412028396d015d4a375c771886d797f19503cb` |
 | Date | September 23, 2026 |
 | Host | Ubuntu 24.04.5 LTS, Linux x86_64, Azure VM, 4 logical CPUs, 16 GiB reported device memory |
 | Chromium | 152.0.7977.0, headless, ANGLE/SwiftShader WebGL |
 | Firefox | 155.0, headless |
 | Safari | Unavailable on the Linux runner |
-| Node.js | 24.21.0 |
+| Node.js | 24.20.0 |
 | Production path | `http://127.0.0.1:4174/soulcard/` |
 | Screenshots | None produced |
 
 The dependency-free fixture at
 `tests/browser/milestone-19-profile.html` ran from the Vite development server. It
-used deterministic seeds 0 and 32, four logical viewport sizes, low/high quality,
+used deterministic seeds 0 and 93, four logical viewport sizes, low/high quality,
 normal/reduced motion, texture scales 1 and 3, two real
 `WEBGL_lose_context` cycles, and three battlefield remounts. Separate text-only
 Chrome DevTools Protocol checks exercised the production build at its Pages-relative
@@ -36,7 +36,7 @@ thresholds or physical-device results.
 
 | Check | Result | Evidence |
 |---|---|---|
-| `npm test` on Node 24 | Pass | 313 tests passed; 0 failed, skipped, cancelled, or todo |
+| `npm test` on Node 24 | Pass | 321 tests passed; 0 failed, skipped, cancelled, or todo |
 | `npm run build` on Node 24 | Pass | Vite transformed 40 modules and emitted the production shell; the existing large-chunk advisory remained |
 | Production Pages-relative launch | Pass | `/soulcard/` loaded with no failed requests or relevant application console errors |
 | Production WebGL loss/restore | Pass | One canvas before/lost/restored; loss disabled Reveal but not Pause; restoration replaced and detached the old canvas and re-enabled Reveal |
@@ -58,9 +58,11 @@ the graphics-loss message, and restoration returned that dialog status to
 
 The integration test interrupts both idle rendering and an active committed
 presentation. It asserts exact RNG state, ordered zones, outcome, pending-event
-fingerprint, serialized save, and deterministic continuation equivalence. Unit tests
-cover repeated restoration, renderer/cache regeneration, failure state, event/listener
-cleanup, combined match/context pause reasons, and safe-control gating.
+fingerprint, serialized save, deterministic continuation equivalence, and reconstruction
+of the active presentation card. Unit tests cover repeated reveal, settlement, and
+terminal-draw restoration, renderer/cache regeneration, failure state, event/listener
+cleanup, combined match/context pause reasons, terminal failure escape controls, and
+safe-control gating.
 
 ## Raw profiling summary
 
@@ -71,23 +73,23 @@ environment.deviceMemoryGiB=16
 environment.devicePixelRatio=1
 
 frameIntervals.samples=30
-frameIntervals.meanMs=33.33
+frameIntervals.meanMs=44.44
 frameIntervals.p50Ms=16.70
-frameIntervals.p95Ms=16.70
-frameIntervals.maxMs=516.60
+frameIntervals.p95Ms=83.30
+frameIntervals.maxMs=783.27
 
 texture.scale1.generated=53
-texture.scale1.elapsedMs=21.90
+texture.scale1.elapsedMs=613.90
 texture.scale1.residentEntries=24
 texture.scale3.generated=53
-texture.scale3.elapsedMs=80.90
+texture.scale3.elapsedMs=21.50
 texture.scale3.residentEntries=24
 texture.cacheBound=24
 
 seed0.clashes=44
 seed0.ties=1
 seed0.sourceToPersonalTransitions=1
-seed0.elapsedMs=1942.20
+seed0.elapsedMs=11244.00
 seed0.outcome=player-win/opponentUnableToReveal
 seed0.maxCacheEntries=24
 seed0.maxStaticCards=5
@@ -96,22 +98,22 @@ seed0.maxGeometries=2
 seed0.maxTextures=24
 seed0.maxDrawCalls=15
 
-seed32.clashes=44
-seed32.ties=5
-seed32.sourceToPersonalTransitions=1
-seed32.elapsedMs=1810.20
-seed32.outcome=draw/mutualInability
-seed32.maxCacheEntries=24
-seed32.maxStaticCards=5
-seed32.maxTransientCards=6
-seed32.maxGeometries=2
-seed32.maxTextures=24
-seed32.maxDrawCalls=21
+seed93.clashes=48
+seed93.ties=3
+seed93.sourceToPersonalTransitions=1
+seed93.elapsedMs=15279.40
+seed93.outcome=draw/mutualInability
+seed93.maxCacheEntries=24
+seed93.maxStaticCards=5
+seed93.maxTransientCards=4
+seed93.maxGeometries=2
+seed93.maxTextures=24
+seed93.maxDrawCalls=17
 
 contextRecovery.attempt1.mode=WEBGL_lose_context
-contextRecovery.attempt1.elapsedMs=24661.80
+contextRecovery.attempt1.elapsedMs=4716.40
 contextRecovery.attempt2.mode=WEBGL_lose_context
-contextRecovery.attempt2.elapsedMs=540.70
+contextRecovery.attempt2.elapsedMs=503.70
 contextRecovery.count=2
 contextRecovery.stableMatchPreserved=true
 
@@ -123,8 +125,8 @@ remount.each.textures=1
 remount.each.cacheEntries=1
 
 heap.supported=true
-heap.usedJSHeapSize=18070235
-heap.totalJSHeapSize=27667667
+heap.usedJSHeapSize=16869144
+heap.totalJSHeapSize=38228752
 heap.jsHeapSizeLimit=4395630592
 ```
 
@@ -134,8 +136,8 @@ listener counter.
 
 ## Viewport, target, and focus evidence
 
-Logical resize/snapshot times in the profiling fixture were 29.0 ms at 320×480,
-18.0 ms at 844×390, 19.6 ms at 768×1024, and 29.7 ms at 1280×800. The host DPR was
+Logical resize/snapshot times in the profiling fixture were 155.0 ms at 320×480,
+47.6 ms at 844×390, 125.6 ms at 768×1024, and 100.9 ms at 1280×800. The host DPR was
 1, so this run did not exercise a hardware DPR above the configured caps.
 
 The production build was then measured with device metrics emulating the established
@@ -160,24 +162,25 @@ instructions, and claims of complete keyboard support remain explicitly excluded
 ### Continuous normal-motion rendering
 
 Normal motion reported `animationActive=true`; reduced motion reported
-`animationActive=false`. The sampled frame interval p50 and p95 were both 16.7 ms,
-with one 516.6 ms outlier while profiling. This confirms that normal motion retains
-continuous idle rendering while reduced motion does not, but this fixture does not
-isolate CPU/GPU time well enough to establish that loop as the dominant device cost.
-No optimization was made.
+`animationActive=false`. With the normal-motion battlefield still mounted, the sampled
+frame interval p50 was 16.7 ms, p95 was 83.3 ms, and the maximum was 783.3 ms. This
+confirms that normal motion retains continuous rendering while reduced motion does not,
+but this fixture does not isolate CPU/GPU time well enough to establish that loop as
+the dominant device cost. No optimization was made.
 
 ### Texture generation versus context regeneration
 
-Generating 53 textures at scale 3 took 80.9 ms versus 21.9 ms at scale 1 on this
-host. Context recovery took 24,661.8 ms and 540.7 ms in the two attempts. Recovery
-was the larger transient observation, but the roughly 46× variance indicates a
+The first 53-texture pass at scale 1 took 613.9 ms, while the following scale-3 pass
+took 21.5 ms. The reversed result shows that first-use/browser effects dominate this
+ordered sample, so it does not support a scale-cost conclusion. Context recovery took
+4,716.4 ms and 503.7 ms in the two attempts; that variance likewise indicates a
 headless driver/timing effect rather than a repeatable application bottleneck. No
 optimization or release limit was inferred.
 
 ### Resource and heap bounds
 
 Both complete matches held cache entries and renderer textures to the configured
-bound of 24, geometries to 2, and transient cards to 6 or fewer. Three remounts
+bound of 24, geometries to 2, and transient cards to 4 or fewer. Three remounts
 returned identical one-snapshot resource counts. Focused tests additionally verify
 texture, mesh, renderer, input, and context-listener cleanup. The one supported heap
 sample is insufficient to claim a bounded heap across time, so that claim remains
@@ -185,7 +188,7 @@ open for physical-browser profiling.
 
 ### Minimum-viewport responsiveness
 
-All four emulated layouts synchronously resized and reconciled in 18.0–29.7 ms on
+All four emulated layouts synchronously resized and reconciled in 47.6–155.0 ms on
 the single 4-vCPU virtual host, retained one canvas, and met computed target/focus
 requirements. This is useful repeatable evidence but is not representative
 low/mid/high-device interaction evidence. No responsiveness threshold or optimization
@@ -208,13 +211,13 @@ physical-device row.
 | Representative low/mid/high physical devices | Unavailable | Only one virtualized 4-vCPU/16-GiB software-WebGL host was available |
 | Phone portrait/landscape emulation | Pass (automated) | Layout, one-canvas, targets, focus, seed flow, and resource evidence |
 | Tablet and desktop emulation | Pass (automated) | Layout, one-canvas, targets, focus, and resource evidence |
-| Mouse/touch/pen event contracts | Pass (automated) | Existing pointer unit/integration coverage passed within all 313 tests |
+| Mouse/touch/pen event contracts | Pass (automated) | Existing pointer unit/integration coverage passed within all 321 tests |
 | Normal and reduced motion | Pass (automated) | Fixture exercised both; deterministic restore/reduced-motion regressions passed |
 | Online and offline resume | Pass (automated) | Controlled production service worker made the saved run resumable and reopened Game offline |
 | Installability and standalone | Pass (automated) | Zero Chromium installability errors; `--app` reported standalone display mode |
 | Fresh run | Pass (automated) | Production launch created and saved a run before recovery |
 | Tie and source-to-personal transition | Pass (automated) | Seed 0 recorded one tie and one transition |
-| Terminal draw | Pass (automated) | Seed 32 recorded five ties, one transition, and `mutualInability` draw |
+| Terminal draw | Pass (automated) | Seed 93 recorded three ties, one transition, and `mutualInability` draw |
 | Pause/background/refresh/resume | Pass (automated) | Full regression suite plus production offline refresh/resume |
 | Corrupt save recovery | Pass (automated) | Existing persistence/recovery regressions passed in the full suite |
 | Deferred update at a stable boundary | Pass (automated) | Existing PWA update/save-boundary regressions passed in the full suite |

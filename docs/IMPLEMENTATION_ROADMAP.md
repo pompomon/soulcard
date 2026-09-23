@@ -1291,8 +1291,9 @@ reviewable PR.
 - **Acceptance evidence:** `src/presentation/battlefield.js` prevents default WebGL
   context loss, suspends rendering and pointer/deck input, cancels active drags,
   publishes lost/restoring/ready/failed state, and reconstructs a fresh renderer,
-  texture cache, visuals, and listeners from the retained stable snapshot and committed
-  event. Repeated recovery does not invoke domain actions, consume RNG, or alter saves.
+  texture cache, visuals, and listeners from the retained stable snapshot, committed
+  event, and already-applied presentation steps. Repeated recovery does not invoke
+  domain actions, consume RNG, or alter saves.
   `src/ui/hud.js` combines domain-pause and graphics-unavailable reasons, gates only
   Reveal/deck input while retaining safe Pause/save/menu recovery, and reports context
   state through the existing polite atomic Game status region. Main, Settings, Game,
@@ -1306,14 +1307,14 @@ reviewable PR.
   raw summaries, methods, and explicit unavailable/unsupported matrix rows are recorded
   in [`MILESTONE_19_QA.md`](./MILESTONE_19_QA.md); no unmeasured optimization or release
   threshold was added.
-- **Validation:** All 313 unit/integration tests and the production build pass on Node
-  24.21.0. A text-only headless Chromium 152 check at the production `/soulcard/`
+- **Validation:** All 321 unit/integration tests and the production build pass on Node
+  24.20.0. A text-only headless Chromium 152 check at the production `/soulcard/`
   relative path retained one presentational canvas, disabled Reveal but not Pause during
   real `WEBGL_lose_context` interruption, replaced the canvas and restored input/state,
   met computed 44×44 target and visible focus requirements across the established four
   layouts, launched/resumed offline, reported zero installability errors, and entered
   standalone display mode with no relevant console errors. Seed 0 exercised a tie and
-  source-to-personal transition; seed 32 ended in the retained terminal draw. Firefox
+  source-to-personal transition; seed 93 ended in the retained terminal draw. Firefox
   155 was available but its headless host reported exhausted WebGL driver options;
   Safari and required physical iOS, Android, tablet, pen, and representative
   low/mid/high devices were unavailable. Milestone 19 therefore remains open; no
