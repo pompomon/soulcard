@@ -1,8 +1,9 @@
 # Roguelike adventure-run plan
 
 This is a post-MVP implementation plan. It does not implement or mark complete any
-gameplay milestone. It refines roadmap milestone 21 into five cumulative, playable
-sub-milestones. Roadmap milestone 21's first-class full keyboard support must be
+gameplay milestone. It refines the adventure-run portion of roadmap milestone 21 into
+five cumulative, playable sub-milestones; the milestone's other expansion work remains
+outside this plan. Roadmap milestone 21's first-class full keyboard support must be
 complete before sub-milestone 21.1 begins.
 
 ## Progress checklist
@@ -58,13 +59,14 @@ complete before sub-milestone 21.1 begins.
   identifies that instance, its source zone, and index `0`. If the player uses Hold,
   the candidate remains at index `0` unchanged and the held instance supplies the
   player reveal. This works in source and personal stages.
-- Base Hold access ends before the opponent reveals. The Hold-information boon reverses
-  that reveal order for the decision only: peek at the opponent's index-`0` candidate
-  without removing it and enter `awaitingInformedHoldChoice`, persisting both candidate
-  references, then let the player choose held or candidate. The choice action
-  revalidates the referenced top cards, removes only the cards actually supplied in
-  player-first order, clears the decision metadata, and resolves the reveal. A tie
-  never opens a Hold decision; its continuation resolves automatically.
+- Base Hold access ends before the opponent reveals. Starting in 21.2, the
+  Hold-information boon reverses that reveal order for the decision only: peek at the
+  opponent's index-`0` candidate without removing it and enter
+  `awaitingInformedHoldChoice`, persisting both candidate references, then let the
+  player choose held or candidate. The choice action revalidates the referenced top
+  cards, removes only the cards actually supplied in player-first order, clears the
+  decision metadata, and resolves the reveal. A tie never opens a Hold decision; its
+  continuation resolves automatically.
 - Hold decision states keep `inPlay` empty and consume no RNG. Their save fingerprint
   binds the decision state and candidate metadata to the exact ordered zones, rules,
   and RNG snapshot. Reload presents the same candidates without drawing RNG or
@@ -102,9 +104,9 @@ three-encounter expedition.
   existing source/personal-stage semantics, tie handling, burning, recycling, and
   terminal-draw rules as far as the new ownership model permits.
 - Replace atomic player/opponent initial reveal resolution with the persisted
-  `awaitingHoldChoice` and `awaitingInformedHoldChoice` metadata states; the resolving
-  action then supplies the selected player card, supplies the opponent card, calculates,
-  and settles. Tied continuation remains automatic and never accepts Hold.
+  `awaitingHoldChoice` metadata state; the resolving action then supplies the selected
+  player card, supplies the opponent card, calculates, and settles. Tied continuation
+  remains automatic and never accepts Hold.
 - Deliver one Hold slot, capture only from an explicitly eligible player-owned settled
   card, and deterministic replacement that cannot duplicate or lose a card.
 - Implement health loss, same-encounter retry, victory advancement, and a fixed three
@@ -135,9 +137,15 @@ three-encounter expedition.
 - Add an explicit modifier catalogue with permanent campaign and encounter-only
   lifetimes. Initial effects may alter comparison values, burning, recycling, Hold
   capture eligibility, or replacement behavior; Hold remains exactly one slot.
-- Add the opponent-reveal Hold boon: the opponent candidate is committed as persisted
-  peek metadata before the Hold choice, after which the player chooses the held card or
-  their revealed candidate.
+- Through 21.3, each modifier declares its affected rule hooks and no two active
+  modifiers may share a hook. Build seeded reward candidate pools in stable modifier-ID
+  order after filtering conflicts and before selection draws; filtering consumes no
+  RNG. Encounter setup and restored-state validation reject overlapping hooks rather
+  than choosing an implicit precedence. Milestone 21.4 may introduce overlap only with
+  versioned per-hook stacking order and RNG-consumption rules.
+- Add the opponent-reveal Hold boon and persisted `awaitingInformedHoldChoice` state:
+  the opponent candidate is committed as persisted peek metadata before the Hold
+  choice, after which the player chooses the held card or their revealed candidate.
 - Add reward and modifier inspection to the HUD/overlays and save every selected reward
   before presentation.
 
@@ -148,8 +156,8 @@ three-encounter expedition.
 - Expiring encounter modifiers are removed exactly once; permanent modifiers survive
   encounter transition, reload, and retry.
 - Tests cover information-boon reveal order, all reward categories, Hold eligibility
-  and replacement effects, modifier lifetime, replay, save/resume, and event
-  fingerprints.
+  and replacement effects, modifier lifetime and hook-conflict rejection, replay,
+  save/resume, and event fingerprints.
 
 ## 21.3 Branching Expedition
 
