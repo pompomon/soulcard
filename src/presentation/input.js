@@ -288,6 +288,12 @@ export function createInputController({
     }
   }
 
+  function handleRootPointerDown(event) {
+    if (pendingPointer !== null && event.pointerId !== pendingPointer.id) {
+      cancelPendingPointer(event)
+    }
+  }
+
   function handleLostPointerCapture(event) {
     if (event.pointerId === pendingPointer?.id) {
       cancelPendingPointer(event)
@@ -320,7 +326,10 @@ export function createInputController({
     target.addEventListener('lostpointercapture', handleLostPointerCapture)
   }
   target.addEventListener('click', handleClick)
-  if (dragOptions !== null) pointerRoot?.addEventListener('pointermove', handlePointerMove)
+  if (dragOptions !== null) {
+    pointerRoot?.addEventListener('pointerdown', handleRootPointerDown)
+    pointerRoot?.addEventListener('pointermove', handlePointerMove)
+  }
   pointerRoot?.addEventListener('pointerup', handleRootPointerEnd)
   pointerRoot?.addEventListener('pointercancel', handleRootPointerEnd)
   syncTarget()
@@ -358,6 +367,7 @@ export function createInputController({
       }
       target.removeEventListener('click', handleClick)
       if (dragOptions !== null) {
+        pointerRoot?.removeEventListener('pointerdown', handleRootPointerDown)
         pointerRoot?.removeEventListener('pointermove', handlePointerMove)
       }
       pointerRoot?.removeEventListener('pointerup', handleRootPointerEnd)

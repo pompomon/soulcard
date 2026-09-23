@@ -293,7 +293,9 @@ test('drag uses document movement and release as a pointer-capture fallback', ()
 })
 
 test('busy, disabled, multi-pointer, and teardown transitions cancel active drags', () => {
+  const root = new FakeTarget()
   const target = new FakeTarget()
+  target.ownerDocument = root
   let cancellations = 0
   const controller = createInputController({
     target,
@@ -318,7 +320,7 @@ test('busy, disabled, multi-pointer, and teardown transitions cancel active drag
   controller.setEnabled(false)
   controller.setEnabled(true)
   startDrag(3)
-  target.dispatch('pointerdown', {
+  root.dispatch('pointerdown', {
     pointerId: 4,
     isPrimary: false,
     pointerType: 'touch',
