@@ -459,7 +459,7 @@ test('Game resolves one pointer reveal, locks input through save and presentatio
   await controller.destroy()
 })
 
-test('Game routes active-deck and button activation through one Reveal busy gate', async (t) => {
+test('Game routes active-deck drops and button activation through one Reveal busy gate', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
     createElement: (tagName) => new FakeElement(tagName),
@@ -517,8 +517,8 @@ test('Game routes active-deck and button activation through one Reveal busy gate
 
   assert.equal(typeof activateDeck, 'function')
   assert.deepEqual(deckStates.at(-1), { enabled: true, busy: false })
-  activateDeck()
-  activateDeck()
+  activateDeck({ type: 'pointerup', pointerType: 'touch', interaction: 'drop' })
+  activateDeck({ type: 'pointerup', pointerType: 'touch', interaction: 'drop' })
   assert.equal(controller.currentMatch.turn, 1)
   assert.equal(reveal.disabled, true)
   assert.deepEqual(deckStates.at(-1), { enabled: true, busy: true })
