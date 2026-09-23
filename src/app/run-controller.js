@@ -277,6 +277,12 @@ export function createRunController({
     if (match === null) {
       throw new Error('No active match is available')
     }
+    if (match.machineState === 'ended') {
+      throw new Error('An ended match cannot reveal or continue')
+    }
+    if (match.machineState === 'paused') {
+      throw new Error('A paused match cannot reveal or continue')
+    }
     const transition = validateEncounterTransition(
       match,
       aiController.advanceEncounter(match),

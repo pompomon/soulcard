@@ -16,6 +16,14 @@ function createActiveMatch(runId = 'controller-run') {
   })
 }
 
+function createEndedMatch(runId = 'ended-controller-run') {
+  let match = createActiveMatch(runId)
+  while (match.status === 'active') {
+    match = revealOrContinue(match).match
+  }
+  return match
+}
+
 function deferred() {
   let resolve
   const promise = new Promise((settle) => {
@@ -114,6 +122,33 @@ test('run controller delegates exactly one clash to the injected AI before savin
   assert.equal(result.event, expected.event)
   assert.deepEqual(repository.saves, [expected.match])
   assert.equal(controller.currentMatch, expected.match)
+})
+
+test('run controller rejects paused and ended matches before invoking injected AI', () => {
+  const repository = createRepository()
+
+  for (const [match, expectedError] of [
+    [pauseMatch(createActiveMatch('paused-ai')), /paused match cannot reveal/],
+    [createEndedMatch('ended-ai'), /ended match cannot reveal/],
+  ]) {
+    let calls = 0
+    const controller = createRunController({
+      repository,
+      initialMatch: match,
+      aiController: {
+        advanceEncounter() {
+          calls += 1
+          return revealOrContinue(createActiveMatch())
+        },
+      },
+    })
+
+    assert.throws(() => controller.revealOrContinue(), expectedError)
+    assert.equal(calls, 0)
+    assert.equal(controller.currentMatch, match)
+    assert.equal(controller.getSnapshot().saveStatus, 'unsaved')
+  }
+  assert.deepEqual(repository.saves, [])
 })
 
 test('invalid AI dependencies and failures leave the current run unchanged and unsaved', () => {
