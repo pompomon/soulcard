@@ -41,6 +41,11 @@ class FakeElement {
     }
   }
 
+  dispatchEvent(event) {
+    this.dispatch(event.type)
+    return true
+  }
+
   remove() {
     if (!this.parent) return
     this.parent.children = this.parent.children.filter((child) => child !== this)

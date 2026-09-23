@@ -4,6 +4,7 @@ import { createRunController } from '../../src/app/run-controller.js'
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { createGameScreen } from '../../src/ui/hud.js'
+import { createUpdateNotice } from '../../src/ui/update-notice.js'
 
 class FakeElement {
   constructor(tagName) {
@@ -60,6 +61,11 @@ class FakeElement {
       listener(event)
     }
     return event
+  }
+
+  dispatchEvent(event) {
+    this.dispatch(event.type, event)
+    return true
   }
 }
 
@@ -466,11 +472,13 @@ test('Auto-reveal waits for presentation and disabling it stops the active chain
   })
 
   const saves = []
+  const automaticSave = deferred()
   const controller = createRunController({
     repository: {
       load: async () => ({ status: 'empty' }),
       async save(match) {
         saves.push(match.turn)
+        if (match.turn === 2) return automaticSave.promise
         return {
           status: 'saved',
           savedAt: `2026-09-23T12:00:${String(match.turn).padStart(2, '0')}.000Z`,
@@ -509,6 +517,14 @@ test('Auto-reveal waits for presentation and disabling it stops the active chain
   assert.equal(presentations.length, 1)
 
   presentations[0].completion.resolve({ status: 'completed' })
+  await waitFor(() => controller.currentMatch.turn === 2)
+  assert.equal(reveal.disabled, true)
+  reveal.dispatch('click')
+  assert.equal(controller.currentMatch.turn, 2)
+  automaticSave.resolve({
+    status: 'saved',
+    savedAt: '2026-09-23T12:00:02.000Z',
+  })
   await waitFor(() => presentations.length === 2)
   assert.equal(controller.currentMatch.turn, 2)
   assert.deepEqual(saves, [1, 2])
@@ -746,7 +762,7 @@ test('Pause disarms Auto-reveal, including after the run resumes', async (t) => 
   await controller.destroy()
 })
 
-test('an inert Game HUD disarms Auto-reveal before update preparation can advance', async (t) => {
+test('update preparation disarms Auto-reveal through the mounted notice event', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
     createElement: (tagName) => new FakeElement(tagName),
@@ -776,15 +792,25 @@ test('an inert Game HUD disarms Auto-reveal before update preparation can advanc
     eventPlayerFactory: createControlledEventPlayerFactory(presentations),
   })
   const autoReveal = byAction(screen, 'auto-reveal')
+  let updateSubscriber
+  const notice = createUpdateNotice({
+    host: screen.element,
+    updateController: {
+      getSnapshot: () => ({ status: 'current', reason: null, canActivate: false }),
+      subscribe(subscriber) {
+        updateSubscriber = subscriber
+        subscriber(this.getSnapshot())
+        return () => {}
+      },
+      requestActivation: async () => {},
+    },
+  })
 
   autoReveal.checked = true
   autoReveal.dispatch('change')
   byAction(screen, 'reveal').dispatch('click')
   await waitFor(() => presentations.length === 1)
-  const hud = screen.element.children.find((element) => element.className === 'game-hud')
-  hud.inert = true
-  screen.element.dispatch('soulcard:update-blocked')
-  hud.inert = false
+  updateSubscriber({ status: 'preparing', reason: null, canActivate: false })
   presentations[0].completion.resolve({ status: 'completed' })
   await waitFor(() => byAction(screen, 'reveal').disabled === false)
   await flushMicrotasks()
@@ -792,6 +818,7 @@ test('an inert Game HUD disarms Auto-reveal before update preparation can advanc
   assert.equal(controller.currentMatch.turn, 1)
   assert.equal(presentations.length, 1)
 
+  notice.teardown()
   screen.teardown()
   await controller.destroy()
 })
