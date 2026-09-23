@@ -297,6 +297,31 @@ test('install bounds superseded revisions when upgrading from a markerless worke
   )
 })
 
+test('install preserves a legacy active cache before markerless waiting shells', async () => {
+  const harness = await createHarness()
+  for (const name of [
+    'soulcard-live',
+    'soulcard-shell-superseded',
+    'soulcard-shell-waiting',
+    'soulcard-runtime-orphaned',
+    'unrelated-cache',
+  ]) {
+    harness.cacheStorage.caches.set(name, new FakeCache(SCOPE))
+  }
+
+  await harness.dispatch('install')
+
+  assert.deepEqual(
+    [...harness.cacheStorage.caches.keys()].sort(),
+    [
+      'soulcard-live',
+      'soulcard-shell-dev',
+      'soulcard-shell-waiting',
+      'unrelated-cache',
+    ],
+  )
+})
+
 test('scoped navigation and shell assets use one coherent offline shell', async () => {
   const harness = await createHarness({
     fetchImpl: async () => {
