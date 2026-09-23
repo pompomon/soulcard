@@ -453,10 +453,11 @@ button:disabled {
 
 .screen--game[data-layout-mode="phone-landscape"] .game-hud {
   grid-template:
-    "header header header" var(--hud-header-reserve, 3.5rem)
-    "opponent comparison player" var(--hud-comparison-reserve, 5rem)
+    "header header header" var(--hud-header-reserve, 2.75rem)
+    "opponent comparison player" var(--hud-comparison-reserve, 4.5rem)
     "opponent . player" minmax(0, 1fr)
-    "piles status controls" var(--hud-footer-reserve, 7.125rem)
+    "piles status status" 28px
+    "piles controls controls" calc(var(--hud-footer-reserve, 5rem) - 28px)
     / var(--hud-side-reserve, 6.25rem) minmax(0, 1fr)
       var(--hud-side-reserve, 6.25rem);
 }
@@ -470,6 +471,10 @@ button:disabled {
 .screen--game[data-layout-mode="phone-landscape"] .hud-metrics--piles,
 .screen--game[data-layout-mode="phone-landscape"] .game-feedback {
   padding: 0.45rem 0.55rem;
+}
+
+.screen--game[data-layout-mode="phone-landscape"] .game-hud__header {
+  padding: 0.2rem 0.4rem;
 }
 
 .screen--game[data-layout-mode="phone-portrait"] .game-controls {
@@ -503,7 +508,6 @@ button:disabled {
   font-size: 0.65rem;
 }
 
-.screen--game[data-layout-mode="phone-landscape"] .game-controls,
 .screen--game[data-layout-mode="tablet"] .game-controls {
   flex-direction: column;
   align-items: stretch;
@@ -597,11 +601,13 @@ button:disabled {
 
 .screen--game[data-layout-mode="phone-landscape"] .comparison-area {
   width: min(94%, 22rem);
-  gap: 0.2rem;
-  padding: 0.35rem;
+  gap: 0.15rem;
+  padding: 0.25rem;
 }
 
 .screen--game[data-layout-mode="phone-landscape"] .game-controls {
+  gap: 4px;
+  padding: 4px;
   min-height: 44px;
 }
 

@@ -146,8 +146,8 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(landscape.viewport.logicalHeight, 390)
   assert.equal(landscape.viewport.minimumWidth, 480)
   assert.equal(landscape.viewport.minimumHeight, 320)
-  assert.equal(landscape.hud.comparison.height, 80)
-  assert.equal(landscape.hud.footer.height, 114)
+  assert.equal(landscape.hud.comparison.height, 72)
+  assert.equal(landscape.hud.footer.height, 80)
 
   const tablet = createBattlefieldLayout({ width: 768, height: 1024 })
   assert.equal(tablet.hud.header.height, 60)
@@ -160,7 +160,7 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(smallerLandscape.viewport.logicalWidth, 480)
   assert.equal(smallerLandscape.viewport.logicalHeight, 320)
   assert.equal(smallerLandscape.viewport.scale, 5 / 6)
-  assert.ok(Math.abs(smallerLandscape.hud.footer.height - 131.6) < Number.EPSILON * 100)
+  assert.ok(Math.abs(smallerLandscape.hud.footer.height - 88.8) < Number.EPSILON * 100)
 
   assert.equal(minimum.hud.footer.height, 210)
   assert.equal(minimum.hud.comparison.height, 80)
@@ -176,9 +176,10 @@ test('constrained landscape layouts keep side panels clear of the footer', () =>
     safeArea: { top: 44, right: 0, bottom: 21, left: 0 },
   })
   assert.equal(safeAreaLayout.mode, 'phone-landscape')
-  assert.equal(safeAreaLayout.hud.comparison.height, 80)
+  assert.equal(safeAreaLayout.hud.comparison.height, 72)
   assert.equal(safeAreaLayout.hud.leftPanel.width, 100)
-  assert.equal(safeAreaLayout.hud.leftPanel.height, 85)
+  assert.equal(safeAreaLayout.hud.leftPanel.height, 131)
+  assert.equal(safeAreaLayout.hud.battlefield.height, 59)
   assert.equal(
     safeAreaLayout.hud.leftPanel.y + safeAreaLayout.hud.leftPanel.height,
     safeAreaLayout.hud.footer.y,

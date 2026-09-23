@@ -45,7 +45,7 @@ const MODE_SPECS = Object.freeze({
   }),
   'phone-landscape': Object.freeze({
     world: Object.freeze({ width: 12, height: 6.5 }),
-    hud: Object.freeze({ header: 56, comparison: 80, footer: 114, side: 100 }),
+    hud: Object.freeze({ header: 44, comparison: 72, footer: 80, side: 100 }),
     visuals: Object.freeze({
       activeDeckScale: 1.4,
       revealScale: 1.4,
@@ -188,9 +188,8 @@ export function createBattlefieldLayout({
   }
   const scale = Math.min(width / logicalWidth, height / logicalHeight, 1)
   const letterboxed = scale < 1
-  const scaledControlCount = mode === 'phone-landscape' ? 2 : 1
   const footerReserve = spec.hud.footer
-    + scaledControlCount * 44 * (1 / scale - 1)
+    + 44 * (1 / scale - 1)
   const logicalSafe = Object.fromEntries(
     Object.entries(safe).map(([side, value]) => [side, value / scale]),
   )
