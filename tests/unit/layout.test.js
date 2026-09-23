@@ -97,7 +97,7 @@ test('safe areas and HUD reserves leave a positive camera-fitting battlefield re
     x: 40,
     y: 86,
     width: 1380,
-    height: 84,
+    height: 88,
   })
   assert.equal(layout.hud.footer.y + layout.hud.footer.height, 870)
   assert.equal(
@@ -151,7 +151,7 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
 
   const tablet = createBattlefieldLayout({ width: 768, height: 1024 })
   assert.equal(tablet.hud.header.height, 60)
-  assert.equal(tablet.hud.comparison.height, 84)
+  assert.equal(tablet.hud.comparison.height, 128)
   assert.equal(tablet.hud.footer.height, 108)
   assert.equal(tablet.hud.leftPanel.width, 120)
 
@@ -166,6 +166,30 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(minimum.hud.comparison.height, 80)
   assert.ok(
     Math.abs(smaller.hud.footer.height - 218.8) < Number.EPSILON * 100,
+  )
+})
+
+test('constrained landscape layouts keep side panels clear of the footer', () => {
+  const safeAreaLayout = createBattlefieldLayout({
+    width: 480,
+    height: 320,
+    safeArea: { top: 44, right: 0, bottom: 21, left: 0 },
+  })
+  assert.equal(safeAreaLayout.mode, 'phone-landscape')
+  assert.equal(safeAreaLayout.hud.comparison.height, 80)
+  assert.equal(safeAreaLayout.hud.leftPanel.width, 100)
+  assert.equal(safeAreaLayout.hud.leftPanel.height, 85)
+  assert.equal(
+    safeAreaLayout.hud.leftPanel.y + safeAreaLayout.hud.leftPanel.height,
+    safeAreaLayout.hud.footer.y,
+  )
+
+  const letterboxed = createBattlefieldLayout({ width: 400, height: 280 })
+  assert.equal(letterboxed.mode, 'phone-landscape')
+  assert.ok(letterboxed.hud.leftPanel.height > letterboxed.hud.comparison.height)
+  assert.equal(
+    letterboxed.hud.leftPanel.y + letterboxed.hud.leftPanel.height,
+    letterboxed.hud.footer.y,
   )
 })
 
