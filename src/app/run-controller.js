@@ -79,7 +79,7 @@ export function createRunController({
     validateMatchState(initialMatch)
   }
 
-  let match = initialMatch
+  let match = initialMatch === null ? null : immutableClone(initialMatch)
   let revision = 0
   let restoreStatus = 'idle'
   let restoreReason = null
@@ -231,7 +231,7 @@ export function createRunController({
         if (result.status === 'resumable') {
           validateMatchState(result.match)
           if (restoreRevision === revision) {
-            match = result.match
+            match = immutableClone(result.match)
             revision += 1
             saveStatus = 'saved'
             savedAt = result.savedAt
@@ -263,7 +263,8 @@ export function createRunController({
 
   function setMatch(nextMatch) {
     assertActive()
-    return markMatch(nextMatch)
+    validateMatchState(nextMatch)
+    return markMatch(immutableClone(nextMatch))
   }
 
   function discardPendingRestore() {

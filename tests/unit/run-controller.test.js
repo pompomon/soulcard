@@ -156,6 +156,32 @@ test('injected AI cannot mutate the authoritative match snapshot', async () => {
   assert.deepEqual(repository.saves, [expected.match])
 })
 
+test('caller-owned match references cannot substitute the authoritative AI branch', async () => {
+  for (const adoption of ['initialMatch', 'setMatch']) {
+    const initialMatch = structuredClone(createActiveMatch(`detached-${adoption}`))
+    const expected = revealOrContinue(initialMatch)
+    const foreign = createActiveMatch(initialMatch.runId, 54321)
+    const repository = createRepository()
+    const aiController = {
+      chooseEncounterAction() {
+        initialMatch.rng = foreign.rng
+        initialMatch.zones = foreign.zones
+        return REVEAL_OR_CONTINUE_ACTION
+      },
+    }
+    const controller = adoption === 'initialMatch'
+      ? createRunController({ repository, initialMatch, aiController })
+      : createRunController({ repository, aiController })
+    if (adoption === 'setMatch') controller.setMatch(initialMatch)
+
+    assert.notEqual(controller.currentMatch, initialMatch)
+    const result = await controller.revealOrContinue()
+
+    assert.deepEqual(result.match, expected.match)
+    assert.deepEqual(repository.saves, [expected.match])
+  }
+})
+
 test('AI mutation before throwing leaves the authoritative match unchanged and unsaved', async () => {
   const initialMatch = structuredClone(createActiveMatch('immutable-ai-failure'))
   const before = structuredClone(initialMatch)
@@ -175,7 +201,8 @@ test('AI mutation before throwing leaves the authoritative match unchanged and u
 
   assert.throws(() => controller.revealOrContinue(), /AI failed after mutation attempt/)
   assert.deepEqual(initialMatch, before)
-  assert.equal(controller.currentMatch, initialMatch)
+  assert.deepEqual(controller.currentMatch, initialMatch)
+  assert.notEqual(controller.currentMatch, initialMatch)
   assert.deepEqual(repository.saves, [])
 })
 
@@ -200,7 +227,7 @@ test('run controller rejects paused and ended matches before invoking injected A
 
     assert.throws(() => controller.revealOrContinue(), expectedError)
     assert.equal(calls, 0)
-    assert.equal(controller.currentMatch, match)
+    assert.deepEqual(controller.currentMatch, match)
     assert.equal(controller.getSnapshot().saveStatus, 'unsaved')
   }
   assert.deepEqual(repository.saves, [])
@@ -238,7 +265,7 @@ test('invalid AI dependencies, actions, and failures leave the current run uncha
     })
     assert.throws(() => controller.revealOrContinue())
     await controller.whenIdle()
-    assert.equal(controller.currentMatch, initialMatch)
+    assert.deepEqual(controller.currentMatch, initialMatch)
     assert.equal(controller.getSnapshot().saveStatus, 'unsaved')
   }
   assert.deepEqual(repository.saves, [])
@@ -266,13 +293,14 @@ test('AI action selection cannot overwrite a synchronously changed or destroyed 
     await controller.whenIdle()
 
     if (mutation === 'setMatch') {
-      assert.equal(controller.currentMatch, replacement)
+      assert.deepEqual(controller.currentMatch, replacement)
+      assert.notEqual(controller.currentMatch, replacement)
       assert.deepEqual(repository.saves, [])
     } else if (mutation === 'pause') {
       assert.equal(controller.currentMatch.machineState, 'paused')
       assert.deepEqual(repository.saves, [controller.currentMatch])
     } else {
-      assert.equal(controller.currentMatch, initialMatch)
+      assert.deepEqual(controller.currentMatch, initialMatch)
       assert.deepEqual(repository.saves, [])
     }
   }
