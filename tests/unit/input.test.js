@@ -124,6 +124,33 @@ test('release outside the target cancels mouse and implicit-capture pointer sequ
   assert.equal(compatibilityClick.defaultPrevented, true)
 })
 
+test('hit testing requires press and release on the interactive sub-target', () => {
+  const target = new FakeTarget()
+  let activations = 0
+  createInputController({
+    target,
+    onActivate: () => {
+      activations += 1
+    },
+    hitTest: (event) => event.clientX <= 60,
+  })
+
+  target.dispatch('pointerdown', { pointerId: 1, clientX: 50 })
+  target.dispatch('pointerup', { pointerId: 1, clientX: 80 })
+  const cancelledClick = target.dispatch('click', { detail: 1, clientX: 80 })
+  target.dispatch('pointerdown', { pointerId: 2, clientX: 80 })
+  target.dispatch('pointerup', { pointerId: 2, clientX: 50 })
+  const dragInClick = target.dispatch('click', { detail: 1, clientX: 50 })
+  target.dispatch('click', { detail: 0, clientX: 80 })
+  target.dispatch('pointerdown', { pointerId: 3, clientX: 50 })
+  target.dispatch('pointerup', { pointerId: 3, clientX: 50 })
+  target.dispatch('click', { detail: 1, clientX: 50 })
+
+  assert.equal(cancelledClick.defaultPrevented, true)
+  assert.equal(dragInClick.defaultPrevented, true)
+  assert.equal(activations, 1)
+})
+
 test('busy and enabled gates update synchronously and allow later legitimate actions', () => {
   const target = new FakeTarget()
   let activations = 0
@@ -208,6 +235,10 @@ test('invalid construction and gate values are rejected', () => {
   assert.throws(
     () => createInputController({ target, onActivate() {}, enabled: 'yes' }),
     /enabled/,
+  )
+  assert.throws(
+    () => createInputController({ target, onActivate() {}, hitTest: true }),
+    /hitTest/,
   )
 
   const controller = createInputController({ target, onActivate() {} })

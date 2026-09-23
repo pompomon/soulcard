@@ -113,11 +113,11 @@ stable-save-boundary deferral.
   from a repository subpath as well as a local development origin.
 - **Revisit trigger:** A separately approved hosting or distribution change.
 
-The MVP micro-loop is: read the HUD and next action, tap/click **Reveal/Continue**,
-resolve the paired reveal and all resulting ties in the pure engine, commit
-deterministic ownership and burn results, save at the resulting stable boundary, show
-concise cause-and-effect feedback, and continue until a terminal result. There is no
-forced choice on every reveal.
+The MVP micro-loop is: read the HUD and next action, tap/click **Reveal/Continue** or
+the active source/player deck shortcut, resolve the paired reveal and all resulting ties
+in the pure engine, commit deterministic ownership and burn results, save at the
+resulting stable boundary, show concise cause-and-effect feedback, and continue until a
+terminal result. There is no forced choice on every reveal.
 
 ### MVP scope
 
@@ -598,7 +598,9 @@ events to recompute layout, camera projection, renderer size, and capped pixel r
 Pointer Events unify mouse, touch, and pen. Primary actions are semantic DOM buttons
 with targets at least 44×44 CSS px, work by click/tap, never require gestures or hover,
 keep visible focus styles, define `touch-action` deliberately, handle `pointercancel`,
-and suppress synthetic duplicate click/tap activation. Battlefield gestures and their
+and suppress synthetic duplicate click/tap activation. A hit-tested active-deck
+shortcut may invoke the same guarded action, but the semantic button remains the
+accessible canonical control. Drag, swipe, and other battlefield gestures and their
 pointer-capture behavior are post-MVP.
 
 ## Persistence
@@ -1073,43 +1075,56 @@ reviewable PR.
 
 ### 14. Pointer interactions and responsive HUD
 - **Goal/files:** Add input controller and complete HUD; depends on 7, 11, 13.
-- **Acceptance:** Click/tap reveal/continue/pause work for mouse/touch/pen with target
-  sizes, cancellation, focus styles, and no duplicate activation.
+- **Acceptance:** Click/tap reveal/continue/pause and the supplemental active-deck
+  shortcut work for mouse/touch/pen with target sizes, cancellation, focus styles, and
+  no duplicate activation.
 - **Checks/risks:** Playwright/device-emulation plus real touch manual checks; keyboard
   remains explicitly post-MVP.
 - **Acceptance evidence:** `src/presentation/input.js` owns primary mouse, touch, and pen
-  press/release sequences for semantic Game buttons, cancels explicit and out-of-target
-  completions without pointer capture, suppresses compatibility clicks, preserves native
-  click fallback, gates enabled/busy state synchronously, and removes target/document
-  listeners idempotently. `src/ui/hud.js` routes Reveal/Continue and Pause only through
-  `run-controller`, holds Reveal/Continue through save and presentation settlement, and
+  press/release sequences for semantic Game buttons and hit-tested sub-targets, cancels
+  explicit and out-of-target completions without pointer capture, suppresses
+  compatibility clicks, preserves native button click fallback, gates enabled/busy
+  state synchronously, and removes target/document listeners idempotently.
+  `src/presentation/layout.js` and `src/presentation/battlefield.js` enlarge active decks
+  and revealed cards per responsive mode, keep secondary piles bounded, identify the
+  source deck or the player's drawable/recyclable pile from stable snapshots, and
+  raycast that one visual with a 44×44 CSS-pixel minimum screen-space target.
+  `src/ui/hud.js` routes both the deck shortcut and Reveal/Continue through one guarded
+  `run-controller` action, holds them through save and presentation settlement, and
   derives responsive counts, human-readable stage, latest-clash/tie/burn summary,
   presentation progress, next action, save warning, and terminal outcome from stable
-  snapshots and committed events. `src/style.css` preserves visible focus indicators,
-  deliberate `touch-action`, safe-area/layout reserves, and physical 44×44 CSS-pixel
-  controls, including letterboxed layouts. `src/app/new-match.js` creates a baseline
-  seeded run from Web Crypto entropy, and `src/app/bootstrap.js` installs it and queues
-  its stable save before Start New Game opens Game. Focused input/HUD/bootstrap tests cover
-  pointer types, secondary/non-primary rejection, cancellation and drag-off, duplicate
-  suppression, native fallback, gating, teardown, save/presentation ordering, skipped
-  and failed presentation, terminal state, injected ownership, initial-run persistence,
-  overwrite confirmation, pending-restore races, and stale completions from replaced
-  runs. An integration test proves one pointer action produces one deterministic clash,
-  save, and presentation while renderer callbacks receive detached frozen state.
-- **Validation:** All 234 unit/integration tests and the production build pass locally on
-  Node 24. A text-only headless Chromium check at 320×480/DPR 3, 844×390/DPR 3,
-  768×1024/DPR 2, 1280×800/DPR 1, and letterboxed 280×400/DPR 2 verified the declared
-  layout modes, exactly one canvas, touch Start New from empty storage, an immediately
-  saved seeded 52-card run, mouse/touch/pen activation, pointer cancellation and
-  out-of-target release, busy duplicate suppression, pause/resume, live HUD results,
-  `touch-action: manipulation`, physical targets of at least 44×44 CSS px, 3 px visible
-  focus outlines, and zero relevant console errors. A separate 390×844/DPR 3 check
-  verified fresh-start persistence, decline/accept replacement confirmation, one clash,
-  and pause/resume. A user-provided portrait screenshot from a physical Android target
-  device confirmed touch navigation and responsive HUD rendering while exposing the
-  now-fixed missing new-match initialization. A post-fix target-device Reveal/Continue
-  and Pause pass remains outstanding, so `MILESTONES.md` does not yet mark milestone 14
-  complete. No validation screenshots were generated.
+  snapshots and committed events.
+  `src/style.css` keeps the battlefield visually dominant while preserving visible focus
+  indicators, deliberate `touch-action`, safe-area/layout reserves, and physical 44×44
+  CSS-pixel controls, including letterboxed layouts. `src/app/new-match.js` creates a
+  baseline seeded run from Web Crypto entropy, and `src/app/bootstrap.js` installs it and
+  queues its stable save before Start New Game opens Game. Focused
+  input/HUD/bootstrap tests cover   pointer types, hit-tested active-deck source/personal/recycle selection and minimum
+  target size,
+  secondary/non-primary rejection, cancellation and drag-off, duplicate suppression,
+  native fallback, shared button/deck gating, teardown, save/presentation ordering,
+  skipped and failed presentation, terminal state, injected ownership, initial-run
+  persistence, overwrite confirmation, pending-restore races, and stale completions
+  from replaced runs. Integration tests prove button and active-deck actions each
+  produce one deterministic clash, save, and presentation while renderer callbacks
+  receive detached frozen state.
+- **Validation:** All 240 unit/integration tests and the production build pass locally on
+  Node 24. A text-only headless Chrome 152 check at 320×480/DPR 3, 844×390/DPR 3,
+  768×1024/DPR 2, 1280×800/DPR 1, and 900×1000/DPR 2 verified the declared layout
+  modes, exactly one full-viewport canvas, compact comparison bounds, active source-deck
+  hits producing exactly one turn at every size, transition to the personal-stage player
+  deck, and another exact single activation there. It also confirmed
+  `touch-action: manipulation`, physical controls of at least 44×44 CSS px, deck input
+  disabled without advancing a turn while paused, successful resume, and zero relevant
+  console errors. A post-review rerun at 320×480, the minimum 480×320 landscape
+  orientation, and 900×1000 confirmed the expanded deck target, exact single activation,
+  and drag-onto-deck rejection. Earlier text-only checks cover letterboxed 280×400/DPR 2,
+  visible focus outlines, pointer cancellation and out-of-target release, fresh-start
+  persistence, and replacement confirmation. A user-provided portrait screenshot from
+  a physical Android target device confirmed touch navigation and responsive HUD
+  rendering while exposing the now-fixed missing new-match initialization. A post-fix
+  target-device Reveal/Continue and Pause pass remains outstanding, so `MILESTONES.md`
+  does not yet mark milestone 14 complete. No validation screenshots were generated.
 
 ### 15. AI and complete source-to-personal-stage match flow
 - **Goal/files:** Add AI controller/encounter wiring and integration tests; depends on 5,

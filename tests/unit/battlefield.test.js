@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import * as THREE from 'three'
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { mountBattlefield } from '../../src/presentation/battlefield.js'
@@ -23,11 +24,54 @@ class FakeCanvas {
   constructor(host) {
     this.host = host
     this.attributes = {}
+    this.dataset = {}
+    this.disabled = false
+    this.listeners = new Map()
+    this.ownerDocument = null
     this.removeCalls = 0
   }
 
   setAttribute(name, value) {
     this.attributes[name] = value
+  }
+
+  addEventListener(type, listener) {
+    const listeners = this.listeners.get(type) ?? new Set()
+    listeners.add(listener)
+    this.listeners.set(type, listeners)
+  }
+
+  removeEventListener(type, listener) {
+    this.listeners.get(type)?.delete(listener)
+  }
+
+  dispatch(type, values = {}) {
+    const event = {
+      type,
+      button: type.startsWith('pointer') ? 0 : undefined,
+      detail: 0,
+      isPrimary: true,
+      pointerId: 1,
+      pointerType: 'mouse',
+      clientX: this.host.width / 2,
+      clientY: this.host.height / 2,
+      preventDefault() {},
+      stopPropagation() {},
+      ...values,
+    }
+    for (const listener of [...(this.listeners.get(type) ?? [])]) listener(event)
+    return event
+  }
+
+  getBoundingClientRect() {
+    return {
+      top: 0,
+      right: this.host.width,
+      bottom: this.host.height,
+      left: 0,
+      width: this.host.width,
+      height: this.host.height,
+    }
   }
 
   remove() {
@@ -61,14 +105,25 @@ class FakeRenderer {
     this.sizes.push([width, height, updateStyle])
   }
 
-  render(scene) {
+  render(scene, camera) {
     this.scene = scene
+    this.camera = camera
     this.renderCalls += 1
   }
 
   dispose() {
     this.onDispose?.()
     this.disposeCalls += 1
+  }
+}
+
+function clientPointFor(mesh, renderer, host) {
+  renderer.scene.updateMatrixWorld(true)
+  renderer.camera.updateMatrixWorld(true)
+  const point = mesh.getWorldPosition(new THREE.Vector3()).project(renderer.camera)
+  return {
+    clientX: (point.x + 1) / 2 * host.width,
+    clientY: (1 - point.y) / 2 * host.height,
   }
 }
 
@@ -429,6 +484,177 @@ test('battlefield renders committed snapshots and routes event cards through bou
   assert.ok(textures.leases.every(({ releaseCalls }) => releaseCalls === 1))
 })
 
+test('battlefield scales prominent cards and hit tests only the enabled active deck', () => {
+  const host = createHost(768, 1024)
+  const windowObject = createWindow({ width: 768, height: 1024 })
+  const observer = createObserverHarness()
+  const renderer = new FakeRenderer(host, {})
+  let activations = 0
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => renderer,
+    textureCacheFactory: () => createTextureCacheHarness().cache,
+    onDeckActivate() {
+      activations += 1
+    },
+  })
+  windowObject.flushFrames()
+
+  const initial = createMatch({
+    runId: 'battlefield-deck-input',
+    seed: 0,
+    ruleset: BASELINE_RULESET,
+  })
+  handle.syncSnapshot(initial)
+  const source = renderer.scene.getObjectByName(
+    `battlefield-card:${initial.zones.sourceDeck[0]}:back`,
+  )
+  assert.ok(source)
+  assert.equal(source.scale.x, 1.75)
+  assert.equal(source.scale.y, 1.75)
+  assert.equal(source.material.color.getHex(), 0xd9fbff)
+  assert.deepEqual(handle.getDeckInputState(), {
+    activeZone: 'sourceDeck',
+    enabled: false,
+    busy: false,
+  })
+
+  const canvas = renderer.domElement
+  const sourcePoint = clientPointFor(source, renderer, host)
+  handle.setDeckInputState({ enabled: true, busy: false })
+  canvas.dispatch('pointerdown', { ...sourcePoint, pointerType: 'touch', pointerId: 7 })
+  canvas.dispatch('pointerup', { ...sourcePoint, pointerType: 'touch', pointerId: 7 })
+  canvas.dispatch('click', { ...sourcePoint, detail: 1 })
+  assert.equal(activations, 1)
+
+  canvas.dispatch('pointerdown', { clientX: 10, clientY: 10, pointerId: 8 })
+  canvas.dispatch('pointerup', { clientX: 10, clientY: 10, pointerId: 8 })
+  canvas.dispatch('click', { clientX: 10, clientY: 10, detail: 1 })
+  assert.equal(activations, 1)
+
+  const transition = revealOrContinue(initial)
+  handle.syncSnapshot(transition.match)
+  const activeSource = renderer.scene.getObjectByName(
+    `battlefield-card:${transition.match.zones.sourceDeck[0]}:back`,
+  )
+  const secondary = []
+  renderer.scene.traverse((object) => {
+    if (object.name.startsWith('battlefield-card:') && object !== activeSource) {
+      secondary.push(object)
+    }
+  })
+  assert.ok(secondary.length > 0)
+  assert.equal(activeSource.scale.x, 1.75)
+  assert.ok(secondary.every((mesh) => mesh.scale.x === 1.2))
+  assert.ok(secondary.every((mesh) => mesh.material.color.getHex() === 0xffffff))
+
+  handle.setDeckInputState({ enabled: true, busy: true })
+  const busyPoint = clientPointFor(activeSource, renderer, host)
+  canvas.dispatch('pointerdown', { ...busyPoint, pointerId: 9 })
+  canvas.dispatch('pointerup', { ...busyPoint, pointerId: 9 })
+  assert.equal(activations, 1)
+
+  host.width = 844
+  host.height = 390
+  observer.instances[0].callback()
+  windowObject.flushFrames()
+  assert.equal(handle.layout.mode, 'phone-landscape')
+  assert.equal(activeSource.scale.x, 1.4)
+  assert.ok(secondary.every((mesh) => mesh.scale.x === 1.02))
+
+  handle.setDeckInputState({ enabled: true, busy: false })
+  const resizedPoint = clientPointFor(activeSource, renderer, host)
+  canvas.dispatch('pointerdown', { ...resizedPoint, pointerType: 'pen', pointerId: 10 })
+  canvas.dispatch('pointerup', { ...resizedPoint, pointerType: 'pen', pointerId: 10 })
+  canvas.dispatch('click', { ...resizedPoint, detail: 1 })
+  assert.equal(activations, 2)
+
+  let personal = initial
+  while (personal.stage === 'source') {
+    personal = revealOrContinue(personal).match
+  }
+  handle.syncSnapshot(personal)
+  assert.equal(handle.getDeckInputState().activeZone, 'playerDrawPile')
+  const playerDraw = renderer.scene.getObjectByName(
+    `battlefield-card:${personal.zones.player.drawPile[0]}:back`,
+  )
+  assert.ok(playerDraw)
+  assert.equal(playerDraw.scale.x, 1.4)
+  assert.equal(playerDraw.material.color.getHex(), 0xd9fbff)
+
+  while (
+    personal.status === 'active'
+    && (
+      personal.zones.player.drawPile.length !== 0
+      || personal.zones.player.wonPile.length === 0
+    )
+  ) {
+    personal = revealOrContinue(personal).match
+  }
+  assert.equal(personal.status, 'active')
+  handle.syncSnapshot(personal)
+  assert.equal(handle.getDeckInputState().activeZone, 'playerWonPile')
+  const recyclableWonPile = renderer.scene.getObjectByName(
+    `battlefield-card:${personal.zones.player.wonPile.at(-1)}:back`,
+  )
+  assert.ok(recyclableWonPile)
+  assert.equal(recyclableWonPile.scale.x, 1.4)
+  assert.equal(recyclableWonPile.material.color.getHex(), 0xd9fbff)
+
+  assert.throws(() => handle.setDeckInputState({ enabled: true }), /booleans/)
+
+  handle.teardown()
+  assert.ok([...canvas.listeners.values()].every((listeners) => listeners.size === 0))
+})
+
+test('active deck hit testing preserves a 44px target at minimum orientations', () => {
+  for (const [width, height] of [[320, 480], [480, 320]]) {
+    const host = createHost(width, height)
+    const windowObject = createWindow({ width, height })
+    const observer = createObserverHarness()
+    const renderer = new FakeRenderer(host, {})
+    let activations = 0
+    const handle = mountBattlefield(host, {
+      windowObject,
+      ResizeObserverClass: observer.FakeResizeObserver,
+      rendererFactory: () => renderer,
+      textureCacheFactory: () => createTextureCacheHarness().cache,
+      onDeckActivate() {
+        activations += 1
+      },
+    })
+    windowObject.flushFrames()
+    const match = createMatch({
+      runId: `minimum-target-${width}x${height}`,
+      seed: 0,
+      ruleset: BASELINE_RULESET,
+    })
+    handle.syncSnapshot(match)
+    handle.setDeckInputState({ enabled: true, busy: false })
+    const source = renderer.scene.getObjectByName(
+      `battlefield-card:${match.zones.sourceDeck[0]}:back`,
+    )
+    const center = clientPointFor(source, renderer, host)
+    const canvas = renderer.domElement
+
+    for (const offset of [-21.9, 21.9]) {
+      const point = { ...center, clientX: center.clientX + offset }
+      canvas.dispatch('pointerdown', { ...point, pointerId: activations + 1 })
+      canvas.dispatch('pointerup', { ...point, pointerId: activations + 1 })
+      canvas.dispatch('click', { ...point, detail: 1 })
+    }
+    assert.equal(activations, 2)
+
+    const outside = { ...center, clientX: center.clientX + 23.5 }
+    canvas.dispatch('pointerdown', { ...outside, pointerId: 3 })
+    canvas.dispatch('pointerup', { ...outside, pointerId: 3 })
+    canvas.dispatch('click', { ...outside, detail: 1 })
+    assert.equal(activations, 2)
+    handle.teardown()
+  }
+})
+
 test('source-to-personal events route each reveal from its committed origin', () => {
   const host = createHost(1024, 768)
   const windowObject = createWindow({ width: 1024, height: 768 })
@@ -591,6 +817,14 @@ test('battlefield validates its adapters before creating renderer resources', ()
   assert.throws(
     () => mountBattlefield(host, { rendererFactory: null }),
     /rendererFactory/,
+  )
+  assert.throws(
+    () => mountBattlefield(host, { onDeckActivate: true }),
+    /onDeckActivate/,
+  )
+  assert.throws(
+    () => mountBattlefield(host, { inputControllerFactory: null }),
+    /inputControllerFactory/,
   )
   assert.throws(
     () => mountBattlefield(host, { themeRegistry: {} }),
