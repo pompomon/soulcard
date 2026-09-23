@@ -2,6 +2,10 @@ const CACHE_PREFIX = 'soulcard-'
 const BUILD_REVISION = /* INJECT_BUILD_REVISION */ 'dev'
 const SHELL_CACHE = `${CACHE_PREFIX}shell-${BUILD_REVISION}`
 const RUNTIME_CACHE = `${CACHE_PREFIX}runtime-${BUILD_REVISION}`
+const ACTIVE_CACHE_PREFIX = `${CACHE_PREFIX}active-`
+const ACTIVE_CACHE = `${ACTIVE_CACHE_PREFIX}${BUILD_REVISION}`
+const SHELL_CACHE_PREFIX = `${CACHE_PREFIX}shell-`
+const RUNTIME_CACHE_PREFIX = `${CACHE_PREFIX}runtime-`
 const BUILD_ASSETS = /* INJECT_BUILD_ASSETS */ []
 const APP_SHELL = BUILD_ASSETS.length > 0
   ? BUILD_ASSETS
@@ -40,20 +44,54 @@ async function precacheShell() {
   try {
     const cache = await caches.open(SHELL_CACHE)
     await cache.addAll(APP_SHELL)
+    await cleanSupersededInstallCaches()
   } catch (error) {
     await caches.delete(SHELL_CACHE)
     throw error
   }
 }
 
+async function cleanSupersededInstallCaches() {
+  const keys = await caches.keys()
+  const activeMarker = [...keys]
+    .reverse()
+    .find((key) => key.startsWith(ACTIVE_CACHE_PREFIX))
+  if (!activeMarker) return
+
+  const activeRevision = activeMarker.slice(ACTIVE_CACHE_PREFIX.length)
+  const activeShell = `${SHELL_CACHE_PREFIX}${activeRevision}`
+  const activeRuntime = `${RUNTIME_CACHE_PREFIX}${activeRevision}`
+  const otherShells = keys.filter((key) => (
+    key.startsWith(SHELL_CACHE_PREFIX)
+    && key !== activeShell
+    && key !== SHELL_CACHE
+  ))
+  const currentWaitingShell = otherShells.at(-1)
+  const preservedCaches = new Set([
+    activeMarker,
+    activeShell,
+    activeRuntime,
+    SHELL_CACHE,
+    RUNTIME_CACHE,
+    currentWaitingShell,
+  ])
+
+  await Promise.all(
+    keys
+      .filter((key) => key.startsWith(CACHE_PREFIX) && !preservedCaches.has(key))
+      .map((key) => caches.delete(key)),
+  )
+}
+
 async function cleanObsoleteCaches() {
-  const currentCaches = new Set([SHELL_CACHE, RUNTIME_CACHE])
+  const currentCaches = new Set([ACTIVE_CACHE, SHELL_CACHE, RUNTIME_CACHE])
   const keys = await caches.keys()
   await Promise.all(
     keys
       .filter((key) => key.startsWith(CACHE_PREFIX) && !currentCaches.has(key))
       .map((key) => caches.delete(key)),
   )
+  await caches.open(ACTIVE_CACHE)
 }
 
 async function trimRuntimeCache(cache) {

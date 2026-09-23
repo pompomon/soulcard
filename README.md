@@ -99,17 +99,19 @@ URLs, so the GitHub Pages repository path can relaunch offline after one success
 install. Shell files are immutable within a revision. A separate runtime cache accepts
 only successful same-origin image, font, and audio requests and evicts its oldest entries
 above 32; generated card textures are recreated locally and never enter Cache Storage.
-Active runs remain exclusively in IndexedDB, so clearing application caches does not
-delete a saved game.
+The worker preserves the active, installing, and latest waiting shells while removing
+superseded deferred revisions, then removes every obsolete Soulcard cache on activation.
+Active runs remain exclusively in IndexedDB, so clearing application caches does not delete
+a saved game.
 
 An installed update waits until the player selects **Update now**. Soulcard immediately
-blocks the current screen, waits for initial restoration and any queued write, and saves
-the latest stable ready, paused, or ended snapshot before asking the waiting worker to
-activate. The page reloads only after that worker reaches `activated`. A save failure
-leaves the current worker in control and exposes a retry; restore storage availability
-and select **Update now** again. A committed event is saved with its snapshot, so an
-update can reload before presentation finishes without recalculating rules or consuming
-RNG.
+blocks the current screen, waits for initial restoration and any queued write—including a
+recovery discard—and saves the latest stable ready, paused, or ended snapshot before asking
+the latest waiting worker to activate. The page reloads only after that worker reaches
+`activated`. A save failure leaves the current worker in control and exposes a retry;
+restore storage availability and select **Update now** again. A committed event is saved
+with its snapshot, so an update can reload before presentation finishes without
+recalculating rules or consuming RNG.
 
 ## Tests
 

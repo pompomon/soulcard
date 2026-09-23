@@ -1200,21 +1200,24 @@ reviewable PR.
   markers, and preserves the Pages-relative Vite base. `public/sw.js` installs that
   shell without immediate activation, accepts only the explicit application activation
   message, keeps same-origin asset runtime caching separate and bounded to 32 entries,
-  deletes only obsolete Soulcard caches, and claims clients after activation.
+  bounds deferred revision caches while preserving the active/installing/latest-waiting
+  shells, deletes only obsolete Soulcard caches, and claims clients after activation.
   `src/pwa/update-controller.js` distinguishes first install from a controlled update,
-  retains update state across screen mounts, and reloads exactly once only after the
-  requested worker activates. Bootstrap gates that request on restoration and a
-  successful serialized stable save; failures remain retryable, while committed pending
-  presentation events survive reload without domain replay. The semantic
+  follows a replacement waiting worker discovered during preparation, retains update
+  state across screen mounts, and reloads exactly once only after the requested worker
+  activates. Bootstrap gates that request on restoration, queued recovery operations,
+  and a successful serialized stable save; failures remain retryable, while committed
+  pending presentation events survive reload without domain replay. The semantic
   `src/ui/update-notice.js` stays inside Main, Settings, or Game and makes only the
   underlying screen inert while saving or activating. The relative manifest supplies
   SVG, 192/512 PNG, maskable, and Apple touch assets, and all update/install surfaces
   honor safe areas. Cache Storage contains application assets only; active runs remain
   in IndexedDB.
-- **Validation:** The Node 24 test runner reports 287 passing unit/integration tests,
+- **Validation:** The Node 24 test runner reports 290 passing unit/integration tests,
   including service-worker policy, build injection, manifest assets, update lifecycle,
-  update notice, pending-write ordering, empty/paused/ended runs, save retry, and exact
-  pending-event restore coverage; the production build passes. A text-only headless
+  update notice, superseded cache bounds, replacement-worker selection, pending-write and
+  recovery-discard ordering, empty/paused/ended runs, save retry, and exact pending-event
+  restore coverage; the production build passes. A text-only headless
   Chrome 152 check served two revisions under `/soulcard/`: installability reported no
   errors, the first revision launched offline and resumed its exact IndexedDB run, the
   second waited for explicit activation and a stable turn-one save, reloaded once,

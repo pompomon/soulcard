@@ -290,6 +290,48 @@ test('activation waits for initial restore and permits an empty run without a sa
   await app.destroy()
 })
 
+test('activation waits for a queued recovery discard before treating the run as empty', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const deletion = deferred()
+  const runController = createRunController({
+    repository: {
+      load: async () => ({
+        status: 'recovery-required',
+        reason: 'invalid-save',
+        message: 'Discard this invalid save.',
+      }),
+      save: async () => assert.fail('A recovery discard should not save'),
+      discard: () => deletion.promise,
+    },
+  })
+  const update = createUpdateFactory()
+  const app = bootstrap({
+    ...appOptions(update),
+    runController,
+  })
+  await app.ready
+  await update.controller.ready
+
+  assert.equal(app.runSnapshot.restoreStatus, 'recovery-required')
+  const discard = runController.discardRecovery()
+  const activation = update.controller.requestActivation()
+  await Promise.resolve()
+  assert.deepEqual(update.worker.messages, [])
+
+  deletion.resolve({ status: 'discarded' })
+  assert.deepEqual(await discard, { status: 'discarded' })
+  assert.equal((await activation).status, 'activating')
+  assert.deepEqual(update.worker.messages, [{ type: ACTIVATE_UPDATE_MESSAGE }])
+  await app.destroy()
+})
+
 test('failed stable saves leave the update waiting and retryable', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {

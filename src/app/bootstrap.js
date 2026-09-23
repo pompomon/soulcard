@@ -25,6 +25,7 @@ function assertRunController(runController) {
     'discardPendingRestore',
     'setMatch',
     'saveStable',
+    'whenIdle',
     'subscribe',
     'revealOrContinue',
     'pause',
@@ -168,6 +169,7 @@ export function bootstrap({
 
   const prepareForUpdate = async () => {
     await ready
+    await activeRunController.whenIdle()
     if (activeRunController.currentMatch === null) {
       return Object.freeze({ status: 'ready', reason: 'no-active-run' })
     }

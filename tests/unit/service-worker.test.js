@@ -231,9 +231,43 @@ test('activation removes only obsolete Soulcard caches before claiming clients',
 
   assert.deepEqual(
     [...harness.cacheStorage.caches.keys()].sort(),
-    ['soulcard-runtime-dev', 'soulcard-shell-dev', 'unrelated-cache'],
+    [
+      'soulcard-active-dev',
+      'soulcard-runtime-dev',
+      'soulcard-shell-dev',
+      'unrelated-cache',
+    ],
   )
   assert.equal(harness.claimCalls, 1)
+})
+
+test('install bounds superseded revisions while preserving active and waiting shells', async () => {
+  const harness = await createHarness()
+  for (const name of [
+    'soulcard-active-live',
+    'soulcard-shell-live',
+    'soulcard-runtime-live',
+    'soulcard-shell-superseded',
+    'soulcard-shell-waiting',
+    'soulcard-runtime-orphaned',
+    'unrelated-cache',
+  ]) {
+    harness.cacheStorage.caches.set(name, new FakeCache(SCOPE))
+  }
+
+  await harness.dispatch('install')
+
+  assert.deepEqual(
+    [...harness.cacheStorage.caches.keys()].sort(),
+    [
+      'soulcard-active-live',
+      'soulcard-runtime-live',
+      'soulcard-shell-dev',
+      'soulcard-shell-live',
+      'soulcard-shell-waiting',
+      'unrelated-cache',
+    ],
+  )
 })
 
 test('scoped navigation and shell assets use one coherent offline shell', async () => {

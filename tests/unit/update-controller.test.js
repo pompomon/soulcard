@@ -205,6 +205,31 @@ test('activation is idempotent, waits for preparation, and reloads once after ac
   assert.deepEqual(statuses, ['current', 'available', 'preparing', 'activating'])
 })
 
+test('activation targets a replacement update discovered during preparation', async () => {
+  const preparation = deferred()
+  const original = new FakeWorker()
+  const registration = new FakeRegistration({ waiting: original })
+  const browser = createBrowser({ registration })
+  const controller = createUpdateController({
+    production: true,
+    prepareForActivation: () => preparation.promise,
+    ...browser,
+  })
+  await controller.ready
+
+  const activation = controller.requestActivation()
+  const replacement = new FakeWorker('installing')
+  registration.waiting = replacement
+  registration.discover(replacement)
+  replacement.setState('installed')
+  original.setState('redundant')
+  preparation.resolve({ status: 'ready' })
+
+  assert.deepEqual(await activation, { status: 'activating', reason: null })
+  assert.deepEqual(original.messages, [])
+  assert.deepEqual(replacement.messages, [{ type: ACTIVATE_UPDATE_MESSAGE }])
+})
+
 test('preparation failures leave the waiting update retryable', async () => {
   const worker = new FakeWorker()
   const browser = createBrowser({

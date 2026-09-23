@@ -95,19 +95,27 @@ export function createUpdateController({
     if (!destroyed) publish(createSnapshot(status, reason, canActivate))
   }
 
-  function offerUpdate(worker) {
-    if (
-      destroyed
-      || worker === null
-      || typeof worker !== 'object'
-      || typeof worker.postMessage !== 'function'
-      || snapshot.status === 'preparing'
-      || snapshot.status === 'activating'
-    ) {
-      return
+  function isWaitingWorker(worker) {
+    return (
+      worker !== null
+      && typeof worker === 'object'
+      && typeof worker.postMessage === 'function'
+      && worker.state !== 'redundant'
+    )
+  }
+
+  function latestWaitingWorker(excludedWorker = null) {
+    for (const worker of [registration?.waiting, waitingWorker]) {
+      if (worker !== excludedWorker && isWaitingWorker(worker)) return worker
     }
-    if (waitingWorker === worker && snapshot.status === 'available') return
+    return null
+  }
+
+  function offerUpdate(worker) {
+    if (destroyed || !isWaitingWorker(worker)) return
     waitingWorker = worker
+    if (snapshot.status === 'preparing' || snapshot.status === 'activating') return
+    if (waitingWorker === worker && snapshot.status === 'available') return
     setStatus('available', null, true)
   }
 
@@ -204,7 +212,13 @@ export function createUpdateController({
           removeActivationListener = () => {}
           requestedWorker = null
           activationPromise = null
-          setStatus('failed', 'activation-failed', registration?.waiting === worker)
+          const replacement = latestWaitingWorker(worker)
+          waitingWorker = replacement
+          if (replacement) {
+            setStatus('available', null, true)
+          } else {
+            setStatus('failed', 'activation-failed', false)
+          }
         }
       }
       worker.addEventListener('statechange', handleStateChange)
@@ -218,11 +232,10 @@ export function createUpdateController({
     if (destroyed) {
       return Promise.resolve(Object.freeze({ status: 'skipped', reason: 'destroyed' }))
     }
-    if (waitingWorker === null) {
+    if (latestWaitingWorker() === null) {
       return Promise.resolve(Object.freeze({ status: 'skipped', reason: 'no-update' }))
     }
 
-    const targetWorker = waitingWorker
     setStatus('preparing', null, false)
     activationPromise = Promise.resolve()
       .then(() => prepareForActivation())
@@ -236,6 +249,13 @@ export function createUpdateController({
           throw error
         }
 
+        const targetWorker = latestWaitingWorker()
+        if (targetWorker === null) {
+          const error = new Error('The waiting update is no longer available')
+          error.reason = 'no-update'
+          throw error
+        }
+        waitingWorker = targetWorker
         setStatus('activating', null, false)
         watchRequestedWorker(targetWorker)
         targetWorker.postMessage(Object.freeze({ type: ACTIVATE_UPDATE_MESSAGE }))
@@ -247,7 +267,12 @@ export function createUpdateController({
         removeActivationListener = () => {}
         requestedWorker = null
         activationPromise = null
-        setStatus('failed', failureReason(error, 'activation-failed'), true)
+        waitingWorker = latestWaitingWorker()
+        setStatus(
+          'failed',
+          failureReason(error, 'activation-failed'),
+          waitingWorker !== null,
+        )
         return Object.freeze({
           status: 'failed',
           reason: failureReason(error, 'activation-failed'),
