@@ -229,7 +229,7 @@ test('Start New creates, saves, and opens a playable baseline match', async (t) 
   await app.destroy()
 })
 
-test('Start New applies the current burn-off preference without changing resume behavior', async (t) => {
+test('Start New applies the current burn-off preference', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
     createElement: (tagName) => new FakeElement(tagName),
@@ -276,6 +276,47 @@ test('Start New applies the current burn-off preference without changing resume 
   assert.equal(selectedRuleset, NO_BURN_RULESET)
   assert.deepEqual(app.runSnapshot.match.ruleset, NO_BURN_RULESET)
   assert.equal(app.runSnapshot.match.ruleset.burn.enabled, false)
+  await app.destroy()
+})
+
+test('Resume retains the saved ruleset when the burn preference differs', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const savedMatch = createMatch({
+    runId: 'resume-saved-ruleset',
+    seed: 1,
+    ruleset: BASELINE_RULESET,
+  })
+  const controller = createRunController({
+    repository: {
+      load: async () => assert.fail('A current match should not restore'),
+      save: async () => assert.fail('Resume should not rewrite the match'),
+    },
+    initialMatch: savedMatch,
+  })
+  const settingsRepository = createSettingsRepository({ storage: null })
+  settingsRepository.setBurnEnabled(false)
+  const root = new FakeElement('div')
+  const app = bootstrap({
+    root,
+    runController: controller,
+    settingsRepository,
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield: () => undefined,
+  })
+
+  byAction(root, 'resume').dispatch('click')
+
+  assert.equal(app.activeScreen, 'game')
+  assert.deepEqual(controller.currentMatch.ruleset, BASELINE_RULESET)
+  assert.equal(controller.currentMatch.ruleset.burn.enabled, true)
   await app.destroy()
 })
 

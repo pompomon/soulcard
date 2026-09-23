@@ -44,7 +44,7 @@ stable-save-boundary deferral.
   but it does not establish game architecture.
 - **Decision:** Build the MVP incrementally in the existing plain-JavaScript project.
   Do not add a UI framework or treat the pyramid scene as authoritative game logic.
-  The MVP is one deterministic, single-player, player-versus-AI, fast-burning
+  The MVP is one deterministic, single-player, player-versus-AI, configurable-burning
   War-style match.
 - **Consequences:** Existing deployment behavior remains usable while domain, UI, and
   presentation modules replace the prototype in reviewable milestones. A framework
@@ -124,7 +124,8 @@ terminal result. There is no forced choice on every reveal.
 - Exactly three top-level screens: **Main**, **Settings**, and **Game**.
 - A deterministic 52-card match, AI encounter flow, ties, configurable burning, and
   a generated classic theme.
-- Persistent, resumable active run; separate persisted graphics/animation settings.
+- Persistent, resumable active run; separate persisted gameplay and
+  graphics/animation settings.
 - Responsive Three.js battlefield with DOM HUD, mouse/touch/pen click-or-tap controls,
   PWA offline behavior, and a pause/end overlay within Game.
 
@@ -144,7 +145,7 @@ The terms below are normative:
 
 | Term | Meaning |
 |---|---|
-| **Card** | Immutable identity `{ id, suit, rank, value }`; `id` is unique in the classic 52-card set, Ace has value 14, and suit never affects comparison. |
+| **Card** | Immutable identity `{ id, suit, rank, value }`; `id` is unique in the classic 52-card set, Ace retains value 14, suit never affects comparison, and the canonical comparison exception makes 2 beat Ace only. |
 | **Match stage** | Card-source progression: exactly `source` or `personal`; it is distinct from machine state. |
 | **Machine state** | Control state such as `new`, `ready`, `resolving`, `stageTransition`, `paused`, or `ended`. |
 | **Clash** | One contest beginning with a paired reveal and ending in one settlement or a terminal draw. |
@@ -200,8 +201,8 @@ If a tied reveal exhausts `sourceDeck`, retain `contestedPile`, perform the same
 player-first source-to-personal-stage shuffles, remain in machine state `resolving`,
 and continue the tie from the personal draw piles.
 
-A clash keeps every reveal record in `contestedPile`. Equal values require another
-reveal round. If one side cannot supply a required tie card after personal-stage
+A clash keeps every reveal record in `contestedPile`. A tied comparison requires
+another reveal round. If one side cannot supply a required tie card after personal-stage
 recycling, the other side wins the whole unresolved contest under the configured burn
 settlement and the match ends. If neither side can supply it, the match ends in a
 terminal draw, `contestedPile` remains intact, and no settlement or RNG call occurs.
@@ -250,7 +251,7 @@ before a required reveal.
 
 ```json
 {
-  "id": "mvp-baseline-v1",
+  "id": "mvp-baseline-v2",
   "burn": {
     "enabled": true,
     "eligibleScope": "all-losing-side-cards-in-resolved-contested-pile",
@@ -261,7 +262,7 @@ before a required reveal.
 
 ```json
 {
-  "id": "debug-no-burn-v1",
+  "id": "mvp-no-burn-v2",
   "burn": { "enabled": false }
 }
 ```
@@ -286,7 +287,8 @@ without adding an MVP editor:
 Eligible cards are evaluated in `contestedPile` reveal order. Rules are evaluated
 top-to-bottom for each card; the first match wins. The percentage rule uses the
 serializable domain RNG only after preceding rules fail and only when burning is
-enabled. This is a rules/test configuration surface, not a graphics settings feature.
+enabled. Ordered predicate editing remains a rules/test configuration surface; the
+Gameplay setting only selects between the two canonical built-ins.
 
 ## Architecture
 
@@ -380,7 +382,9 @@ uses rank order `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`, `J`, `Q`, `K`, `A`
 The canonical pre-shuffle deck is suit-major in those orders. IDs are
 `c-<rank><suit>` (for example, `c-2S`, `c-10H`, and `c-AC`), numeric ranks retain
 their number, Jack through King have values 11 through 13, and Ace has value 14.
-Suit does not affect comparison.
+Suit does not affect comparison. Comparison normally follows those values, except 2
+beats Ace; 2 still loses to every rank from 3 through King. Card values and canonical
+deck order remain unchanged so seeded source shuffles retain their existing order.
 
 The ID format and canonical pre-shuffle order are deterministic compatibility
 contracts because they define seeded source-deck permutations. New-game setup makes
@@ -401,7 +405,7 @@ machine.
 ### Ruleset and burn evaluator contract (milestone 4)
 
 `src/domain/ruleset.js` defines the deeply immutable built-ins
-`mvp-baseline-v1` and `debug-no-burn-v1`. Their IDs are bound to their complete
+`mvp-baseline-v2` and `mvp-no-burn-v2`. Their IDs are bound to their complete
 canonical definitions: the baseline enables the fixed
 `all-losing-side-cards-in-resolved-contested-pile` scope and keeps decisive
 winner-supplied cards in `winner.wonPile`, while the no-burn ruleset contains only
@@ -437,10 +441,10 @@ winner and therefore never enters this settlement evaluator.
 |---|---|---|---|
 | `new` | start with seed/rules | `ready` | source stage and shuffled 52-card `sourceDeck` |
 | `ready` | reveal/continue | `resolving` | first reveal round enters `contestedPile` through `inPlay` |
-| `resolving` | values tie and both can reveal in the current stage | `resolving` | contest retained; next player-then-opponent reveal round |
-| `resolving` | values tie in the source stage and source is empty | `stageTransition` | contest retained |
-| `resolving` | unequal values settle while source remains | `ready` | ordered settlement, burn result, and committed event |
-| `resolving` | unequal values settle as source becomes empty | `stageTransition` | ordered settlement and burn result retained for final commit |
+| `resolving` | comparison ties and both can reveal in the current stage | `resolving` | contest retained; next player-then-opponent reveal round |
+| `resolving` | comparison ties in the source stage and source is empty | `stageTransition` | contest retained |
+| `resolving` | comparison is decisive while source remains | `ready` | ordered settlement, burn result, and committed event |
+| `resolving` | comparison is decisive as source becomes empty | `stageTransition` | ordered settlement and burn result retained for final commit |
 | `stageTransition` | source empty with unresolved contest; both can reveal after nonempty won piles are shuffled | `resolving` | nonempty won piles shuffled player then opponent, stage set to personal, next reveal round |
 | `stageTransition` | source empty with unresolved contest; exactly one side can reveal after nonempty won piles are shuffled | `ended` | nonempty won pile shuffled, stage set to personal, available reveal, ordered settlement, and terminal winner |
 | `stageTransition` | source empty with unresolved contest; neither side can reveal because both won piles are empty | `ended` | stage set to personal; terminal draw with unresolved contest retained |
@@ -517,6 +521,9 @@ and the event's stage is `personal`. If a tie empties the source, the unresolved
 survives that same player-first transition and continues from personal piles within the
 same action. In the personal stage, each side recycles its complete nonempty `wonPile`
 only when its `drawPile` is empty immediately before that side's required reveal.
+`src/domain/cards.js` owns the canonical comparison used by the state machine, committed
+event validation, and presentation tie metadata, so 2-over-Ace cannot diverge across
+those consumers.
 
 `src/domain/events.js` owns `eventVersion: 3` validation and factories, while retaining
 read compatibility with version 2 events. Version 3 binds each chronological reveal's
@@ -576,11 +583,13 @@ ruleset.
 ## Screens, settings, and input
 
 **Main** offers Start New Game, Resume Game (enabled only for a valid resumable save),
-and Settings. Starting over an active save requires confirmation. **Settings** offers
-quality presets, DPR/render-scale cap, animation speed, and animation reduction. Set
-the initial value from `prefers-reduced-motion`, then honor explicit user override.
-Persist settings separately from active-run data. Burning is a rules/test
-configuration concern, not a graphics/animation setting.
+and Settings. Starting over an active save requires confirmation. **Settings** offers a
+Gameplay section with a Turn burning On/Off preference plus quality presets,
+DPR/render-scale cap, animation speed, and animation reduction. Set the initial motion
+value from `prefers-reduced-motion`, then honor explicit user override. Persist every
+setting separately from active-run data. The burning preference selects the canonical
+burn-enabled or burn-disabled ruleset only after replacement confirmation when starting
+or restarting; Resume always retains the complete ruleset saved with the run.
 
 **Game** is a responsive Three.js battlefield under semantic DOM HUD/controls. Display
 source deck and match stage, both sides' zones and counts, reveal/comparison area,
@@ -621,13 +630,16 @@ Main with Resume disabled and a clear discard/start-new recovery path—never a 
 crash loop.
 
 The implemented current format is `saveSchemaVersion: 3` with
-`gameRulesVersion: 1`. Version 2 added the match `outcome` required to restore terminal
-runs exactly; version 3 admits the stable `paused` machine state without changing the
-rules or committed-event formats. Version 1 active/ready saves migrate through version
-2 by adding `outcome: null`, and valid version 2 ready/ended saves then migrate to
-version 3 without changing domain data. A version 1 terminal record and a forged
-version 2 paused record are rejected because those versions did not represent those
-states. No synthetic older format is accepted.
+`gameRulesVersion: 2`. Save schema version 2 added the match `outcome` required to
+restore terminal runs exactly; schema version 3 admits the stable `paused` machine state
+without changing the rules or committed-event formats. Schema version 1 active/ready
+saves carrying current game rules migrate through schema version 2 by adding
+`outcome: null`, and valid schema version 2 ready/ended saves then migrate to schema
+version 3 without changing domain data. A schema version 1 terminal record and a forged
+schema version 2 paused record are rejected because those versions did not represent
+those states. Existing `gameRulesVersion: 1` records are quarantined as incompatible
+rather than being reinterpreted under the 2-over-Ace rule. No synthetic older format is
+accepted.
 
 Save only at stable domain boundaries: after every committed clash, explicit pause,
 and best effort on `visibilitychange`, `pagehide`, and lifecycle freeze events when the
@@ -646,12 +658,12 @@ and pass the stated zone validation.
 ```json
 {
   "saveSchemaVersion": 3,
-  "gameRulesVersion": 1,
+  "gameRulesVersion": 2,
   "savedAt": "2026-09-19T07:00:00.000Z",
   "runId": "run-42",
   "rng": { "algorithm": "mulberry32", "seed": 12345, "state": 3771268942 },
   "ruleset": {
-    "id": "mvp-baseline-v1",
+    "id": "mvp-baseline-v2",
     "burn": {
       "enabled": true,
       "eligibleScope": "all-losing-side-cards-in-resolved-contested-pile",
@@ -743,9 +755,10 @@ relative GitHub Pages path.
 7 + 11 + 13 -> 14
 5 + 13–14 -> 15
 8–10 + 15 -> 16
-9–10 + 16 -> 17
-11–17 -> 18
-1–18 -> 19
+4–6 + 8–10 + 16 -> 17
+9–10 + 16–17 -> 18
+11–18 -> 19
+1–19 -> 20
 ```
 
 The critical path is decisions, deterministic domain, persistence, screen integration,
@@ -895,7 +908,7 @@ reviewable PR.
 - **Acceptance:** Quality/render cap, speed, reduction persist separately; media
   preference initializes only absent explicit override.
 - **Checks/risks:** Unit storage fallback and browser media-query/manual reload tests;
-  burning absent from this UI.
+  gameplay preferences are added separately in milestone 17.
 - **Acceptance evidence:** `src/app/settings.js` defines immutable supported values,
   defaults, validation, and effective reduced-motion snapshots.
   `src/persistence/settings-repository.js` stores each primitive under an independent
@@ -903,8 +916,9 @@ reviewable PR.
   degrades to in-memory session settings after storage access or quota failures.
   `src/ui/settings-controller.js` applies the live reduced-motion media query only in
   system mode, persists explicit reduce/full-motion overrides, publishes immutable
-  snapshots, and removes listeners on teardown. The semantic Settings controls in
-  `src/ui/menus.js` update immediately and exclude burn rules; `src/app/bootstrap.js`
+  snapshots, and removes listeners on teardown. The milestone 8 semantic Settings
+  controls in `src/ui/menus.js` update immediately; milestone 17 extends the same
+  repository/controller boundary with the burning preference. `src/app/bootstrap.js`
   shares one controller with the screen and Game presentation. The temporary scene
   consumes quality, capped DPR, animation speed, and effective reduction without
   affecting domain state.
@@ -1153,7 +1167,7 @@ reviewable PR.
   ties that continue from both personal draw piles, terminal wins/draws, inactive inputs,
   invalid dependencies/actions, foreign-branch substitution, atomic failures, and
   execution with `Math.random` disabled. Full-match integration tests lock seeds 0, 5,
-  and 32 for player-win, opponent-win, and draw outcomes, compare every stable
+  and 93 for player-win, opponent-win, and draw outcomes, compare every stable
   snapshot/event/RNG state with canonical replay, assert one save per clash, and drive
   the HUD through the source-to-personal transition and terminal control lockout with
   one presentation per player activation.
@@ -1194,27 +1208,59 @@ reviewable PR.
   disabled gameplay at terminal state, reported no relevant console errors, and exited
   the preview/browser processes cleanly. No screenshots were produced.
 
-### 17. PWA offline/update hardening
+### 17. Gameplay settings and 2-over-Ace rules version
+- **Goal/files:** Centralize comparison in `domain/cards.js`, version built-in rules and
+  run compatibility, extend the settings repository/controller/UI, wire fresh-match
+  selection in `app/bootstrap.js`, and refresh deterministic fixtures; depends on 4–6,
+  8–10, and 16.
+- **Acceptance:** 2 beats Ace only while card values/deck order remain stable; Turn
+  burning defaults On, persists independently, and selects burn-on/off only for a newly
+  started or restarted match; Resume retains its saved ruleset; rules-version-1 saves
+  enter the existing incompatible-save recovery flow.
+- **Checks/risks:** Comparator, state-machine, event, timeline, settings, start/restart,
+  resume, migration/repository, full-match, and canonical simulation tests; keep
+  `saveSchemaVersion: 3` and `eventVersion: 3` because neither stored nor event shape
+  changes.
+- **Acceptance evidence:** `src/domain/cards.js` exposes one validated comparator used by
+  `src/domain/match-machine.js`, `src/domain/events.js`, and
+  `src/presentation/event-player.js`. Built-ins `mvp-baseline-v2` and
+  `mvp-no-burn-v2` carry the existing burn semantics under `gameRulesVersion: 2`.
+  `src/app/settings.js`, `src/persistence/settings-repository.js`, and
+  `src/ui/settings-controller.js` persist the default-on boolean independently;
+  `src/ui/menus.js` labels its new-game lifecycle; and `src/app/bootstrap.js` reads the
+  latest preference only after replacement confirmation. Version-1 rules are rejected,
+  while schema 1→2→3 migrations remain available for records carrying current rules.
+  Focused tests cover both 2/A directions, ordinary ordering, ties, invalid IDs,
+  source/personal settlement, committed-event validation, presentation metadata,
+  settings persistence/fallback/teardown, burn-on start, burn-off start/restart, saved
+  rules on Resume, and deterministic fixtures. The canonical 0–999 report remains fully
+  completed and now records 432 player wins, 519 opponent wins, and 49 draws.
+- **Validation:** The Node 24 test runner and production build pass. A text-only
+  headless browser check persists Turn burning Off across reload, starts a no-burn
+  match, retains one canvas under `#app`, reports no relevant console errors, and exits
+  cleanly. No screenshots are produced.
+
+### 18. PWA offline/update hardening
 - **Goal/files:** Evolve `public/sw.js`, manifest, and lifecycle integration; depends
-  on 9–10 and 16.
+  on 9–10 and 16–17.
 - **Acceptance:** Offline shell and resume work, old caches clean up, update waits for
   stable save, and Pages relative deployment remains valid.
 - **Checks/risks:** Service-worker/offline/update browser tests and install/standalone
   manual checks; never cache IndexedDB state.
 
-### 18. Performance, context loss, accessibility baseline, cross-device QA
-- **Goal/files:** Add profiling/QA fixtures and context handlers; depends on 11–17.
+### 19. Performance, context loss, accessibility baseline, cross-device QA
+- **Goal/files:** Add profiling/QA fixtures and context handlers; depends on 11–18.
 - **Acceptance:** Disposal/context restore from state, accessible status region/semantic
   controls, targets/focus baseline, and measured hypotheses are documented.
 - **Checks/risks:** Device/browser matrix below; do not claim full keyboard support.
 
-### 19. MVP release gate and definition of done
-- **Goal/files:** Add release checklist/reproducibility report; depends on 1–18.
+### 20. MVP release gate and definition of done
+- **Goal/files:** Add release checklist/reproducibility report; depends on 1–19.
 - **Acceptance:** All automated suites pass; default and disabled burn tests, save
   equivalence, offline/update, context loss, and required manual matrix are signed off.
 - **Checks/risks:** Release candidate build on Pages path; rollback is cache/schema-aware.
 
-### 20. Post-MVP expansion
+### 21. Post-MVP expansion
 - **Goal/files:** First-class full keyboard support (navigation, gameplay, shortcuts,
   focus-flow tests/instructions), then encounter/reward/relic/route systems, multiple
   themes, audio/haptics, privacy-conscious optional metrics, and only later optional
