@@ -173,6 +173,12 @@ button:disabled {
   font-size: 0.8rem;
 }
 
+.settings-note {
+  margin: 1rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
 .screen--game {
   height: 100%;
   min-width: 0;

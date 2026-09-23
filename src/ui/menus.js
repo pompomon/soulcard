@@ -14,6 +14,7 @@ function assertSettingsController(settingsController) {
   const methods = [
     'getSnapshot',
     'subscribe',
+    'setBurnEnabled',
     'setQuality',
     'setRenderScaleCap',
     'setAnimationSpeed',
@@ -228,10 +229,47 @@ export function createSettingsScreen({ onBack, settingsController } = {}) {
   heading.className = 'screen-title'
   heading.textContent = 'Settings'
 
-  const settingsHost = document.createElement('section')
-  settingsHost.className = 'settings-host'
-  settingsHost.dataset.settingsHost = ''
-  settingsHost.setAttribute('aria-labelledby', 'settings-controls-title')
+  const gameplayHost = document.createElement('section')
+  gameplayHost.className = 'settings-host'
+  gameplayHost.dataset.gameplaySettingsHost = ''
+  gameplayHost.setAttribute('aria-labelledby', 'gameplay-settings-title')
+
+  const gameplayHeading = document.createElement('h2')
+  gameplayHeading.id = 'gameplay-settings-title'
+  gameplayHeading.textContent = 'Gameplay'
+
+  const gameplayControls = document.createElement('div')
+  gameplayControls.className = 'settings-grid'
+
+  const burnValues = Object.freeze({
+    enabled: true,
+    disabled: false,
+  })
+  const handleBurnEnabled = (event) => {
+    settingsController.setBurnEnabled(burnValues[event.currentTarget.value])
+  }
+  const burnEnabled = createSelectField({
+    id: 'burn-enabled-setting',
+    label: 'Turn burning',
+    setting: 'burn-enabled',
+    options: [
+      { value: 'enabled', text: 'On' },
+      { value: 'disabled', text: 'Off' },
+    ],
+    onChange: handleBurnEnabled,
+  })
+
+  const gameplayNote = document.createElement('p')
+  gameplayNote.className = 'settings-note'
+  gameplayNote.textContent = 'Applies to newly started or restarted games. Resumed games keep their saved rules.'
+
+  gameplayControls.append(burnEnabled.field)
+  gameplayHost.append(gameplayHeading, gameplayControls, gameplayNote)
+
+  const presentationHost = document.createElement('section')
+  presentationHost.className = 'settings-host'
+  presentationHost.dataset.settingsHost = ''
+  presentationHost.setAttribute('aria-labelledby', 'settings-controls-title')
 
   const controlsHeading = document.createElement('h2')
   controlsHeading.id = 'settings-controls-title'
@@ -317,11 +355,12 @@ export function createSettingsScreen({ onBack, settingsController } = {}) {
   const backButton = createButton('Back to Main Menu', onBack)
   backButton.dataset.action = 'back'
 
-  settingsHost.append(controlsHeading, controls, storageStatus)
-  panel.append(heading, settingsHost, backButton)
+  presentationHost.append(controlsHeading, controls, storageStatus)
+  panel.append(heading, gameplayHost, presentationHost, backButton)
   element.append(panel)
 
   const unsubscribe = settingsController.subscribe((settings) => {
+    burnEnabled.select.value = settings.burnEnabled ? 'enabled' : 'disabled'
     quality.select.value = settings.quality
     renderScale.select.value = String(settings.renderScaleCap)
     animationSpeed.select.value = String(settings.animationSpeed)
@@ -335,6 +374,7 @@ export function createSettingsScreen({ onBack, settingsController } = {}) {
     element,
     teardown() {
       unsubscribe()
+      burnEnabled.select.removeEventListener('change', handleBurnEnabled)
       quality.select.removeEventListener('change', handleQuality)
       renderScale.select.removeEventListener('change', handleRenderScale)
       animationSpeed.select.removeEventListener('change', handleAnimationSpeed)
