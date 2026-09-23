@@ -28,4 +28,5 @@ dependency-map sections.
 - [ ] 18. Performance, context loss, accessibility baseline, cross-device QA
       (depends on: 11–17)
 - [ ] 19. MVP release gate and definition of done (depends on: 1–18)
-- [ ] 20. Post-MVP expansion (post-MVP, after 19)
+- [ ] 20. Post-MVP expansion (post-MVP, after 19; adventure-run detail:
+      `ROGUELIKE_ADVENTURE_RUN_PLAN.md`)

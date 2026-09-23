@@ -1252,7 +1252,8 @@ reviewable PR.
 - **Goal/files:** First-class full keyboard support (navigation, gameplay, shortcuts,
   focus-flow tests/instructions), then encounter/reward/relic/route systems, multiple
   themes, audio/haptics, privacy-conscious optional metrics, and only later optional
-  slots/cloud sync.
+  slots/cloud sync. The cumulative five-milestone roguelike adventure-run proposal is
+  tracked in [`ROGUELIKE_ADVENTURE_RUN_PLAN.md`](./ROGUELIKE_ADVENTURE_RUN_PLAN.md).
 - **Acceptance:** Each remains separately versioned and does not undermine deterministic
   saves or zone invariants.
 - **Checks/risks:** Accessibility and privacy reviews precede release.
