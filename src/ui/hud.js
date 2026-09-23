@@ -666,7 +666,10 @@ export function createGameScreen({
     })
     pauseInput?.setEnabled(matchReady)
     pauseInput?.setBusy(pauseActionPending)
-    autoRevealCheckbox.disabled = match?.status !== 'active'
+    autoRevealCheckbox.disabled = (
+      match?.status !== 'active'
+      || match.machineState === 'paused'
+    )
     if (revealInput === null) revealButton.disabled = !matchReady || revealBusy
     if (pauseInput === null) pauseButton.disabled = !matchReady || pauseActionPending
   }
@@ -837,6 +840,7 @@ export function createGameScreen({
           && currentMatch.pendingEvent?.id === eventId
           && currentMatch.status === 'active'
           && currentMatch.machineState === 'ready'
+          && hud.inert !== true
           && !destroyed
         )
         if (continueAutomatically) {
@@ -851,6 +855,10 @@ export function createGameScreen({
   }
 
   function handleReveal(_event, { automatic = false } = {}) {
+    if (hud.inert === true) {
+      autoRevealChainActive = false
+      return
+    }
     if (revealActionPending) return
     if (automatic && (!autoRevealCheckbox.checked || !autoRevealChainActive)) return
     if (!automatic) autoRevealChainActive = autoRevealCheckbox.checked

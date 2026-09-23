@@ -67,8 +67,9 @@ Auto-reveal is an opt-in checkbox beside Reveal/Continue. It defaults off for ea
 screen mount and is not persisted. After the player manually reveals with it enabled,
 each completed presentation starts the next clash; reduced-motion skips also continue.
 Disabling it during presentation stops the chain after that clash. Pause, cancellation,
-presentation failure, run replacement, teardown, and terminal outcomes stop automatic
-progression, and the next chain always requires another manual Reveal/Continue action.
+presentation failure, update preparation, run replacement, teardown, and terminal outcomes
+stop automatic progression, and the next chain always requires another manual
+Reveal/Continue action.
 
 Start New Game creates a baseline 52-card match from Web Crypto entropy, records the
 seed in the domain RNG snapshot, and immediately queues the stable turn-zero run for

@@ -668,6 +668,7 @@ test('Pause disarms Auto-reveal, including after the run resumes', async (t) => 
   byAction(screen, 'pause').dispatch('click')
   await controller.whenIdle()
   assert.equal(controller.currentMatch.machineState, 'paused')
+  assert.equal(autoReveal.disabled, true)
 
   presentations[0].completion.resolve({ status: 'completed' })
   await flushMicrotasks()
@@ -677,6 +678,55 @@ test('Pause disarms Auto-reveal, including after the run resumes', async (t) => 
   byAction(screen, 'resume').dispatch('click')
   await flushMicrotasks()
   assert.equal(controller.currentMatch.machineState, 'ready')
+  assert.equal(autoReveal.disabled, false)
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(presentations.length, 1)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('an inert Game HUD disarms Auto-reveal before update preparation can advance', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => ({
+        status: 'saved',
+        savedAt: '2026-09-23T12:03:30.000Z',
+      }),
+    },
+    initialMatch: createMatch({
+      runId: 'hud-auto-update-barrier',
+      seed: 12345,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const presentations = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createControlledEventPlayerFactory(presentations),
+  })
+  const autoReveal = byAction(screen, 'auto-reveal')
+
+  autoReveal.checked = true
+  autoReveal.dispatch('change')
+  byAction(screen, 'reveal').dispatch('click')
+  await waitFor(() => presentations.length === 1)
+  const hud = screen.element.children.find((element) => element.className === 'game-hud')
+  hud.inert = true
+  presentations[0].completion.resolve({ status: 'completed' })
+  await waitFor(() => byAction(screen, 'reveal').disabled === false)
+  await flushMicrotasks()
+
   assert.equal(controller.currentMatch.turn, 1)
   assert.equal(presentations.length, 1)
 
