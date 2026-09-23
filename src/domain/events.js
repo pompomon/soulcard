@@ -1,4 +1,4 @@
-import { getCard, isCardId } from './cards.js'
+import { compareCards, isCardId } from './cards.js'
 
 export const EVENT_VERSION = 3
 
@@ -234,7 +234,7 @@ function assertSettlementCoverage(reveals, transfers, burned, winner, eventVersi
 }
 
 function assertTiedRound(reveals, index) {
-  if (getCard(reveals[index].cardId).value !== getCard(reveals[index + 1].cardId).value) {
+  if (compareCards(reveals[index].cardId, reveals[index + 1].cardId) !== 0) {
     throw new Error('Every reveal round before the decisive result must be tied')
   }
 }
@@ -255,12 +255,11 @@ function assertSettledRevealHistory(reveals, winner, stage) {
     return
   }
 
-  const playerCard = getCard(reveals.at(-2).cardId)
-  const opponentCard = getCard(reveals.at(-1).cardId)
-  if (playerCard.value === opponentCard.value) {
+  const comparison = compareCards(reveals.at(-2).cardId, reveals.at(-1).cardId)
+  if (comparison === 0) {
     throw new Error('A settled clash must end with a decisive result')
   }
-  const decisiveWinner = playerCard.value > opponentCard.value ? 'player' : 'opponent'
+  const decisiveWinner = comparison > 0 ? 'player' : 'opponent'
   if (winner !== decisiveWinner) {
     throw new Error('The event winner must match the decisive reveal round')
   }

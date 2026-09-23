@@ -36,3 +36,14 @@ export function isCardId(cardId) {
 export function getCard(cardId) {
   return CARD_BY_ID.get(cardId)
 }
+
+export function compareCards(firstCardId, secondCardId) {
+  const first = getCard(firstCardId)
+  const second = getCard(secondCardId)
+  if (!first || !second) {
+    throw new RangeError('compareCards requires two canonical card IDs')
+  }
+  if (first.rank === '2' && second.rank === 'A') return 1
+  if (first.rank === 'A' && second.rank === '2') return -1
+  return first.value - second.value
+}

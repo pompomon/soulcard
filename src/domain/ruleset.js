@@ -16,7 +16,7 @@ function deepFreeze(value) {
 }
 
 export const BASELINE_RULESET = deepFreeze({
-  id: 'mvp-baseline-v1',
+  id: 'mvp-baseline-v2',
   burn: {
     enabled: true,
     eligibleScope: ELIGIBLE_SCOPE,
@@ -25,7 +25,7 @@ export const BASELINE_RULESET = deepFreeze({
 })
 
 export const NO_BURN_RULESET = deepFreeze({
-  id: 'debug-no-burn-v1',
+  id: 'mvp-no-burn-v2',
   burn: {
     enabled: false,
   },
