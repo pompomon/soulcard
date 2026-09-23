@@ -24,8 +24,9 @@ dependency-map sections.
 - [x] 15. AI and complete source-to-personal-stage match flow (depends on: 5, 13–14)
 - [x] 16. Main, pause, resume, overwrite, and end-state integration
       (depends on: 8–10, 15)
-- [x] 17. PWA offline/update hardening (depends on: 9–10, 16)
-- [ ] 18. Performance, context loss, accessibility baseline, cross-device QA
-      (depends on: 11–17)
-- [ ] 19. MVP release gate and definition of done (depends on: 1–18)
-- [ ] 20. Post-MVP expansion (post-MVP, after 19)
+- [x] 17. Gameplay settings and 2-over-Ace rules version (depends on: 4–6, 8–10, 16)
+- [x] 18. PWA offline/update hardening (depends on: 9–10, 16–17)
+- [ ] 19. Performance, context loss, accessibility baseline, cross-device QA
+      (depends on: 11–18)
+- [ ] 20. MVP release gate and definition of done (depends on: 1–19)
+- [ ] 21. Post-MVP expansion (post-MVP, after 20)

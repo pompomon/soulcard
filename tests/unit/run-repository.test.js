@@ -394,8 +394,8 @@ test('invalid saves are quarantined once and require explicit discard', async ()
 test('future, incompatible, and malformed legacy saves expose distinct recovery reasons', async () => {
   for (const [fixtureName, field, value, reason] of [
     ['run-save-v3.json', 'saveSchemaVersion', 99, 'unsupported-save-version'],
-    ['run-save-v3.json', 'gameRulesVersion', 99, 'incompatible-game-rules'],
-    ['run-save-v1.json', 'gameRulesVersion', '1', 'invalid-save'],
+    ['run-save-v3.json', 'gameRulesVersion', 1, 'incompatible-game-rules'],
+    ['run-save-v1.json', 'gameRulesVersion', '2', 'invalid-save'],
   ]) {
     const indexedDB = new FakeIndexedDB()
     const save = fixture(fixtureName)

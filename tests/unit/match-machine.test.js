@@ -219,6 +219,38 @@ test('source-stage clashes resolve both winners and preserve the input snapshot'
   }
 })
 
+test('2 beats Ace in source and personal clashes but keeps normal ordering otherwise', () => {
+  const source = revealOrContinue(createFixture({
+    runId: 'source-two-over-ace',
+    stage: 'source',
+    sourceDeck: ['c-2S', 'c-AH', 'c-3S', 'c-4H'],
+  }))
+  assert.equal(source.event.winner, 'player')
+  assert.deepEqual(source.event.transfers, [{ cardId: 'c-2S', to: 'player.wonPile' }])
+  assert.deepEqual(source.event.burned, ['c-AH'])
+
+  const personal = revealOrContinue(createFixture({
+    runId: 'personal-ace-under-two',
+    stage: 'personal',
+    playerDraw: ['c-AS', 'c-3S'],
+    opponentDraw: ['c-2H', 'c-4H'],
+  }))
+  assert.equal(personal.event.winner, 'opponent')
+  assert.deepEqual(personal.event.transfers, [{
+    cardId: 'c-2H',
+    to: 'opponent.wonPile',
+  }])
+  assert.deepEqual(personal.event.burned, ['c-AS'])
+
+  const ordinary = revealOrContinue(createFixture({
+    runId: 'personal-two-under-three',
+    stage: 'personal',
+    playerDraw: ['c-2D', 'c-4D'],
+    opponentDraw: ['c-3C', 'c-5C'],
+  }))
+  assert.equal(ordinary.event.winner, 'opponent')
+})
+
 test('one action resolves multiple source ties in chronological order', () => {
   const sourceDeck = [
     'c-10S', 'c-10H',

@@ -1,4 +1,4 @@
-import { getCard } from '../domain/cards.js'
+import { compareCards } from '../domain/cards.js'
 import { validateCommittedEvent } from '../domain/events.js'
 import { validateMatchState } from '../domain/match-machine.js'
 
@@ -132,7 +132,7 @@ function snapshotKey(match) {
 function roundIsTied(reveals, round) {
   const first = reveals[round * 2]
   const second = reveals[round * 2 + 1]
-  return second !== undefined && getCard(first.cardId).value === getCard(second.cardId).value
+  return second !== undefined && compareCards(first.cardId, second.cardId) === 0
 }
 
 export function createEventTimeline(event, timing = EVENT_PRESENTATION_TIMING) {

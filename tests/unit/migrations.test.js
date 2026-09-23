@@ -77,16 +77,16 @@ test('unknown, skipped, malformed, and incompatible versions are rejected', () =
   }
 
   assert.throws(
-    () => migrateRunSave({ ...clone(current), gameRulesVersion: 2 }),
+    () => migrateRunSave({ ...clone(current), gameRulesVersion: 1 }),
     UnsupportedGameRulesVersionError,
   )
   const legacy = fixture('run-save-v1.json')
   assert.throws(
-    () => migrateRunSave({ ...clone(legacy), gameRulesVersion: 2 }),
+    () => migrateRunSave({ ...clone(legacy), gameRulesVersion: 1 }),
     UnsupportedGameRulesVersionError,
   )
   assert.throws(
-    () => migrateRunSave({ ...clone(legacy), gameRulesVersion: '1' }),
+    () => migrateRunSave({ ...clone(legacy), gameRulesVersion: '2' }),
     /gameRulesVersion must be a safe integer/,
   )
 })
