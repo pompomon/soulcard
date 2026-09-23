@@ -258,7 +258,7 @@ function createStateFingerprint(match, event, machineState = match.machineState)
       ? [match.outcome.result, match.outcome.winner, match.outcome.reason]
       : [match.outcome.result, match.outcome.reason]
   const reveals = event.reveals.map(({ cardId, suppliedBy, from }) => (
-    event.eventVersion === EVENT_VERSION
+    event.eventVersion >= 3
       ? [cardId, suppliedBy, from]
       : [cardId, suppliedBy]
   ))

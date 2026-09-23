@@ -96,7 +96,7 @@
     "futureModifiers": []
   },
   "pendingEvent": {
-    "eventVersion": 3,
+    "eventVersion": 4,
     "id": "fixture-terminal:clash-46",
     "type": "clashSettled",
     "turn": 46,

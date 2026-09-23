@@ -12,7 +12,7 @@ Every decision in this section has status **Accepted for MVP**. An implementatio
 not silently reinterpret one. A later roadmap revision may supersede a decision, but a
 rules-semantic change also requires a new ruleset ID and `gameRulesVersion`; a persisted
 shape change requires a new `saveSchemaVersion` plus a migration; and a committed-event
-shape change requires a new `eventVersion`.
+shape or validation-semantics change requires a new `eventVersion`.
 
 ### Current implementation baseline
 
@@ -465,7 +465,7 @@ the end overlay likewise remains within Game rather than becoming a fourth scree
 
 ```json
 {
-  "eventVersion": 3,
+  "eventVersion": 4,
   "id": "run-42:clash-17",
   "type": "clashSettled",
   "turn": 17,
@@ -525,10 +525,11 @@ only when its `drawPile` is empty immediately before that side's required reveal
 event validation, and presentation tie metadata, so 2-over-Ace cannot diverge across
 those consumers.
 
-`src/domain/events.js` owns `eventVersion: 3` validation and factories, while retaining
-read compatibility with version 2 events. Version 3 binds each chronological reveal's
+`src/domain/events.js` owns `eventVersion: 4` validation and factories, while retaining
+read compatibility with version 2 and 3 events. Version 3 binds each chronological reveal's
 `from` origin (`sourceDeck` or the supplying side's personal `drawPile`) into the event
-fingerprint so a single event can present source-to-personal transitions exactly.
+fingerprint so a single event can present source-to-personal transitions exactly. Version
+4 applies 2-over-Ace comparison semantics; earlier versions retain value ordering.
 Settlements emit
 `clashSettled` with ID `<runId>:clash-<turn>`, the final committed stage, winner,
 chronological reveals, ordered transfers and burns, and
@@ -685,7 +686,7 @@ and pass the stated zone validation.
     "futureModifiers": []
   },
   "pendingEvent": {
-    "eventVersion": 3,
+    "eventVersion": 4,
     "id": "run-42:clash-17",
     "type": "clashSettled",
     "turn": 17,
@@ -1219,8 +1220,8 @@ reviewable PR.
   enter the existing incompatible-save recovery flow.
 - **Checks/risks:** Comparator, state-machine, event, timeline, settings, start/restart,
   resume, migration/repository, full-match, and canonical simulation tests; keep
-  `saveSchemaVersion: 3` and `eventVersion: 3` because neither stored nor event shape
-  changes.
+  `saveSchemaVersion: 3`; advance to `eventVersion: 4` so legacy events retain their
+  original value-order validation.
 - **Acceptance evidence:** `src/domain/cards.js` exposes one validated comparator used by
   `src/domain/match-machine.js`, `src/domain/events.js`, and
   `src/presentation/event-player.js`. Built-ins `mvp-baseline-v2` and

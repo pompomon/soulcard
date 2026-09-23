@@ -1,10 +1,11 @@
-import { compareCards, isCardId } from './cards.js'
+import { compareCards, getCard, isCardId } from './cards.js'
 
-export const EVENT_VERSION = 3
+export const EVENT_VERSION = 4
 
 const SIDES = Object.freeze(['player', 'opponent'])
 const STAGES = Object.freeze(['source', 'personal'])
-const SUPPORTED_EVENT_VERSIONS = Object.freeze([2, EVENT_VERSION])
+const ORIGIN_EVENT_VERSION = 3
+const SUPPORTED_EVENT_VERSIONS = Object.freeze([2, ORIGIN_EVENT_VERSION, EVENT_VERSION])
 const SETTLEMENT_PRESENTATION = 'settlement-v1'
 const DRAW_PRESENTATION = 'draw-v1'
 const DRAW_REASON = 'mutualInability'
@@ -95,7 +96,7 @@ function assertRevealRecords(reveals, eventVersion) {
     assertPlainObject(record, name)
     assertExactKeys(
       record,
-      eventVersion === EVENT_VERSION
+      eventVersion >= ORIGIN_EVENT_VERSION
         ? ['cardId', 'suppliedBy', 'from']
         : ['cardId', 'suppliedBy'],
       name,
@@ -106,7 +107,7 @@ function assertRevealRecords(reveals, eventVersion) {
     if (!SIDES.includes(record.suppliedBy)) {
       throw new TypeError(`${name}.suppliedBy must be player or opponent`)
     }
-    if (eventVersion === EVENT_VERSION) {
+    if (eventVersion >= ORIGIN_EVENT_VERSION) {
       const personalOrigin = `${record.suppliedBy}.drawPile`
       if (record.from !== 'sourceDeck' && record.from !== personalOrigin) {
         throw new TypeError(`${name}.from must match its committed reveal origin`)
@@ -134,7 +135,7 @@ function assertRevealRecords(reveals, eventVersion) {
       throw new Error('Complete reveal rounds must be ordered player then opponent')
     }
     if (
-      eventVersion === EVENT_VERSION
+      eventVersion >= ORIGIN_EVENT_VERSION
       && (reveals[index].from === 'sourceDeck')
       !== (reveals[index + 1].from === 'sourceDeck')
     ) {
@@ -142,7 +143,7 @@ function assertRevealRecords(reveals, eventVersion) {
     }
   }
   if (
-    eventVersion === EVENT_VERSION
+    eventVersion >= ORIGIN_EVENT_VERSION
     && reveals.length % 2 === 1
     && reveals.at(-1).from === 'sourceDeck'
   ) {
@@ -239,7 +240,7 @@ function assertTiedRound(reveals, index) {
   }
 }
 
-function assertSettledRevealHistory(reveals, winner, stage) {
+function assertSettledRevealHistory(reveals, winner, stage, eventVersion) {
   const hasAvailableWinnerCard = reveals.length % 2 === 1
   const completeRounds = Math.floor(reveals.length / 2)
   const tiedRounds = hasAvailableWinnerCard ? completeRounds : completeRounds - 1
@@ -255,7 +256,9 @@ function assertSettledRevealHistory(reveals, winner, stage) {
     return
   }
 
-  const comparison = compareCards(reveals.at(-2).cardId, reveals.at(-1).cardId)
+  const comparison = eventVersion === EVENT_VERSION
+    ? compareCards(reveals.at(-2).cardId, reveals.at(-1).cardId)
+    : getCard(reveals.at(-2).cardId).value - getCard(reveals.at(-1).cardId).value
   if (comparison === 0) {
     throw new Error('A settled clash must end with a decisive result')
   }
@@ -336,13 +339,13 @@ export function validateCommittedEvent(event) {
       event.eventVersion,
     )
     if (
-      event.eventVersion === EVENT_VERSION
+      event.eventVersion >= ORIGIN_EVENT_VERSION
       && event.stage === 'source'
       && event.reveals.some(({ from }) => from !== 'sourceDeck')
     ) {
       throw new Error('Source-stage events must reveal only from the source deck')
     }
-    assertSettledRevealHistory(event.reveals, event.winner, event.stage)
+    assertSettledRevealHistory(event.reveals, event.winner, event.stage, event.eventVersion)
     return event
   }
 

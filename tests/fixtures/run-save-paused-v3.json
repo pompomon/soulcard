@@ -92,7 +92,7 @@
     "futureModifiers": []
   },
   "pendingEvent": {
-    "eventVersion": 3,
+    "eventVersion": 4,
     "id": "fixture-active:clash-1",
     "type": "clashSettled",
     "turn": 1,
