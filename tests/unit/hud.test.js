@@ -723,6 +723,8 @@ test('an inert Game HUD disarms Auto-reveal before update preparation can advanc
   await waitFor(() => presentations.length === 1)
   const hud = screen.element.children.find((element) => element.className === 'game-hud')
   hud.inert = true
+  screen.element.dispatch('soulcard:update-blocked')
+  hud.inert = false
   presentations[0].completion.resolve({ status: 'completed' })
   await waitFor(() => byAction(screen, 'reveal').disabled === false)
   await flushMicrotasks()

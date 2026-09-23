@@ -1,4 +1,5 @@
 import { createEndOverlay, createPauseOverlay } from './overlays.js'
+import { UPDATE_BLOCKED_EVENT } from './update-notice.js'
 import { createEventPlayer } from '../presentation/event-player.js'
 import { createInputController } from '../presentation/input.js'
 
@@ -545,6 +546,10 @@ export function createGameScreen({
   const settledEventIds = new Set()
   const presentationJobs = new Map()
   let saveWarningFailure = null
+  const handleUpdateBlocked = () => {
+    autoRevealChainActive = false
+  }
+  element.addEventListener(UPDATE_BLOCKED_EVENT, handleUpdateBlocked)
 
   const renderSaveWarning = () => {
     if (saveWarningFailure !== null) {
@@ -993,6 +998,7 @@ export function createGameScreen({
       requestReveal = () => {}
       unsubscribeRun?.()
       unsubscribeSaves?.()
+      element.removeEventListener(UPDATE_BLOCKED_EVENT, handleUpdateBlocked)
       autoRevealCheckbox.removeEventListener('change', handleAutoRevealChange)
       revealInput.destroy()
       pauseInput.destroy()
