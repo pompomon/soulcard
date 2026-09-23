@@ -165,6 +165,9 @@ test('Settings screen reports session-only fallback without blocking controls', 
   )
 
   assert.equal(status.hidden, false)
+  assert.equal(status.attributes.role, 'status')
+  assert.equal(status.attributes['aria-live'], 'polite')
+  assert.equal(status.attributes['aria-atomic'], 'true')
   assert.match(status.textContent, /session only/)
   const quality = setting(screen, 'quality')
   quality.value = 'high'

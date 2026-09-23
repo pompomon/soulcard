@@ -224,6 +224,114 @@ test('Game leaves pause disabled without a run controller and still tears down p
   assert.equal(teardowns, 1)
 })
 
+test('Game combines match pause with graphics recovery and keeps safe controls available', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => ({
+        status: 'saved',
+        savedAt: '2026-09-23T12:00:00.000Z',
+      }),
+    },
+    initialMatch: createMatch({
+      runId: 'hud-context-recovery',
+      seed: 0,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  let publishContext
+  const pauses = []
+  const deckStates = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: (host, options) => {
+      publishContext = options.onContextStatus
+      return {
+        setDeckInputState(state) {
+          deckStates.push(state)
+        },
+        teardown() {},
+      }
+    },
+    eventPlayerFactory: () => ({
+      present(match) {
+        return Promise.resolve({
+          status: match.pendingEvent === null ? 'synchronized' : 'completed',
+          eventId: match.pendingEvent?.id ?? null,
+          reason: null,
+        })
+      },
+      setPaused(value) {
+        pauses.push(value)
+      },
+      destroy() {},
+    }),
+  })
+  const reveal = byAction(screen, 'reveal')
+  const pause = byAction(screen, 'pause')
+  const resume = byAction(screen, 'resume')
+  const status = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'statusHost'),
+  )
+  const hud = descendants(screen.element).find(
+    (element) => element.className === 'game-hud',
+  )
+
+  assert.equal(typeof publishContext, 'function')
+  assert.equal(status.attributes.role, 'status')
+  assert.equal(status.attributes['aria-live'], 'polite')
+  assert.equal(status.attributes['aria-atomic'], 'true')
+  assert.equal(reveal.disabled, false)
+  assert.equal(pause.disabled, false)
+
+  publishContext({ status: 'lost', recoveryCount: 0, reason: null })
+  assert.equal(pauses.at(-1), true)
+  assert.equal(reveal.disabled, true)
+  assert.equal(pause.disabled, false)
+  assert.deepEqual(deckStates.at(-1), { enabled: false, busy: true })
+  assert.match(status.textContent, /Graphics context lost/)
+
+  pause.dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.equal(controller.currentMatch.machineState, 'paused')
+  assert.equal(hud.inert, true)
+
+  publishContext({ status: 'ready', recoveryCount: 1, reason: null })
+  assert.equal(pauses.at(-1), true)
+  assert.match(status.textContent, /Game paused/)
+  resume.dispatch('click')
+  await flushMicrotasks()
+  assert.equal(controller.currentMatch.machineState, 'ready')
+  assert.equal(pauses.at(-1), false)
+  assert.equal(hud.inert, false)
+  assert.equal(reveal.disabled, false)
+
+  publishContext({ status: 'lost', recoveryCount: 1, reason: null })
+  publishContext({ status: 'restoring', recoveryCount: 1, reason: null })
+  assert.match(status.textContent, /Restoring graphics/)
+  publishContext({
+    status: 'failed',
+    recoveryCount: 1,
+    reason: 'replacement unavailable',
+  })
+  assert.equal(pauses.at(-1), true)
+  assert.equal(reveal.disabled, true)
+  assert.equal(pause.disabled, false)
+  assert.match(status.textContent, /replacement unavailable/)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
 test('Save & Main Menu retries failed persistence without leaving pause', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {

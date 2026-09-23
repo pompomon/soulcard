@@ -73,6 +73,7 @@ export function createPauseOverlay({
   saveStatus.dataset.saveStatus = ''
   saveStatus.setAttribute('role', 'status')
   saveStatus.setAttribute('aria-live', 'polite')
+  saveStatus.setAttribute('aria-atomic', 'true')
 
   const actions = document.createElement('div')
   actions.className = 'game-overlay__actions'
@@ -164,6 +165,7 @@ export function createEndOverlay({
   saveStatus.dataset.endSaveStatus = ''
   saveStatus.setAttribute('role', 'status')
   saveStatus.setAttribute('aria-live', 'polite')
+  saveStatus.setAttribute('aria-atomic', 'true')
 
   const actions = document.createElement('div')
   actions.className = 'game-overlay__actions'

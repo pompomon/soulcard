@@ -349,6 +349,7 @@ test('battlefield remeasures a zero-size mount and responds to resize and orient
   assert.equal(host.style.getPropertyValue('--hud-comparison-reserve'), '80px')
   assert.equal(host.children.length, 1)
   assert.equal(host.children[0].attributes['aria-hidden'], 'true')
+  assert.equal(host.children[0].attributes.role, 'presentation')
   assert.equal(observer.instances[0].target, host)
   assert.equal(windowObject.listenerCount('resize'), 1)
   assert.equal(windowObject.listenerCount('orientationchange'), 1)
@@ -447,6 +448,156 @@ test('quality rebuilds the renderer while pause and reduced motion stop presenta
   handle.teardown()
   assert.equal(renderers[1].disposeCalls, 1)
   assert.equal(host.children.length, 0)
+})
+
+test('context loss suspends rendering and input, then rebuilds resources from retained state', () => {
+  const host = createHost(1024, 768)
+  const windowObject = createWindow({ width: 1024, height: 768, devicePixelRatio: 2 })
+  const observer = createObserverHarness()
+  const renderers = []
+  const textureCaches = []
+  const contextStates = []
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory(options) {
+      const renderer = new FakeRenderer(host, options)
+      renderers.push(renderer)
+      return renderer
+    },
+    textureCacheFactory() {
+      const harness = createTextureCacheHarness()
+      textureCaches.push(harness)
+      return harness.cache
+    },
+    onDeckActivate() {},
+    onContextStatus: (state) => contextStates.push(state),
+  })
+  windowObject.flushFrames()
+
+  const initial = createMatch({
+    runId: 'battlefield-context-recovery',
+    seed: 0,
+    ruleset: BASELINE_RULESET,
+  })
+  handle.syncSnapshot(initial)
+  handle.setDeckInputState({ enabled: true, busy: false })
+  const firstRenderer = renderers[0]
+  const firstCanvas = firstRenderer.domElement
+  const animate = firstRenderer.animationLoop
+  const rendersBeforeLoss = firstRenderer.renderCalls
+  let prevented = 0
+
+  firstCanvas.dispatch('webglcontextlost', {
+    preventDefault() {
+      prevented += 1
+    },
+  })
+  assert.equal(prevented, 1)
+  assert.deepEqual(handle.getContextState(), {
+    status: 'lost',
+    recoveryCount: 0,
+    reason: null,
+  })
+  assert.equal(firstRenderer.animationLoop, null)
+  assert.equal(firstCanvas.disabled, true)
+  animate(100)
+  assert.equal(firstRenderer.renderCalls, rendersBeforeLoss)
+
+  const transition = revealOrContinue(initial)
+  handle.syncSnapshot(transition.match)
+  assert.equal(handle.getPresentationState().turn, transition.match.turn)
+  firstCanvas.dispatch('webglcontextrestored')
+
+  assert.equal(renderers.length, 2)
+  assert.equal(firstRenderer.disposeCalls, 1)
+  assert.equal(firstRenderer.domElement.removeCalls, 1)
+  assert.equal(textureCaches[0].destroyCalls, 1)
+  assert.deepEqual(handle.getContextState(), {
+    status: 'ready',
+    recoveryCount: 1,
+    reason: null,
+  })
+  assert.equal(handle.getPresentationState().turn, transition.match.turn)
+  assert.ok(handle.getPresentationState().staticCards > 0)
+  assert.equal(renderers[1].domElement.disabled, false)
+  assert.equal(host.children.length, 1)
+  assert.equal(firstCanvas.listeners.get('webglcontextlost')?.size ?? 0, 0)
+  assert.equal(firstCanvas.listeners.get('webglcontextrestored')?.size ?? 0, 0)
+
+  const timeline = createEventTimeline(transition.event)
+  handle.beginEvent(transition.event, transition.match)
+  handle.applyStep(timeline[0], { durationMs: 100 })
+  assert.equal(handle.getPresentationState().eventId, transition.event.id)
+  assert.ok(handle.getPresentationState().transientCards > 0)
+
+  const secondCanvas = renderers[1].domElement
+  secondCanvas.dispatch('webglcontextlost')
+  secondCanvas.dispatch('webglcontextrestored')
+  assert.equal(renderers.length, 3)
+  assert.deepEqual(handle.getContextState(), {
+    status: 'ready',
+    recoveryCount: 2,
+    reason: null,
+  })
+  assert.equal(handle.getPresentationState().eventId, transition.event.id)
+  assert.equal(handle.getPresentationState().phase, 'prepared')
+  assert.equal(handle.getPresentationState().transientCards, 0)
+  handle.applyStep(timeline[1], { durationMs: 0 })
+  assert.equal(handle.getPresentationState().eventId, transition.event.id)
+  assert.equal(textureCaches[1].destroyCalls, 1)
+  assert.deepEqual(
+    contextStates.map(({ status }) => status),
+    ['lost', 'restoring', 'ready', 'lost', 'restoring', 'ready'],
+  )
+
+  const finalCanvas = renderers[2].domElement
+  handle.teardown()
+  assert.equal(finalCanvas.listeners.get('webglcontextlost')?.size ?? 0, 0)
+  assert.equal(finalCanvas.listeners.get('webglcontextrestored')?.size ?? 0, 0)
+  assert.equal(textureCaches[2].destroyCalls, 1)
+})
+
+test('context restoration failures remain paused and expose a stable failure state', () => {
+  const host = createHost(1024, 768)
+  const windowObject = createWindow({ width: 1024, height: 768 })
+  const observer = createObserverHarness()
+  const renderer = new FakeRenderer(host, {})
+  let rendererCalls = 0
+  const contextStates = []
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory() {
+      rendererCalls += 1
+      if (rendererCalls > 1) throw new Error('replacement unavailable')
+      return renderer
+    },
+    textureCacheFactory: () => createTextureCacheHarness().cache,
+    onContextStatus: (state) => contextStates.push(state),
+  })
+  handle.syncSnapshot(createMatch({
+    runId: 'battlefield-context-failure',
+    seed: 1,
+    ruleset: BASELINE_RULESET,
+  }))
+
+  renderer.domElement.dispatch('webglcontextlost')
+  renderer.domElement.dispatch('webglcontextrestored')
+
+  assert.deepEqual(handle.getContextState(), {
+    status: 'failed',
+    recoveryCount: 0,
+    reason: 'replacement unavailable',
+  })
+  assert.equal(handle.getPerformanceSnapshot().animationActive, false)
+  assert.equal(handle.getPerformanceSnapshot().renderer, null)
+  assert.equal(host.children.length, 0)
+  assert.deepEqual(
+    contextStates.map(({ status }) => status),
+    ['lost', 'restoring', 'failed'],
+  )
+  handle.teardown()
 })
 
 test('battlefield renders committed snapshots and routes event cards through bounded visuals', () => {
@@ -1108,6 +1259,10 @@ test('battlefield validates its adapters before creating renderer resources', ()
   assert.throws(
     () => mountBattlefield(host, { onDeckActivate: true }),
     /onDeckActivate/,
+  )
+  assert.throws(
+    () => mountBattlefield(host, { onContextStatus: true }),
+    /onContextStatus/,
   )
   assert.throws(
     () => mountBattlefield(host, { inputControllerFactory: null }),

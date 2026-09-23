@@ -186,6 +186,7 @@ export function mountBattlefield(host, {
   settingsController,
   onLayout,
   onDeckActivate,
+  onContextStatus,
   windowObject = globalThis.window,
   ResizeObserverClass = windowObject?.ResizeObserver ?? globalThis.ResizeObserver,
   rendererFactory = (options) => new THREE.WebGLRenderer(options),
@@ -201,6 +202,9 @@ export function mountBattlefield(host, {
   }
   if (onDeckActivate !== undefined && typeof onDeckActivate !== 'function') {
     throw new TypeError('onDeckActivate must be a function')
+  }
+  if (onContextStatus !== undefined && typeof onContextStatus !== 'function') {
+    throw new TypeError('onContextStatus must be a function')
   }
   if (typeof rendererFactory !== 'function') {
     throw new TypeError('rendererFactory must be a function')
@@ -278,8 +282,18 @@ export function mountBattlefield(host, {
   let currentDecisiveCardId = null
   let paused = false
   let disposed = false
+  let contextRecoveryCount = 0
+  let contextState = Object.freeze({
+    status: 'ready',
+    recoveryCount: contextRecoveryCount,
+    reason: null,
+  })
+  let rendererContextListeners = null
   let previousTime = null
   let animationTime = 0
+  let renderedFrames = 0
+  let animatedFrames = 0
+  let currentPixelRatio = null
   let pendingResizeFrame = null
   const staticVisuals = new Set()
   const transientVisuals = new Map()
@@ -292,6 +306,32 @@ export function mountBattlefield(host, {
   const cancelFrame = typeof windowObject?.cancelAnimationFrame === 'function'
     ? windowObject.cancelAnimationFrame.bind(windowObject)
     : null
+
+  if (host.dataset) {
+    host.dataset.webglContext = contextState.status
+    host.dataset.webglRecoveries = String(contextRecoveryCount)
+  }
+
+  function publishContextStatus(status, reason = null) {
+    contextState = Object.freeze({
+      status,
+      recoveryCount: contextRecoveryCount,
+      reason,
+    })
+    if (host.dataset) {
+      host.dataset.webglContext = status
+      host.dataset.webglRecoveries = String(contextRecoveryCount)
+    }
+    try {
+      onContextStatus?.(contextState)
+    } catch (error) {
+      globalThis.reportError?.(error)
+    }
+  }
+
+  function contextReady() {
+    return contextState.status === 'ready'
+  }
 
   function publishPresentation(phase, cardId = null) {
     if (!host.dataset) return
@@ -307,7 +347,14 @@ export function mountBattlefield(host, {
     host.dataset.activeDeckZone = activeDeckZoneId ?? ''
     host.dataset.deckInputEnabled = String(deckInputEnabled)
     host.dataset.deckInputBusy = String(deckInputBusy)
+    host.dataset.deckInputAvailable = String(contextReady())
     host.dataset.deckDragging = String(deckDrag !== null)
+  }
+
+  function applyDeckInputState() {
+    deckInput?.setEnabled(deckInputEnabled && contextReady())
+    deckInput?.setBusy(deckInputBusy || !contextReady())
+    publishDeckInput()
   }
 
   function visualScale(visual) {
@@ -853,12 +900,15 @@ export function mountBattlefield(host, {
   }
 
   function renderCurrentFrame() {
-    if (!renderer) return
+    if (!renderer || !contextReady()) return
     placeholderMaterial.opacity = 0.18 + Math.sin(animationTime * 0.0015) * 0.035
     renderer.render(scene, camera)
+    renderedFrames += 1
   }
 
   function animate(time) {
+    if (!contextReady()) return
+    animatedFrames += 1
     if (previousTime !== null) {
       const delta = Math.max(0, time - previousTime)
       animationTime += delta * currentSettings.animationSpeed
@@ -869,7 +919,7 @@ export function mountBattlefield(host, {
   }
 
   function shouldAnimate() {
-    return !paused && !currentSettings.reducedMotion
+    return contextReady() && !paused && !currentSettings.reducedMotion
   }
 
   function syncAnimationLoop() {
@@ -889,12 +939,30 @@ export function mountBattlefield(host, {
     deckInput = null
     const currentRenderer = renderer
     renderer = null
+    const contextListeners = rendererContextListeners
+    rendererContextListeners = null
+    if (contextListeners?.renderer === currentRenderer) {
+      currentRenderer.domElement?.removeEventListener?.(
+        'webglcontextlost',
+        contextListeners.lost,
+      )
+      currentRenderer.domElement?.removeEventListener?.(
+        'webglcontextrestored',
+        contextListeners.restored,
+      )
+    }
     try {
       currentDeckInput?.destroy()
     } finally {
-      currentRenderer.setAnimationLoop(null)
-      currentRenderer.dispose()
-      currentRenderer.domElement?.remove?.()
+      try {
+        currentRenderer.setAnimationLoop(null)
+      } finally {
+        try {
+          currentRenderer.dispose()
+        } finally {
+          currentRenderer.domElement?.remove?.()
+        }
+      }
     }
   }
 
@@ -919,6 +987,11 @@ export function mountBattlefield(host, {
     nextRenderer.domElement.setAttribute?.('aria-hidden', 'true')
     nextRenderer.domElement.setAttribute?.('role', 'presentation')
     nextRenderer.domElement.disabled = false
+    const lost = (event) => handleContextLost(event, nextRenderer)
+    const restored = () => handleContextRestored(nextRenderer)
+    nextRenderer.domElement.addEventListener?.('webglcontextlost', lost)
+    nextRenderer.domElement.addEventListener?.('webglcontextrestored', restored)
+    rendererContextListeners = { renderer: nextRenderer, lost, restored }
     host.append(nextRenderer.domElement)
     renderer = nextRenderer
     if (onDeckActivate !== undefined) {
@@ -934,8 +1007,8 @@ export function mountBattlefield(host, {
             onEnd: finishDeckDrag,
             onCancel: finishDeckDrag,
           },
-          enabled: deckInputEnabled,
-          busy: deckInputBusy,
+          enabled: deckInputEnabled && contextReady(),
+          busy: deckInputBusy || !contextReady(),
         })
         assertInputController(deckInput)
       } catch (error) {
@@ -945,6 +1018,82 @@ export function mountBattlefield(host, {
         throw error
       }
     }
+  }
+
+  function contextFailureReason(error) {
+    return error instanceof Error && error.message
+      ? error.message
+      : 'renderer-recreation-failed'
+  }
+
+  function handleContextLost(event, sourceRenderer) {
+    event?.preventDefault?.()
+    if (
+      disposed
+      || renderer !== sourceRenderer
+      || contextState.status !== 'ready'
+    ) {
+      return
+    }
+    publishContextStatus('lost')
+    previousTime = null
+    sourceRenderer.setAnimationLoop(null)
+    deckInput?.cancel?.()
+    finishDeckDrag()
+    applyDeckInputState()
+  }
+
+  function restoreContextResources() {
+    const retainedMatch = currentMatch
+    const retainedEvent = currentEvent
+    try {
+      clearCardVisuals()
+      textureCache?.destroy()
+      textureCache = null
+      disposeRenderer()
+      createRenderer()
+      currentMatch = retainedMatch
+      currentEvent = retainedEvent
+      currentDecisiveCardId = retainedEvent === null
+        ? null
+        : decisiveWinningCardId(retainedEvent)
+      if (retainedMatch !== null) {
+        const excluded = retainedEvent === null
+          ? new Set()
+          : new Set(retainedEvent.reveals.map(({ cardId }) => cardId))
+        renderSnapshotCards(retainedMatch, excluded)
+      }
+      contextRecoveryCount += 1
+      publishContextStatus('ready')
+      applyDeckInputState()
+      resize()
+      syncAnimationLoop()
+    } catch (error) {
+      try {
+        clearCardVisuals()
+      } catch {}
+      try {
+        textureCache?.destroy()
+      } catch {}
+      textureCache = null
+      try {
+        disposeRenderer()
+      } catch {}
+      publishContextStatus('failed', contextFailureReason(error))
+      globalThis.reportError?.(error)
+    }
+  }
+
+  function handleContextRestored(sourceRenderer) {
+    if (
+      disposed
+      || renderer !== sourceRenderer
+      || contextState.status !== 'lost'
+    ) {
+      return
+    }
+    publishContextStatus('restoring')
+    restoreContextResources()
   }
 
   function resize() {
@@ -999,7 +1148,8 @@ export function mountBattlefield(host, {
       && windowObject.devicePixelRatio > 0
       ? windowObject.devicePixelRatio
       : 1
-    renderer.setPixelRatio(Math.min(devicePixelRatio, currentSettings.renderScaleCap))
+    currentPixelRatio = Math.min(devicePixelRatio, currentSettings.renderScaleCap)
+    renderer.setPixelRatio(currentPixelRatio)
     renderer.setSize(width, height, false)
     publishLayout(host, layout, onLayout)
     renderCurrentFrame()
@@ -1043,6 +1193,9 @@ export function mountBattlefield(host, {
     const qualityChanged = settings.quality !== currentSettings.quality
     rescaleTweens(currentSettings.animationSpeed, settings.animationSpeed)
     currentSettings = settings
+    if (!contextReady()) {
+      return
+    }
     if (qualityChanged) {
       refreshVisualTextures()
       rebuildRenderer()
@@ -1055,6 +1208,13 @@ export function mountBattlefield(host, {
   function syncSnapshot(match, context = {}) {
     if (disposed) throw new Error('Battlefield has been destroyed')
     validateMatchState(match)
+    if (!contextReady()) {
+      currentMatch = match
+      currentEvent = null
+      currentDecisiveCardId = null
+      publishPresentation(contextState.status)
+      return
+    }
     clearCardVisuals()
     currentMatch = match
     currentEvent = null
@@ -1074,6 +1234,13 @@ export function mountBattlefield(host, {
       || match.pendingEvent.stateFingerprint !== event.stateFingerprint
     ) {
       throw new Error('Presentation event must match the committed snapshot')
+    }
+    if (!contextReady()) {
+      currentMatch = match
+      currentEvent = event
+      currentDecisiveCardId = decisiveWinningCardId(event)
+      publishPresentation(contextState.status)
+      return
     }
     clearCardVisuals()
     currentMatch = match
@@ -1105,6 +1272,10 @@ export function mountBattlefield(host, {
       || context.durationMs < 0
     ) {
       throw new TypeError('Presentation step and duration are invalid')
+    }
+    if (!contextReady()) {
+      publishPresentation(contextState.status)
+      return
     }
 
     if (step.kind === 'reveal') {
@@ -1167,9 +1338,7 @@ export function mountBattlefield(host, {
     }
     deckInputEnabled = enabled
     deckInputBusy = busy
-    deckInput?.setEnabled(enabled)
-    deckInput?.setBusy(busy)
-    publishDeckInput()
+    applyDeckInputState()
   }
 
   const handle = {
@@ -1227,6 +1396,36 @@ export function mountBattlefield(host, {
         transientCards: transientVisuals.size,
         tweens: tweens.size,
         cacheEntries: textureCache?.getStats?.().entries ?? 0,
+      })
+    },
+    getContextState() {
+      return contextState
+    },
+    getPerformanceSnapshot() {
+      const renderInfo = renderer?.info?.render
+      const memoryInfo = renderer?.info?.memory
+      return Object.freeze({
+        context: contextState,
+        animationActive: shouldAnimate(),
+        renderedFrames,
+        animatedFrames,
+        pixelRatio: currentPixelRatio,
+        renderer: renderer === null
+          ? null
+          : Object.freeze({
+              calls: renderInfo?.calls ?? null,
+              triangles: renderInfo?.triangles ?? null,
+              points: renderInfo?.points ?? null,
+              lines: renderInfo?.lines ?? null,
+              geometries: memoryInfo?.geometries ?? null,
+              textures: memoryInfo?.textures ?? null,
+            }),
+        resources: Object.freeze({
+          staticCards: staticVisuals.size,
+          transientCards: transientVisuals.size,
+          tweens: tweens.size,
+          cacheEntries: textureCache?.getStats?.().entries ?? 0,
+        }),
       })
     },
     getDeckInputState() {

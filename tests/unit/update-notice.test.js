@@ -7,6 +7,7 @@ class FakeElement {
     this.tagName = tagName.toUpperCase()
     this.children = []
     this.dataset = {}
+    this.attributes = {}
     this.listeners = new Map()
     this.className = ''
     this.textContent = ''
@@ -22,6 +23,7 @@ class FakeElement {
   }
 
   setAttribute(name, value) {
+    this.attributes[name] = value
     this[name] = value
   }
 
@@ -152,6 +154,9 @@ test('update notice reports availability and blocks only underlying content duri
   assert.equal(content.inert, false)
   assert.equal(alreadyInert.inert, true)
   assert.equal(Object.hasOwn(host.dataset, 'updateBlocked'), false)
+  assert.equal(status.attributes.role, 'status')
+  assert.equal(status.attributes['aria-live'], 'polite')
+  assert.equal(status.attributes['aria-atomic'], 'true')
   assert.match(status.textContent, /quota-exceeded/)
   assert.equal(button.hidden, false)
   assert.equal(button.disabled, false)

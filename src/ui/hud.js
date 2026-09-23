@@ -3,6 +3,7 @@ import { createEventPlayer } from '../presentation/event-player.js'
 import { createInputController } from '../presentation/input.js'
 
 const ACTIVE_PRESENTATION_STATUSES = new Set(['queued', 'playing', 'paused'])
+const RENDER_CONTEXT_STATUSES = new Set(['ready', 'lost', 'restoring', 'failed'])
 
 function createTextElement(tagName, className, text) {
   const element = document.createElement(tagName)
@@ -310,11 +311,13 @@ export function createGameScreen({
   status.dataset.statusHost = ''
   status.setAttribute('role', 'status')
   status.setAttribute('aria-live', 'polite')
+  status.setAttribute('aria-atomic', 'true')
 
   const saveWarning = createTextElement('p', 'game-save-warning', '')
   saveWarning.dataset.saveWarning = ''
   saveWarning.setAttribute('role', 'status')
   saveWarning.setAttribute('aria-live', 'polite')
+  saveWarning.setAttribute('aria-atomic', 'true')
   saveWarning.hidden = true
 
   const feedback = document.createElement('div')
@@ -450,6 +453,13 @@ export function createGameScreen({
 
   element.append(battlefieldHost, hud, overlayHost)
   let requestReveal = () => {}
+  let eventPlayer = null
+  let hudReady = false
+  let rendererContextState = Object.freeze({
+    status: 'ready',
+    recoveryCount: 0,
+    reason: null,
+  })
 
   const applyLayout = (layout) => {
     element.dataset.layoutMode = layout.mode
@@ -482,6 +492,23 @@ export function createGameScreen({
     settingsController,
     onLayout: applyLayout,
     onDeckActivate: (event) => requestReveal(event),
+    onContextStatus(nextState) {
+      if (
+        nextState === null
+        || typeof nextState !== 'object'
+        || !RENDER_CONTEXT_STATUSES.has(nextState.status)
+      ) {
+        return
+      }
+      rendererContextState = nextState
+      if (eventPlayer !== null) {
+        eventPlayer.setPaused(
+          latestSnapshot?.match?.machineState === 'paused'
+          || rendererContextState.status !== 'ready',
+        )
+      }
+      if (hudReady) renderHud()
+    },
     inputControllerFactory,
   })
   const battlefield = typeof battlefieldMount === 'function'
@@ -596,6 +623,12 @@ export function createGameScreen({
     let message
     if (match === null || match === undefined) {
       message = 'Game setup is not connected yet.'
+    } else if (rendererContextState.status === 'lost') {
+      message = 'Graphics context lost. Presentation is paused while graphics recover.'
+    } else if (rendererContextState.status === 'restoring') {
+      message = 'Restoring graphics from the saved game state…'
+    } else if (rendererContextState.status === 'failed') {
+      message = `Graphics recovery failed${rendererContextState.reason ? ` (${rendererContextState.reason})` : ''}. Pause and save remain available; reload to retry.`
     } else if (match.machineState === 'paused') {
       message = 'Game paused. Resume to continue.'
     } else if (snapshot.saveStatus === 'saving' && match.turn === 0) {
@@ -642,20 +675,23 @@ export function createGameScreen({
       && match.machineState === 'ready'
       && !initialSavePending
     )
+    const renderingAvailable = rendererContextState.status === 'ready'
     const presentationActive = (
       queuedEventIds.size > 0
       || ACTIVE_PRESENTATION_STATUSES.has(presentationState.status)
     )
     const revealBusy = revealActionPending || presentationActive
-    revealInput?.setEnabled(matchReady)
+    revealInput?.setEnabled(matchReady && renderingAvailable)
     revealInput?.setBusy(revealBusy)
     battlefield.setDeckInputState?.({
-      enabled: matchReady,
-      busy: revealBusy,
+      enabled: matchReady && renderingAvailable,
+      busy: revealBusy || !renderingAvailable,
     })
     pauseInput?.setEnabled(matchReady)
     pauseInput?.setBusy(pauseActionPending)
-    if (revealInput === null) revealButton.disabled = !matchReady || revealBusy
+    if (revealInput === null) {
+      revealButton.disabled = !matchReady || !renderingAvailable || revealBusy
+    }
     if (pauseInput === null) pauseButton.disabled = !matchReady || pauseActionPending
   }
 
@@ -679,6 +715,7 @@ export function createGameScreen({
     const paused = latestSnapshot?.match?.machineState === 'paused'
     pauseOverlay.element.hidden = !paused || endVisible
     endOverlay.element.hidden = !endVisible
+    hud.inert = paused || endVisible
     const actionState = {
       action: overlayAction,
       error: overlayError,
@@ -696,7 +733,6 @@ export function createGameScreen({
     renderOverlays()
   }
 
-  let eventPlayer
   try {
     eventPlayer = eventPlayerFactory({
       adapter: presentationAdapter,
@@ -728,7 +764,6 @@ export function createGameScreen({
     battlefield.teardown?.()
     throw error
   }
-
   const present = (match) => {
     const eventId = match.pendingEvent?.id
     if (eventId !== undefined && presentationJobs.has(eventId)) {
@@ -742,6 +777,7 @@ export function createGameScreen({
       }))
     }
     if (eventId !== undefined) queuedEventIds.add(eventId)
+    hudReady = true
     renderHud()
 
     let presentation
@@ -920,7 +956,10 @@ export function createGameScreen({
     } else if (clearsSaveWarning(snapshot.saveStatus)) {
       clearSaveWarning()
     }
-    const nextPresentationPaused = match?.machineState === 'paused'
+    const nextPresentationPaused = (
+      match?.machineState === 'paused'
+      || rendererContextState.status !== 'ready'
+    )
     eventPlayer.setPaused(nextPresentationPaused)
 
     renderHud()
