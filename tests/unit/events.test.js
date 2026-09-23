@@ -55,29 +55,6 @@ test('settled clash events use the canonical versioned shape and detached immuta
     pendingPresentation: 'settlement-v1',
   })
 
-  test('settled event validation applies the 2-over-Ace comparison exception', () => {
-    const input = {
-      runId: 'two-over-ace',
-      turn: 1,
-      stage: 'source',
-      winner: 'player',
-      reveals: [
-        { cardId: 'c-2S', suppliedBy: 'player', from: 'sourceDeck' },
-        { cardId: 'c-AH', suppliedBy: 'opponent', from: 'sourceDeck' },
-      ],
-      transfers: [{ cardId: 'c-2S', to: 'player.wonPile' }],
-      burned: ['c-AH'],
-      stateFingerprint: 'two-over-ace-state',
-    }
-
-    assert.doesNotThrow(() => createClashSettledEvent(input))
-    assert.throws(() => createClashSettledEvent({
-      ...clone(input),
-      winner: 'opponent',
-      transfers: [{ cardId: 'c-AH', to: 'opponent.wonPile' }],
-      burned: ['c-2S'],
-    }), /decisive reveal round/)
-  })
   assert.equal(Object.hasOwn(event, 'runId'), false)
   assert.ok(allObjects(event).every(Object.isFrozen))
   assert.equal(validateCommittedEvent(event), event)
@@ -89,6 +66,30 @@ test('settled clash events use the canonical versioned shape and detached immuta
   assert.deepEqual(event.reveals, SETTLED_INPUT.reveals)
   assert.deepEqual(event.transfers, SETTLED_INPUT.transfers)
   assert.deepEqual(event.burned, SETTLED_INPUT.burned)
+})
+
+test('settled event validation applies the 2-over-Ace comparison exception', () => {
+  const input = {
+    runId: 'two-over-ace',
+    turn: 1,
+    stage: 'source',
+    winner: 'player',
+    reveals: [
+      { cardId: 'c-2S', suppliedBy: 'player', from: 'sourceDeck' },
+      { cardId: 'c-AH', suppliedBy: 'opponent', from: 'sourceDeck' },
+    ],
+    transfers: [{ cardId: 'c-2S', to: 'player.wonPile' }],
+    burned: ['c-AH'],
+    stateFingerprint: 'two-over-ace-state',
+  }
+
+  assert.doesNotThrow(() => createClashSettledEvent(input))
+  assert.throws(() => createClashSettledEvent({
+    ...clone(input),
+    winner: 'opponent',
+    transfers: [{ cardId: 'c-AH', to: 'opponent.wonPile' }],
+    burned: ['c-2S'],
+  }), /decisive reveal round/)
 })
 
 test('terminal draws use a distinct event without settlement fields', () => {
