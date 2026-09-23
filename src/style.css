@@ -253,7 +253,7 @@ button:disabled {
 .comparison-area {
   grid-area: comparison;
   display: grid;
-  align-self: center;
+  align-self: start;
   align-content: center;
   justify-self: center;
   gap: 0.35rem;
