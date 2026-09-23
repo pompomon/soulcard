@@ -79,16 +79,23 @@ treatment and 44×44 CSS-pixel targets. The Three.js canvas is presentational; t
 semantic Reveal/Continue button is the canonical accessible action. Full keyboard
 gameplay, shortcuts, focus trapping, and focus-flow instructions remain post-MVP.
 
-Start New Game creates a baseline 52-card match from Web Crypto entropy, records the
-seed in the domain RNG snapshot, and immediately queues the stable turn-zero run for
-IndexedDB persistence before play continues. Replacing a current or still-restoring
-saved run requires confirmation.
+Start New Game creates a 52-card match from Web Crypto entropy, records the seed in the
+domain RNG snapshot, and immediately queues the stable turn-zero run for IndexedDB
+persistence before play continues. The canonical comparison order is unchanged except
+that 2 beats Ace; 2 still loses to 3 through King.
+
+The Settings screen persists a Turn burning preference independently from active runs.
+It selects the burn-enabled or burn-disabled ruleset only when starting or restarting a
+game. Resuming keeps the complete ruleset stored with that run. Replacing a current or
+still-restoring saved run requires confirmation.
 
 ## Run menus and summaries
 
 Main enables Resume only after a valid ready, paused, or completed run restores. Invalid
 or incompatible saves remain quarantined until explicitly discarded; unavailable storage
-is reported without blocking session-only play.
+is reported without blocking session-only play. Current saves use save schema version 3
+and game rules version 2; rules-version-1 saves are incompatible because their clash
+comparison semantics differ.
 
 Pause remains an overlay inside Game. Resume continues the exact snapshot, Save & Main
 Menu navigates only after a successful stable save, and Restart Game requires confirmation

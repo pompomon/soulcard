@@ -1,7 +1,7 @@
 import { validateMatchState } from '../domain/match-machine.js'
 
 export const SAVE_SCHEMA_VERSION = 3
-export const GAME_RULES_VERSION = 1
+export const GAME_RULES_VERSION = 2
 
 const SAVE_KEYS = Object.freeze([
   'saveSchemaVersion',

@@ -1158,7 +1158,7 @@ test('battlefield keeps a bounded terminal draw contest and validates event adap
   })
   let match = createMatch({
     runId: 'battlefield-draw',
-    seed: 32,
+    seed: 492,
     ruleset: BASELINE_RULESET,
   })
   while (match.status === 'active') {

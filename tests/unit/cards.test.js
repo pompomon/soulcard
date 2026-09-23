@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CARDS, CARD_IDS, RANKS, SUITS, getCard, isCardId } from '../../src/domain/cards.js'
+import {
+  CARDS,
+  CARD_IDS,
+  RANKS,
+  SUITS,
+  compareCards,
+  getCard,
+  isCardId,
+} from '../../src/domain/cards.js'
 
 const EXPECTED_SUITS = ['S', 'H', 'D', 'C']
 const EXPECTED_RANKS = [
@@ -75,5 +83,20 @@ test('card lookup exposes only canonical immutable identities', () => {
   ]) {
     assert.equal(isCardId(invalid), false)
     assert.equal(getCard(invalid), undefined)
+  }
+})
+
+test('canonical comparison makes 2 beat only Ace without changing card values', () => {
+  assert.ok(compareCards('c-2S', 'c-AH') > 0)
+  assert.ok(compareCards('c-AD', 'c-2C') < 0)
+  assert.ok(compareCards('c-2H', 'c-3D') < 0)
+  assert.ok(compareCards('c-KS', 'c-2D') > 0)
+  assert.equal(compareCards('c-7S', 'c-7C'), 0)
+
+  for (const cards of [
+    ['unknown', 'c-AS'],
+    ['c-2S', undefined],
+  ]) {
+    assert.throws(() => compareCards(...cards), RangeError)
   }
 })

@@ -13,7 +13,10 @@ function assertCrypto(crypto) {
   }
 }
 
-export function createNewMatch({ crypto = globalThis.crypto } = {}) {
+export function createNewMatch({
+  crypto = globalThis.crypto,
+  ruleset = BASELINE_RULESET,
+} = {}) {
   assertCrypto(crypto)
   const entropy = new Uint32Array(ENTROPY_WORD_COUNT)
   crypto.getRandomValues(entropy)
@@ -25,6 +28,6 @@ export function createNewMatch({ crypto = globalThis.crypto } = {}) {
   return createMatch({
     runId,
     seed,
-    ruleset: BASELINE_RULESET,
+    ruleset,
   })
 }
