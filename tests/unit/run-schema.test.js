@@ -51,7 +51,7 @@ test('current saves use the exact versioned shape and complete fixed fixture', (
   const save = createRunSave(match, { savedAt: SAVED_AT })
 
   assert.equal(SAVE_SCHEMA_VERSION, 3)
-  assert.equal(GAME_RULES_VERSION, 1)
+  assert.equal(GAME_RULES_VERSION, 2)
   assert.deepEqual(save, fixture('run-save-v3.json'))
   assert.equal(validateRunSave(save), save)
   assert.ok(allObjects(save).every(Object.isFrozen))
@@ -139,7 +139,7 @@ test('schema validation rejects malformed metadata and nonstable records', () =>
     { ...clone(current), saveSchemaVersion: 1 },
     { ...clone(current), saveSchemaVersion: 2 },
     { ...clone(current), saveSchemaVersion: 4 },
-    { ...clone(current), gameRulesVersion: 2 },
+    { ...clone(current), gameRulesVersion: 1 },
     { ...clone(current), savedAt: '2026-09-21T08:00:00Z' },
     { ...clone(current), savedAt: 'not-a-date' },
     { ...clone(current), extra: true },
@@ -177,7 +177,7 @@ test('schema validation rejects malformed metadata and nonstable records', () =>
     UnsupportedSaveVersionError,
   )
   assert.throws(
-    () => validateRunSave({ ...clone(current), gameRulesVersion: 2 }),
+    () => validateRunSave({ ...clone(current), gameRulesVersion: 1 }),
     UnsupportedGameRulesVersionError,
   )
 })
@@ -203,7 +203,7 @@ test('schema validation rejects non-JSON containers and accessors without invoki
 test('schema validation rejects hidden fields on saved reveal records', () => {
   let match = createMatch({
     runId: 'malformed-draw',
-    seed: 32,
+    seed: 93,
     ruleset: BASELINE_RULESET,
   })
   while (match.status === 'active') {

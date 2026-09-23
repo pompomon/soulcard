@@ -5,6 +5,7 @@ import {
   revealOrContinue,
 } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
+import { createClashSettledEvent } from '../../src/domain/events.js'
 import {
   EVENT_PRESENTATION_TIMING,
   createEventPlayer,
@@ -189,7 +190,7 @@ test('timeline preserves reveal and settlement order for ties and terminal varia
     },
   )
 
-  const drawn = transitionAt(32, 44).event
+  const drawn = transitionAt(93, 48).event
   const drawnTimeline = createEventTimeline(drawn)
   assert.equal(drawn.type, 'clashDrawn')
   assert.deepEqual(drawnTimeline.at(-1), {
@@ -197,6 +198,29 @@ test('timeline preserves reveal and settlement order for ties and terminal varia
     reason: 'mutualInability',
     cardIds: drawn.reveals.map(({ cardId }) => cardId),
     durationMs: 0,
+  })
+
+  test('timeline does not present 2 versus Ace as a tie', () => {
+    const event = createClashSettledEvent({
+      runId: 'timeline-two-over-ace',
+      turn: 1,
+      stage: 'source',
+      winner: 'player',
+      reveals: [
+        { cardId: 'c-2S', suppliedBy: 'player', from: 'sourceDeck' },
+        { cardId: 'c-AH', suppliedBy: 'opponent', from: 'sourceDeck' },
+      ],
+      transfers: [{ cardId: 'c-2S', to: 'player.wonPile' }],
+      burned: ['c-AH'],
+      stateFingerprint: 'two-over-ace',
+    })
+
+    assert.deepEqual(
+      createEventTimeline(event)
+        .filter(({ kind }) => kind === 'reveal')
+        .map(({ tied }) => tied),
+      [false, false],
+    )
   })
   assert.ok(drawnTimeline
     .filter(({ kind }) => kind === 'reveal')

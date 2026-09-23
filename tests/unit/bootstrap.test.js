@@ -3,7 +3,7 @@ import test from 'node:test'
 import { bootstrap } from '../../src/app/bootstrap.js'
 import { createRunController } from '../../src/app/run-controller.js'
 import { createMatch } from '../../src/domain/match-machine.js'
-import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
+import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
 import { createSettingsRepository } from '../../src/persistence/settings-repository.js'
 
 class FakeElement {
@@ -189,7 +189,10 @@ test('Start New creates, saves, and opens a playable baseline match', async (t) 
     matchMedia: null,
     pageLifecycleFactory: () => ({ destroy() {} }),
     mountBattlefield: () => undefined,
-    newMatchFactory: () => initialMatch,
+    newMatchFactory: ({ ruleset }) => {
+      assert.equal(ruleset, BASELINE_RULESET)
+      return initialMatch
+    },
     eventPlayerFactory: () => ({
       present(match) {
         return Promise.resolve({
@@ -223,6 +226,56 @@ test('Start New creates, saves, and opens a playable baseline match', async (t) 
   assert.equal(saves.length, 2)
   assert.equal(saves[1].turn, 1)
 
+  await app.destroy()
+})
+
+test('Start New applies the current burn-off preference without changing resume behavior', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const settingsRepository = createSettingsRepository({ storage: null })
+  settingsRepository.setBurnEnabled(false)
+  let selectedRuleset = null
+  const root = new FakeElement('div')
+  const app = bootstrap({
+    root,
+    runRepository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => ({
+        status: 'saved',
+        savedAt: '2026-09-23T10:00:00.000Z',
+      }),
+    },
+    settingsRepository,
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield: () => undefined,
+    newMatchFactory({ ruleset }) {
+      selectedRuleset = ruleset
+      return createMatch({
+        runId: 'burn-off-start',
+        seed: 7,
+        ruleset,
+      })
+    },
+    eventPlayerFactory: () => ({
+      present: async () => ({ status: 'synchronized', eventId: null, reason: null }),
+      setPaused() {},
+      destroy() {},
+    }),
+  })
+  await app.ready
+
+  byAction(root, 'start').dispatch('click')
+
+  assert.equal(selectedRuleset, NO_BURN_RULESET)
+  assert.deepEqual(app.runSnapshot.match.ruleset, NO_BURN_RULESET)
+  assert.equal(app.runSnapshot.match.ruleset.burn.enabled, false)
   await app.destroy()
 })
 
@@ -621,7 +674,7 @@ test('Game restart confirms replacement and tears down presentation before insta
   const replacement = createMatch({
     runId: 'restart-replacement',
     seed: 2,
-    ruleset: BASELINE_RULESET,
+    ruleset: NO_BURN_RULESET,
   })
   const controller = createRunController({
     repository: {
@@ -637,11 +690,13 @@ test('Game restart confirms replacement and tears down presentation before insta
   let confirmationCalls = 0
   let battlefieldMounts = 0
   let battlefieldTeardowns = 0
+  const settingsRepository = createSettingsRepository({ storage: null })
+  settingsRepository.setBurnEnabled(false)
   const root = new FakeElement('div')
   const app = bootstrap({
     root,
     runController: controller,
-    settingsRepository: createSettingsRepository({ storage: null }),
+    settingsRepository,
     matchMedia: null,
     pageLifecycleFactory: () => ({ destroy() {} }),
     mountBattlefield: () => {
@@ -655,7 +710,10 @@ test('Game restart confirms replacement and tears down presentation before insta
       confirmationCalls += 1
       return result
     },
-    newMatchFactory: () => replacement,
+    newMatchFactory: ({ ruleset }) => {
+      assert.equal(ruleset, NO_BURN_RULESET)
+      return replacement
+    },
   })
   byAction(root, 'resume').dispatch('click')
   byAction(root, 'pause').dispatch('click')
@@ -672,6 +730,7 @@ test('Game restart confirms replacement and tears down presentation before insta
   await waitFor(() => controller.currentMatch.runId === replacement.runId)
   assert.equal(app.activeScreen, 'game')
   assert.equal(confirmationCalls, 2)
+  assert.deepEqual(controller.currentMatch.ruleset, NO_BURN_RULESET)
   assert.equal(battlefieldMounts, 2)
   assert.equal(battlefieldTeardowns, 1)
   await controller.whenIdle()

@@ -67,7 +67,7 @@ test('seed 12345 has a locked immutable simulation result', () => {
 
   assert.deepEqual(result, {
     seed: 12345,
-    rulesetId: 'mvp-baseline-v1',
+    rulesetId: 'mvp-baseline-v2',
     status: 'completed',
     clashCount: 46,
     burnCount: 48,
