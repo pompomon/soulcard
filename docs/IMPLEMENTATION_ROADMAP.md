@@ -1195,6 +1195,36 @@ reviewable PR.
   stable save, and Pages relative deployment remains valid.
 - **Checks/risks:** Service-worker/offline/update browser tests and install/standalone
   manual checks; never cache IndexedDB state.
+- **Acceptance evidence:** `vite.config.js` hashes the service-worker template and the
+  complete, deterministically ordered relative app shell, rejects missing injection
+  markers, and preserves the Pages-relative Vite base. `public/sw.js` installs that
+  shell without immediate activation, accepts only the explicit application activation
+  message, keeps same-origin asset runtime caching separate and bounded to 32 entries,
+  deletes only obsolete Soulcard caches, and claims clients after activation.
+  `src/pwa/update-controller.js` distinguishes first install from a controlled update,
+  retains update state across screen mounts, and reloads exactly once only after the
+  requested worker activates. Bootstrap gates that request on restoration and a
+  successful serialized stable save; failures remain retryable, while committed pending
+  presentation events survive reload without domain replay. The semantic
+  `src/ui/update-notice.js` stays inside Main, Settings, or Game and makes only the
+  underlying screen inert while saving or activating. The relative manifest supplies
+  SVG, 192/512 PNG, maskable, and Apple touch assets, and all update/install surfaces
+  honor safe areas. Cache Storage contains application assets only; active runs remain
+  in IndexedDB.
+- **Validation:** The Node 24 test runner reports 287 passing unit/integration tests,
+  including service-worker policy, build injection, manifest assets, update lifecycle,
+  update notice, pending-write ordering, empty/paused/ended runs, save retry, and exact
+  pending-event restore coverage; the production build passes. A text-only headless
+  Chrome 152 check served two revisions under `/soulcard/`: installability reported no
+  errors, the first revision launched offline and resumed its exact IndexedDB run, the
+  second waited for explicit activation and a stable turn-one save, reloaded once,
+  restored the committed pending event, removed old Soulcard caches while preserving an
+  unrelated cache, and held 40 runtime image requests to 32 entries. Phone portrait and
+  landscape checks retained one top-level screen and one Game canvas with safe-area-aware
+  update placement. A separate offline app-mode launch reported standalone display,
+  service-worker control, and an enabled exact-run Resume action. Both browser processes
+  exited with status 0, with no relevant console errors or runtime exceptions. No
+  screenshots were produced.
 
 ### 18. Performance, context loss, accessibility baseline, cross-device QA
 - **Goal/files:** Add profiling/QA fixtures and context handlers; depends on 11–17.
