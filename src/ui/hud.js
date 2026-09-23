@@ -48,6 +48,19 @@ function saveWarningText(reason) {
   return `Save failed${reason ? ` (${reason})` : ''}. Your game remains available in this session.`
 }
 
+function contextStatusText(contextState) {
+  if (contextState.status === 'lost') {
+    return 'Graphics context lost. Presentation is paused while graphics recover.'
+  }
+  if (contextState.status === 'restoring') {
+    return 'Restoring graphics from the saved game state…'
+  }
+  if (contextState.status === 'failed') {
+    return `Graphics recovery failed${contextState.reason ? ` (${contextState.reason})` : ''}. Pause and save remain available; reload to retry.`
+  }
+  return null
+}
+
 // Run snapshots use idle/unsaved/saving/saved/failed; save completions use
 // saved/storage-unavailable. Transient unsaved/saving states preserve warnings.
 function isSaveFailureStatus(status) {
@@ -620,15 +633,12 @@ export function createGameScreen({
   function renderStatus() {
     const snapshot = latestSnapshot ?? {}
     const match = snapshot.match
+    const contextMessage = contextStatusText(rendererContextState)
     let message
     if (match === null || match === undefined) {
       message = 'Game setup is not connected yet.'
-    } else if (rendererContextState.status === 'lost') {
-      message = 'Graphics context lost. Presentation is paused while graphics recover.'
-    } else if (rendererContextState.status === 'restoring') {
-      message = 'Restoring graphics from the saved game state…'
-    } else if (rendererContextState.status === 'failed') {
-      message = `Graphics recovery failed${rendererContextState.reason ? ` (${rendererContextState.reason})` : ''}. Pause and save remain available; reload to retry.`
+    } else if (contextMessage !== null) {
+      message = contextMessage
     } else if (match.machineState === 'paused') {
       message = 'Game paused. Resume to continue.'
     } else if (snapshot.saveStatus === 'saving' && match.turn === 0) {
@@ -719,6 +729,9 @@ export function createGameScreen({
     const actionState = {
       action: overlayAction,
       error: overlayError,
+      announcement: paused || endVisible
+        ? contextStatusText(rendererContextState)
+        : null,
     }
     pauseOverlay.update(latestSnapshot, actionState)
     endOverlay.update(latestSnapshot, actionState)

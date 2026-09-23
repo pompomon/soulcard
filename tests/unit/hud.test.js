@@ -284,6 +284,9 @@ test('Game combines match pause with graphics recovery and keeps safe controls a
   const hud = descendants(screen.element).find(
     (element) => element.className === 'game-hud',
   )
+  const pauseOverlayStatus = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'saveStatus'),
+  )
 
   assert.equal(typeof publishContext, 'function')
   assert.equal(status.attributes.role, 'status')
@@ -304,10 +307,21 @@ test('Game combines match pause with graphics recovery and keeps safe controls a
   await flushMicrotasks()
   assert.equal(controller.currentMatch.machineState, 'paused')
   assert.equal(hud.inert, true)
+  assert.match(pauseOverlayStatus.textContent, /Graphics context lost/)
+
+  publishContext({ status: 'restoring', recoveryCount: 0, reason: null })
+  assert.match(pauseOverlayStatus.textContent, /Restoring graphics/)
+  publishContext({
+    status: 'failed',
+    recoveryCount: 0,
+    reason: 'replacement unavailable',
+  })
+  assert.match(pauseOverlayStatus.textContent, /replacement unavailable/)
 
   publishContext({ status: 'ready', recoveryCount: 1, reason: null })
   assert.equal(pauses.at(-1), true)
   assert.match(status.textContent, /Game paused/)
+  assert.match(pauseOverlayStatus.textContent, /Game saved/)
   resume.dispatch('click')
   await flushMicrotasks()
   assert.equal(controller.currentMatch.machineState, 'ready')

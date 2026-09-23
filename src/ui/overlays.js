@@ -19,7 +19,8 @@ function saveStatusText({ saveStatus, saveReason }) {
   }
 }
 
-function overlayStatusText(snapshot, { action, error }) {
+function overlayStatusText(snapshot, { action, error, announcement }) {
+  if (announcement) return announcement
   if (error) return error
   if (action === 'save-main') return 'Saving before returning to the main menu…'
   if (action === 'restart') return 'Starting a new game…'

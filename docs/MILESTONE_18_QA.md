@@ -51,7 +51,10 @@ Production recovery status changed from
 the ready state. During loss Reveal was disabled, Pause remained enabled, and
 `#app` retained one canvas. After restoration the old canvas was disconnected, its
 replacement was the only canvas, and Three.js logged only its expected context
-lost/restored messages.
+lost/restored messages. A final combined-state check paused during the interruption:
+the background HUD became inert, the active Pause dialog's atomic live status mirrored
+the graphics-loss message, and restoration returned that dialog status to
+`Game saved.` while keeping Resume available.
 
 The integration test interrupts both idle rendering and an active committed
 presentation. It asserts exact RNG state, ordered zones, outcome, pending-event
