@@ -4,6 +4,10 @@ import {
   revealOrContinue as resolveClash,
   validateMatchState,
 } from '../domain/match-machine.js'
+import {
+  createAiController,
+  REVEAL_OR_CONTINUE_ACTION,
+} from '../domain/ai-controller.js'
 
 const RESTORE_STATUSES = new Set([
   'empty',
@@ -24,6 +28,34 @@ function assertRepository(repository) {
   }
 }
 
+function assertAiController(aiController) {
+  if (
+    aiController === null
+    || typeof aiController !== 'object'
+    || typeof aiController.chooseEncounterAction !== 'function'
+  ) {
+    throw new TypeError('aiController must expose chooseEncounterAction')
+  }
+}
+
+function validateEncounterAction(action) {
+  if (action !== REVEAL_OR_CONTINUE_ACTION) {
+    throw new Error('aiController returned an unsupported encounter action')
+  }
+}
+
+function immutableClone(value) {
+  if (Array.isArray(value)) {
+    return Object.freeze(value.map(immutableClone))
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.freeze(Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [key, immutableClone(child)]),
+    ))
+  }
+  return value
+}
+
 function storageFailure(operation, error) {
   return Object.freeze({
     status: 'storage-unavailable',
@@ -35,9 +67,11 @@ function storageFailure(operation, error) {
 export function createRunController({
   repository,
   initialMatch = null,
+  aiController = createAiController(),
   onSubscriberError = (error) => globalThis.reportError?.(error),
 } = {}) {
   assertRepository(repository)
+  assertAiController(aiController)
   if (typeof onSubscriberError !== 'function') {
     throw new TypeError('onSubscriberError must be a function')
   }
@@ -45,7 +79,7 @@ export function createRunController({
     validateMatchState(initialMatch)
   }
 
-  let match = initialMatch
+  let match = initialMatch === null ? null : immutableClone(initialMatch)
   let revision = 0
   let restoreStatus = 'idle'
   let restoreReason = null
@@ -197,7 +231,7 @@ export function createRunController({
         if (result.status === 'resumable') {
           validateMatchState(result.match)
           if (restoreRevision === revision) {
-            match = result.match
+            match = immutableClone(result.match)
             revision += 1
             saveStatus = 'saved'
             savedAt = result.savedAt
@@ -229,7 +263,8 @@ export function createRunController({
 
   function setMatch(nextMatch) {
     assertActive()
-    return markMatch(nextMatch)
+    validateMatchState(nextMatch)
+    return markMatch(immutableClone(nextMatch))
   }
 
   function discardPendingRestore() {
@@ -244,7 +279,19 @@ export function createRunController({
     if (match === null) {
       throw new Error('No active match is available')
     }
-    const transition = resolveClash(match)
+    if (match.machineState === 'ended') {
+      throw new Error('An ended match cannot reveal or continue')
+    }
+    if (match.machineState === 'paused') {
+      throw new Error('A paused match cannot reveal or continue')
+    }
+    const currentMatch = match
+    const currentRevision = revision
+    validateEncounterAction(aiController.chooseEncounterAction(immutableClone(currentMatch)))
+    if (destroyed || revision !== currentRevision) {
+      throw new Error('Run changed while choosing an encounter action')
+    }
+    const transition = resolveClash(currentMatch)
     markMatch(transition.match)
     const save = queueSave(transition.match)
     return save.then((saveResult) => Object.freeze({

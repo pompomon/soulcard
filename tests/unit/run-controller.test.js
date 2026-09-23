@@ -5,15 +5,24 @@ import {
   pauseMatch,
   revealOrContinue,
 } from '../../src/domain/match-machine.js'
+import { REVEAL_OR_CONTINUE_ACTION } from '../../src/domain/ai-controller.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { createRunController } from '../../src/app/run-controller.js'
 
-function createActiveMatch(runId = 'controller-run') {
+function createActiveMatch(runId = 'controller-run', seed = 12345) {
   return createMatch({
     runId,
-    seed: 12345,
+    seed,
     ruleset: BASELINE_RULESET,
   })
+}
+
+function createEndedMatch(runId = 'ended-controller-run') {
+  let match = createActiveMatch(runId)
+  while (match.status === 'active') {
+    match = revealOrContinue(match).match
+  }
+  return match
 }
 
 function deferred() {
@@ -89,6 +98,212 @@ test('committed clashes and explicit pauses autosave stable snapshots', async ()
   unsubscribe()
   await controller.destroy()
   assert.equal(repository.closeCalls, 1)
+})
+
+test('run controller applies one injected AI action through the match machine before saving', async () => {
+  const initialMatch = createActiveMatch('injected-ai')
+  const expected = revealOrContinue(initialMatch)
+  const repository = createRepository()
+  const calls = []
+  const controller = createRunController({
+    repository,
+    initialMatch,
+    aiController: {
+      chooseEncounterAction(match) {
+        calls.push(match)
+        return REVEAL_OR_CONTINUE_ACTION
+      },
+    },
+  })
+
+  const result = await controller.revealOrContinue()
+
+  assert.deepEqual(calls, [initialMatch])
+  assert.deepEqual(result.match, expected.match)
+  assert.deepEqual(result.event, expected.event)
+  assert.equal(result.event, result.match.pendingEvent)
+  assert.deepEqual(repository.saves, [expected.match])
+  assert.equal(repository.saves[0], result.match)
+  assert.equal(controller.currentMatch, result.match)
+})
+
+test('injected AI cannot mutate the authoritative match snapshot', async () => {
+  const initialMatch = structuredClone(createActiveMatch('immutable-ai-input'))
+  const expected = revealOrContinue(initialMatch)
+  const repository = createRepository()
+  let receivedMatch
+  const controller = createRunController({
+    repository,
+    initialMatch,
+    aiController: {
+      chooseEncounterAction(match) {
+        receivedMatch = match
+        assert.notEqual(match, initialMatch)
+        assert.ok(Object.isFrozen(match))
+        assert.ok(Object.isFrozen(match.zones.sourceDeck))
+        assert.throws(() => {
+          match.zones.sourceDeck.pop()
+        }, TypeError)
+        return REVEAL_OR_CONTINUE_ACTION
+      },
+    },
+  })
+
+  const result = await controller.revealOrContinue()
+
+  assert.deepEqual(receivedMatch, initialMatch)
+  assert.deepEqual(result.match, expected.match)
+  assert.deepEqual(repository.saves, [expected.match])
+})
+
+test('caller-owned match references cannot substitute the authoritative AI branch', async () => {
+  for (const adoption of ['initialMatch', 'setMatch']) {
+    const initialMatch = structuredClone(createActiveMatch(`detached-${adoption}`))
+    const expected = revealOrContinue(initialMatch)
+    const foreign = createActiveMatch(initialMatch.runId, 54321)
+    const repository = createRepository()
+    const aiController = {
+      chooseEncounterAction() {
+        initialMatch.rng = foreign.rng
+        initialMatch.zones = foreign.zones
+        return REVEAL_OR_CONTINUE_ACTION
+      },
+    }
+    const controller = adoption === 'initialMatch'
+      ? createRunController({ repository, initialMatch, aiController })
+      : createRunController({ repository, aiController })
+    if (adoption === 'setMatch') controller.setMatch(initialMatch)
+
+    assert.notEqual(controller.currentMatch, initialMatch)
+    const result = await controller.revealOrContinue()
+
+    assert.deepEqual(result.match, expected.match)
+    assert.deepEqual(repository.saves, [expected.match])
+  }
+})
+
+test('AI mutation before throwing leaves the authoritative match unchanged and unsaved', async () => {
+  const initialMatch = structuredClone(createActiveMatch('immutable-ai-failure'))
+  const before = structuredClone(initialMatch)
+  const repository = createRepository()
+  const controller = createRunController({
+    repository,
+    initialMatch,
+    aiController: {
+      chooseEncounterAction(match) {
+        assert.throws(() => {
+          match.rng.value = 0
+        }, TypeError)
+        throw new Error('AI failed after mutation attempt')
+      },
+    },
+  })
+
+  assert.throws(() => controller.revealOrContinue(), /AI failed after mutation attempt/)
+  assert.deepEqual(initialMatch, before)
+  assert.deepEqual(controller.currentMatch, initialMatch)
+  assert.notEqual(controller.currentMatch, initialMatch)
+  assert.deepEqual(repository.saves, [])
+})
+
+test('run controller rejects paused and ended matches before invoking injected AI', () => {
+  const repository = createRepository()
+
+  for (const [match, expectedError] of [
+    [pauseMatch(createActiveMatch('paused-ai')), /paused match cannot reveal/],
+    [createEndedMatch('ended-ai'), /ended match cannot reveal/],
+  ]) {
+    let calls = 0
+    const controller = createRunController({
+      repository,
+      initialMatch: match,
+      aiController: {
+        chooseEncounterAction() {
+          calls += 1
+          return REVEAL_OR_CONTINUE_ACTION
+        },
+      },
+    })
+
+    assert.throws(() => controller.revealOrContinue(), expectedError)
+    assert.equal(calls, 0)
+    assert.deepEqual(controller.currentMatch, match)
+    assert.equal(controller.getSnapshot().saveStatus, 'unsaved')
+  }
+  assert.deepEqual(repository.saves, [])
+})
+
+test('invalid AI dependencies, actions, and failures leave the current run unchanged and unsaved', async () => {
+  const repository = createRepository()
+  assert.throws(
+    () => createRunController({ repository, aiController: null }),
+    /aiController must expose chooseEncounterAction/,
+  )
+  assert.throws(
+    () => createRunController({ repository, aiController: {} }),
+    /aiController must expose chooseEncounterAction/,
+  )
+
+  const initialMatch = createActiveMatch('atomic-ai-failure')
+  const foreignInput = createActiveMatch(initialMatch.runId, 54321)
+  const foreignTransition = revealOrContinue(foreignInput)
+  assert.equal(foreignTransition.match.runId, initialMatch.runId)
+  assert.equal(foreignTransition.match.turn, initialMatch.turn + 1)
+  assert.equal(foreignTransition.event, foreignTransition.match.pendingEvent)
+  assert.notDeepEqual(foreignTransition.match, revealOrContinue(initialMatch).match)
+
+  for (const chooseEncounterAction of [
+    () => {
+      throw new Error('AI failed')
+    },
+    () => foreignTransition,
+  ]) {
+    const controller = createRunController({
+      repository,
+      initialMatch,
+      aiController: { chooseEncounterAction },
+    })
+    assert.throws(() => controller.revealOrContinue())
+    await controller.whenIdle()
+    assert.deepEqual(controller.currentMatch, initialMatch)
+    assert.equal(controller.getSnapshot().saveStatus, 'unsaved')
+  }
+  assert.deepEqual(repository.saves, [])
+})
+
+test('AI action selection cannot overwrite a synchronously changed or destroyed run', async () => {
+  for (const mutation of ['setMatch', 'pause', 'destroy']) {
+    const initialMatch = createActiveMatch(`reentrant-ai-${mutation}`)
+    const replacement = createActiveMatch(`replacement-${mutation}`)
+    const repository = createRepository()
+    let controller
+    const aiController = {
+      chooseEncounterAction() {
+        if (mutation === 'setMatch') controller.setMatch(replacement)
+        else controller[mutation]()
+        return REVEAL_OR_CONTINUE_ACTION
+      },
+    }
+    controller = createRunController({ repository, initialMatch, aiController })
+
+    assert.throws(
+      () => controller.revealOrContinue(),
+      /Run changed while choosing an encounter action/,
+    )
+    await controller.whenIdle()
+
+    if (mutation === 'setMatch') {
+      assert.deepEqual(controller.currentMatch, replacement)
+      assert.notEqual(controller.currentMatch, replacement)
+      assert.deepEqual(repository.saves, [])
+    } else if (mutation === 'pause') {
+      assert.equal(controller.currentMatch.machineState, 'paused')
+      assert.deepEqual(repository.saves, [controller.currentMatch])
+    } else {
+      assert.deepEqual(controller.currentMatch, initialMatch)
+      assert.deepEqual(repository.saves, [])
+    }
+  }
 })
 
 test('restore adopts ready or paused snapshots without replaying RNG', async () => {

@@ -1098,9 +1098,9 @@ reviewable PR.
   indicators, deliberate `touch-action`, safe-area/layout reserves, and physical 44×44
   CSS-pixel controls, including letterboxed layouts. `src/app/new-match.js` creates a
   baseline seeded run from Web Crypto entropy, and `src/app/bootstrap.js` installs it and
-  queues its stable save before Start New Game opens Game. Focused
-  input/HUD/bootstrap tests cover   pointer types, hit-tested active-deck source/personal/recycle selection and minimum
-  target size,
+  queues its stable save before Start New Game opens Game. Focused input/HUD/bootstrap
+  tests cover pointer types, hit-tested active-deck source/personal/recycle selection and
+  minimum target size,
   secondary/non-primary rejection, cancellation and drag-off, duplicate suppression,
   native fallback, shared button/deck gating, teardown, save/presentation ordering,
   skipped and failed presentation, terminal state, injected ownership, initial-run
@@ -1122,9 +1122,10 @@ reviewable PR.
   visible focus outlines, pointer cancellation and out-of-target release, fresh-start
   persistence, and replacement confirmation. A user-provided portrait screenshot from
   a physical Android target device confirmed touch navigation and responsive HUD
-  rendering while exposing the now-fixed missing new-match initialization. A post-fix
-  target-device Reveal/Continue and Pause pass remains outstanding, so `MILESTONES.md`
-  does not yet mark milestone 14 complete. No validation screenshots were generated.
+  rendering while exposing the now-fixed missing new-match initialization. Manual
+  target-device sign-off was provided for the post-fix Reveal/Continue and Pause
+  behavior; no further device or browser details were supplied. No validation
+  screenshots were generated.
 
 ### 15. AI and complete source-to-personal-stage match flow
 - **Goal/files:** Add AI controller/encounter wiring and integration tests; depends on 5,
@@ -1133,6 +1134,30 @@ reviewable PR.
   personal shuffles and terminal conditions are visible and deterministic.
 - **Checks/risks:** Seeded full-match tests and manual complete match; reserve modifier
   extension points without implementing them.
+- **Acceptance evidence:** `src/domain/ai-controller.js` is the deterministic encounter
+  policy boundary. Each `chooseEncounterAction` call validates a ready snapshot and
+  selects one fixed Reveal/Continue action without producing state or adding a timer,
+  browser dependency, presentation authority, or randomness. `src/app/run-controller.js`
+  injects that controller, validates its action, and applies it to the same current
+  snapshot through the match machine before publishing and saving the committed result.
+  Invalid actions and failures leave the prior run current and unsaved. The existing
+  versioned empty `futureModifiers` field remains the reserved modifier extension point;
+  this milestone does not change rules, save, or event versions. Unit tests cover action
+  selection, input immutability, automatic player/opponent reveal order, final-source
+  ties that continue from both personal draw piles, terminal wins/draws, inactive inputs,
+  invalid dependencies/actions, foreign-branch substitution, atomic failures, and
+  execution with `Math.random` disabled. Full-match integration tests lock seeds 0, 5,
+  and 32 for player-win, opponent-win, and draw outcomes, compare every stable
+  snapshot/event/RNG state with canonical replay, assert one save per clash, and drive
+  the HUD through the source-to-personal transition and terminal control lockout with
+  one presentation per player activation.
+- **Validation:** The Node 24 test runner reports 252 passing unit/integration tests, and
+  the production build passes.
+  A text-only headless Chromium 152 reduced-motion run completed a live 40-clash match,
+  observed Source and Personal HUD stages, showed a paired automatic-opponent reveal after
+  one player activation, retained exactly one canvas under `#app`, reached the terminal
+  player-win status with Reveal/Continue and Pause disabled, reported no relevant console
+  errors, and exited cleanly. No screenshots were produced.
 
 ### 16. Main, pause, resume, overwrite, and end-state integration
 - **Goal/files:** Integrate menus, save availability, confirmation, and run summary;
