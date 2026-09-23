@@ -2,13 +2,14 @@
 
 This is a post-MVP implementation plan. It does not implement or mark complete any
 gameplay milestone. It refines roadmap milestone 20 into five cumulative, playable
-sub-milestones.
+sub-milestones. Roadmap milestone 20's first-class full keyboard support must be
+complete before sub-milestone 20.1 begins.
 
 ## Progress checklist
 
 | Status | Milestone | Depends on | Playable outcome |
 | --- | --- | --- | --- |
-| [ ] | 20.1 Campaign Duel | 19 | Three retryable encounters with health, a persistent deck, and Hold |
+| [ ] | 20.1 Campaign Duel | 19 + milestone 20 keyboard support | Three retryable encounters with health, a persistent deck, and Hold |
 | [ ] | 20.2 Reward Drafts and Hold Upgrades | 20.1 | Build-changing rewards and the opponent-reveal Hold boon |
 | [ ] | 20.3 Branching Expedition | 20.2 | A route with combat, shops, and events |
 | [ ] | 20.4 Encounter Archetypes and Elite Ladder | 20.3 | Elites, rest nodes, and a boss campaign |
@@ -26,8 +27,15 @@ sub-milestones.
 - An encounter uses player and opponent source piles rather than the current shared
   alternating `sourceDeck`. This is necessary for source-stage Hold use while retaining
   player campaign ownership. The player source pile is constructed from the persistent
-  campaign deck at encounter start; encounter-local ordering and any recycle behavior
-  remain deterministic.
+  campaign deck at encounter start. Source piles do not recycle. After a settled clash,
+  both empty source piles transition to personal play by shuffling the player's complete
+  won pile and then the opponent's. Before any other required reveal, exactly one empty
+  source pile loses the encounter. During a tie, the available side's card joins the
+  contest before it wins when exactly one source pile is empty. If both source piles are
+  empty, retain the contest, perform the same player-first transition to personal play,
+  and continue the tie there; normal personal-stage inability rules then produce a
+  winner or a draw. Only the ordered transition shuffles consume RNG; inability outcomes
+  do not.
 - Hold is an authoritative one-slot player zone, not a hand or presentation effect.
   Before calculating a reveal round, reveal the player's top candidate and present a
   stable choice to play it or replace it with the held instance. If the player uses
@@ -38,9 +46,10 @@ sub-milestones.
   player choose held or candidate. A tie never opens a Hold decision; its continuation
   resolves automatically.
 - Capturing or replacing Hold is a stable, explicit action. Replacing a held instance
-  must atomically return the displaced instance to a documented player campaign zone,
-  remove the selected instance from its prior player-owned zone, and validate
-  conservation. A Hold choice must be saved before presentation can advance.
+  atomically swaps it with the selected instance: the displaced held instance occupies
+  the selected instance's exact former index in its player-owned ordered zone, and the
+  selected instance enters Hold. The transition validates conservation. A Hold choice
+  must be saved before presentation can advance.
 - Encounter losses reduce run health and retry the same encounter with the persistent
   deck. At zero health the campaign ends. Wins advance the run. Buffs declare whether
   they expire with the encounter or persist for the campaign.
@@ -95,7 +104,7 @@ three-encounter expedition.
   duplicates, removals, and replacements from the campaign deck.
 - Add an explicit modifier catalogue with permanent campaign and encounter-only
   lifetimes. Initial effects may alter comparison values, burning, recycling, Hold
-  capacity, capture eligibility, or replacement behavior.
+  capture eligibility, or replacement behavior; Hold remains exactly one slot.
 - Add the opponent-reveal Hold boon: the opponent card is committed before the Hold
   choice, after which the player chooses the held card or their revealed candidate.
 - Add reward and modifier inspection to the HUD/overlays and save every selected reward
@@ -107,8 +116,9 @@ three-encounter expedition.
   seed and choices.
 - Expiring encounter modifiers are removed exactly once; permanent modifiers survive
   encounter transition, reload, and retry.
-- Tests cover information-boon reveal order, all reward categories, slot changes,
-  modifier lifetime, replay, save/resume, and event fingerprints.
+- Tests cover information-boon reveal order, all reward categories, Hold eligibility
+  and replacement effects, modifier lifetime, replay, save/resume, and event
+  fingerprints.
 
 ## 20.3 Branching Expedition
 
@@ -145,8 +155,8 @@ campaign finale.
 - Add rest nodes, elite rewards, and a fixed boss. Define reward tiering and health
   recovery limits.
 - Expand the modifier catalogue only where its ownership, expiry, stacking, and
-  interaction with Hold are specified. Examples include Hold capacity, opponent-reveal
-  access, burn behavior, recycle order, and card-value effects.
+  interaction with Hold are specified. Examples include opponent-reveal access, Hold
+  capture eligibility, burn behavior, recycle order, and card-value effects.
 
 **Acceptance and validation**
 
