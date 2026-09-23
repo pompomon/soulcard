@@ -519,6 +519,9 @@ export function createGameScreen({
           latestSnapshot?.match?.machineState === 'paused'
           || rendererContextState.status !== 'ready',
         )
+        if (rendererContextState.status === 'failed') {
+          eventPlayer.cancel?.('graphics-recovery-failed')
+        }
       }
       if (hudReady) renderHud()
     },
@@ -768,6 +771,7 @@ export function createGameScreen({
       || typeof eventPlayer.present !== 'function'
       || typeof eventPlayer.setPaused !== 'function'
       || typeof eventPlayer.destroy !== 'function'
+      || (eventPlayer.cancel !== undefined && typeof eventPlayer.cancel !== 'function')
     ) {
       throw new TypeError('eventPlayerFactory must return a compatible event player')
     }

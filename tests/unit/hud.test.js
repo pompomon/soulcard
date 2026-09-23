@@ -249,6 +249,7 @@ test('Game combines match pause with graphics recovery and keeps safe controls a
   })
   let publishContext
   const pauses = []
+  const cancellations = []
   const deckStates = []
   const screen = createGameScreen({
     runController: controller,
@@ -271,6 +272,9 @@ test('Game combines match pause with graphics recovery and keeps safe controls a
       },
       setPaused(value) {
         pauses.push(value)
+      },
+      cancel(reason) {
+        cancellations.push(reason)
       },
       destroy() {},
     }),
@@ -317,6 +321,7 @@ test('Game combines match pause with graphics recovery and keeps safe controls a
     reason: 'replacement unavailable',
   })
   assert.match(pauseOverlayStatus.textContent, /replacement unavailable/)
+  assert.equal(cancellations.at(-1), 'graphics-recovery-failed')
 
   publishContext({ status: 'ready', recoveryCount: 1, reason: null })
   assert.equal(pauses.at(-1), true)
@@ -341,6 +346,7 @@ test('Game combines match pause with graphics recovery and keeps safe controls a
   assert.equal(reveal.disabled, true)
   assert.equal(pause.disabled, false)
   assert.match(status.textContent, /replacement unavailable/)
+  assert.equal(cancellations.length, 2)
 
   screen.teardown()
   await controller.destroy()
@@ -948,7 +954,7 @@ test('Game exposes terminal outcome details and disables primary actions', (t) =
   screen.teardown()
 })
 
-test('End overlay waits for terminal save and presentation before showing its summary', async (t) => {
+test('End overlay settles terminal presentation after graphics recovery fails', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
     createElement: (tagName) => new FakeElement(tagName),
@@ -975,12 +981,22 @@ test('End overlay waits for terminal save and presentation before showing its su
     initialMatch: terminal,
   })
   let mainMenuCalls = 0
+  let publishContext
   const screen = createGameScreen({
     runController: controller,
-    mountBattlefield: () => undefined,
+    mountBattlefield: (host, options) => {
+      publishContext = options.onContextStatus
+    },
     eventPlayerFactory: () => ({
       present: () => animation.promise,
       setPaused() {},
+      cancel(reason) {
+        animation.resolve({
+          status: 'cancelled',
+          eventId: terminal.pendingEvent.id,
+          reason,
+        })
+      },
       destroy() {},
     }),
     onMainMenu() {
@@ -1007,10 +1023,10 @@ test('End overlay waits for terminal save and presentation before showing its su
   await flushMicrotasks()
   assert.equal(endOverlay.hidden, true)
 
-  animation.resolve({
-    status: 'completed',
-    eventId: terminal.pendingEvent.id,
-    reason: null,
+  publishContext({
+    status: 'failed',
+    recoveryCount: 0,
+    reason: 'replacement unavailable',
   })
   await flushMicrotasks()
   assert.equal(endOverlay.hidden, false)

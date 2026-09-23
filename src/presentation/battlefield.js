@@ -299,6 +299,7 @@ export function mountBattlefield(host, {
   const transientVisuals = new Map()
   const tweens = new Set()
   const settledVisuals = new Set()
+  const appliedEventSteps = []
 
   const requestFrame = typeof windowObject?.requestAnimationFrame === 'function'
     ? windowObject.requestAnimationFrame.bind(windowObject)
@@ -1046,6 +1047,7 @@ export function mountBattlefield(host, {
   function restoreContextResources() {
     const retainedMatch = currentMatch
     const retainedEvent = currentEvent
+    const retainedSteps = [...appliedEventSteps]
     try {
       clearCardVisuals()
       textureCache?.destroy()
@@ -1062,6 +1064,7 @@ export function mountBattlefield(host, {
           ? new Set()
           : new Set(retainedEvent.reveals.map(({ cardId }) => cardId))
         renderSnapshotCards(retainedMatch, excluded)
+        for (const step of retainedSteps) applyPresentationStep(step, 0)
       }
       contextRecoveryCount += 1
       publishContextStatus('ready')
@@ -1208,6 +1211,7 @@ export function mountBattlefield(host, {
   function syncSnapshot(match, context = {}) {
     if (disposed) throw new Error('Battlefield has been destroyed')
     validateMatchState(match)
+    appliedEventSteps.length = 0
     if (!contextReady()) {
       currentMatch = match
       currentEvent = null
@@ -1235,6 +1239,7 @@ export function mountBattlefield(host, {
     ) {
       throw new Error('Presentation event must match the committed snapshot')
     }
+    appliedEventSteps.length = 0
     if (!contextReady()) {
       currentMatch = match
       currentEvent = event
@@ -1258,6 +1263,52 @@ export function mountBattlefield(host, {
     throw new RangeError(`Unknown presentation destination: ${String(destination)}`)
   }
 
+  function applyPresentationStep(step, durationMs) {
+    if (step.kind === 'reveal') {
+      const visual = ensureTransientCard(step.cardId, step.suppliedBy)
+      const originZone = step.from === 'sourceDeck'
+        ? 'sourceDeck'
+        : step.from === 'player.drawPile'
+          ? 'playerDrawPile'
+          : step.from === 'opponent.drawPile'
+            ? 'opponentDrawPile'
+            : currentEvent.stage === 'source'
+              ? 'sourceDeck'
+              : LEGACY_REVEAL_ORIGIN_ZONE
+      visual.zoneId = originZone
+      visual.offset = Object.freeze({ x: 0, y: 0, z: 0.1 })
+      placeTransient(visual)
+      startTween(
+        visual,
+        `${step.suppliedBy}Reveal`,
+        transientOffset(step),
+        durationMs,
+      )
+      publishPresentation(step.tied ? 'tie-reveal' : 'reveal', step.cardId)
+    } else if (step.kind === 'transfer' || step.kind === 'burn') {
+      const reveal = currentEvent.reveals.find(({ cardId }) => cardId === step.cardId)
+      if (!reveal) throw new Error('Settlement step must reference a revealed card')
+      releaseSettledVisuals()
+      const visual = ensureSettlementCard(step.cardId, reveal.suppliedBy)
+      startTween(
+        visual,
+        destinationZone(step.to),
+        Object.freeze({ x: 0, y: 0, z: 0.14 }),
+        durationMs,
+        step.kind === 'transfer' && step.cardId === currentDecisiveCardId
+          ? PILE_SCALE_MODE
+          : null,
+      )
+      settledVisuals.add(visual)
+      publishPresentation(step.kind, step.cardId)
+    } else if (step.kind === 'retain') {
+      publishPresentation('retained-draw')
+    } else {
+      throw new RangeError(`Unknown presentation step: ${String(step.kind)}`)
+    }
+    renderCurrentFrame()
+  }
+
   function applyStep(step, context) {
     if (disposed) throw new Error('Battlefield has been destroyed')
     if (currentEvent === null || currentMatch === null) {
@@ -1278,49 +1329,8 @@ export function mountBattlefield(host, {
       return
     }
 
-    if (step.kind === 'reveal') {
-      const visual = ensureTransientCard(step.cardId, step.suppliedBy)
-      const originZone = step.from === 'sourceDeck'
-        ? 'sourceDeck'
-        : step.from === 'player.drawPile'
-          ? 'playerDrawPile'
-          : step.from === 'opponent.drawPile'
-            ? 'opponentDrawPile'
-            : currentEvent.stage === 'source'
-              ? 'sourceDeck'
-              : LEGACY_REVEAL_ORIGIN_ZONE
-      visual.zoneId = originZone
-      visual.offset = Object.freeze({ x: 0, y: 0, z: 0.1 })
-      placeTransient(visual)
-      startTween(
-        visual,
-        `${step.suppliedBy}Reveal`,
-        transientOffset(step),
-        context.durationMs,
-      )
-      publishPresentation(step.tied ? 'tie-reveal' : 'reveal', step.cardId)
-    } else if (step.kind === 'transfer' || step.kind === 'burn') {
-      const reveal = currentEvent.reveals.find(({ cardId }) => cardId === step.cardId)
-      if (!reveal) throw new Error('Settlement step must reference a revealed card')
-      releaseSettledVisuals()
-      const visual = ensureSettlementCard(step.cardId, reveal.suppliedBy)
-      startTween(
-        visual,
-        destinationZone(step.to),
-        Object.freeze({ x: 0, y: 0, z: 0.14 }),
-        context.durationMs,
-        step.kind === 'transfer' && step.cardId === currentDecisiveCardId
-          ? PILE_SCALE_MODE
-          : null,
-      )
-      settledVisuals.add(visual)
-      publishPresentation(step.kind, step.cardId)
-    } else if (step.kind === 'retain') {
-      publishPresentation('retained-draw')
-    } else {
-      throw new RangeError(`Unknown presentation step: ${String(step.kind)}`)
-    }
-    renderCurrentFrame()
+    applyPresentationStep(step, context.durationMs)
+    appliedEventSteps.push(step)
   }
 
   function cancelEvent(reason = 'cancelled') {
@@ -1400,6 +1410,9 @@ export function mountBattlefield(host, {
     },
     getContextState() {
       return contextState
+    },
+    getRetainedSnapshot() {
+      return currentMatch
     },
     getPerformanceSnapshot() {
       const renderInfo = renderer?.info?.render

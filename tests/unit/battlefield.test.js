@@ -530,6 +530,8 @@ test('context loss suspends rendering and input, then rebuilds resources from re
   handle.applyStep(timeline[0], { durationMs: 100 })
   assert.equal(handle.getPresentationState().eventId, transition.event.id)
   assert.ok(handle.getPresentationState().transientCards > 0)
+  const revealBeforeRecovery = handle.getPresentationState()
+  assert.equal(handle.getRetainedSnapshot(), transition.match)
 
   const secondCanvas = renderers[1].domElement
   secondCanvas.dispatch('webglcontextlost')
@@ -541,21 +543,56 @@ test('context loss suspends rendering and input, then rebuilds resources from re
     reason: null,
   })
   assert.equal(handle.getPresentationState().eventId, transition.event.id)
-  assert.equal(handle.getPresentationState().phase, 'prepared')
-  assert.equal(handle.getPresentationState().transientCards, 0)
+  assert.equal(handle.getPresentationState().phase, 'reveal')
+  assert.equal(
+    handle.getPresentationState().transientCards,
+    revealBeforeRecovery.transientCards,
+  )
+  assert.equal(handle.getPresentationState().tweens, 0)
+  assert.equal(handle.getRetainedSnapshot(), transition.match)
   handle.applyStep(timeline[1], { durationMs: 0 })
   assert.equal(handle.getPresentationState().eventId, transition.event.id)
   assert.equal(textureCaches[1].destroyCalls, 1)
+
+  const settlementStep = timeline.find(({ kind }) => kind === 'transfer' || kind === 'burn')
+  handle.applyStep(settlementStep, { durationMs: 100 })
+  const settlementBeforeRecovery = handle.getPresentationState()
+  const thirdCanvas = renderers[2].domElement
+  thirdCanvas.dispatch('webglcontextlost')
+  thirdCanvas.dispatch('webglcontextrestored')
+  assert.equal(renderers.length, 4)
+  assert.deepEqual(handle.getContextState(), {
+    status: 'ready',
+    recoveryCount: 3,
+    reason: null,
+  })
+  assert.equal(handle.getPresentationState().phase, settlementStep.kind)
+  assert.equal(
+    handle.getPresentationState().transientCards,
+    settlementBeforeRecovery.transientCards,
+  )
+  assert.equal(handle.getPresentationState().tweens, 0)
+  assert.equal(textureCaches[2].destroyCalls, 1)
   assert.deepEqual(
     contextStates.map(({ status }) => status),
-    ['lost', 'restoring', 'ready', 'lost', 'restoring', 'ready'],
+    [
+      'lost',
+      'restoring',
+      'ready',
+      'lost',
+      'restoring',
+      'ready',
+      'lost',
+      'restoring',
+      'ready',
+    ],
   )
 
-  const finalCanvas = renderers[2].domElement
+  const finalCanvas = renderers[3].domElement
   handle.teardown()
   assert.equal(finalCanvas.listeners.get('webglcontextlost')?.size ?? 0, 0)
   assert.equal(finalCanvas.listeners.get('webglcontextrestored')?.size ?? 0, 0)
-  assert.equal(textureCaches[2].destroyCalls, 1)
+  assert.equal(textureCaches[3].destroyCalls, 1)
 })
 
 test('context restoration failures remain paused and expose a stable failure state', () => {
@@ -1150,10 +1187,15 @@ test('battlefield keeps a bounded terminal draw contest and validates event adap
   const windowObject = createWindow({ width: 800, height: 600 })
   const observer = createObserverHarness()
   const textures = createTextureCacheHarness()
+  const renderers = []
   const handle = mountBattlefield(host, {
     windowObject,
     ResizeObserverClass: observer.FakeResizeObserver,
-    rendererFactory: () => new FakeRenderer(host, {}),
+    rendererFactory() {
+      const renderer = new FakeRenderer(host, {})
+      renderers.push(renderer)
+      return renderer
+    },
     textureCacheFactory: () => textures.cache,
   })
   let match = createMatch({
@@ -1181,6 +1223,22 @@ test('battlefield keeps a bounded terminal draw contest and validates event adap
     () => handle.applyStep({ kind: 'unknown' }, { durationMs: 0 }),
     /begin before/,
   )
+
+  const timeline = createEventTimeline(match.pendingEvent)
+  handle.beginEvent(match.pendingEvent, match)
+  for (const step of timeline) handle.applyStep(step, { durationMs: 0 })
+  const terminalBeforeRecovery = handle.getPresentationState()
+  assert.equal(terminalBeforeRecovery.phase, 'retained-draw')
+  renderers[0].domElement.dispatch('webglcontextlost')
+  renderers[0].domElement.dispatch('webglcontextrestored')
+  assert.equal(renderers.length, 2)
+  assert.equal(handle.getPresentationState().phase, 'retained-draw')
+  assert.equal(
+    handle.getPresentationState().transientCards,
+    terminalBeforeRecovery.transientCards,
+  )
+  assert.equal(handle.getRetainedSnapshot(), match)
+
   handle.teardown()
   assert.throws(() => handle.syncSnapshot(match), /destroyed/)
 })

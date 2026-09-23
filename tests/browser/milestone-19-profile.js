@@ -125,7 +125,6 @@ function profileMatch(handle, seed) {
     stageTransitions,
     outcome: match.outcome,
     maxima,
-    serializedMatch: JSON.stringify(match),
     match,
   }
 }
@@ -271,15 +270,19 @@ async function run() {
     reducedMotionOverride: false,
   })
   const normalMotion = handle.getPerformanceSnapshot()
+  const frameIntervals = await measureFrameIntervals()
 
   const seedZero = profileMatch(handle, 0)
-  const seedThirtyTwo = profileMatch(handle, 32)
-  const terminalBeforeRecovery = seedThirtyTwo.serializedMatch
+  const terminalDraw = profileMatch(handle, 93)
+  if (terminalDraw.outcome.result !== 'draw') {
+    throw new Error('Milestone 19 terminal-draw profile seed no longer produces a draw')
+  }
+  const terminalBeforeRecovery = JSON.stringify(handle.getRetainedSnapshot())
   const recovery = [
     await recoverContext(host, () => contextState),
     await recoverContext(host, () => contextState),
   ]
-  const terminalAfterRecovery = JSON.stringify(seedThirtyTwo.match)
+  const terminalAfterRecovery = JSON.stringify(handle.getRetainedSnapshot())
 
   const remounts = []
   handle.teardown()
@@ -314,7 +317,7 @@ async function run() {
         devicePixelRatio: window.devicePixelRatio,
       },
     },
-    frameIntervals: await measureFrameIntervals(),
+    frameIntervals,
     textureGeneration: [profileTextures(1), profileTextures(3)],
     viewportResults,
     motion: {
@@ -332,13 +335,13 @@ async function run() {
         maxima: seedZero.maxima,
       },
       {
-        seed: seedThirtyTwo.seed,
-        elapsedMs: seedThirtyTwo.elapsedMs,
-        clashes: seedThirtyTwo.clashes,
-        ties: seedThirtyTwo.ties,
-        stageTransitions: seedThirtyTwo.stageTransitions,
-        outcome: seedThirtyTwo.outcome,
-        maxima: seedThirtyTwo.maxima,
+        seed: terminalDraw.seed,
+        elapsedMs: terminalDraw.elapsedMs,
+        clashes: terminalDraw.clashes,
+        ties: terminalDraw.ties,
+        stageTransitions: terminalDraw.stageTransitions,
+        outcome: terminalDraw.outcome,
+        maxima: terminalDraw.maxima,
       },
     ],
     contextRecovery: {

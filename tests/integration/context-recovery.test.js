@@ -314,6 +314,12 @@ test('idle and active context recovery preserve committed state and deterministi
   await waitFor(() => battlefield.dataset.presentationPhase === 'reveal')
   const committed = structuredClone(controller.currentMatch)
   const expectedContinuation = revealOrContinue(controller.currentMatch).match
+  const activePresentation = {
+    phase: battlefield.dataset.presentationPhase,
+    event: battlefield.dataset.presentationEvent,
+    card: battlefield.dataset.presentationCard,
+    cards: battlefield.dataset.presentationCards,
+  }
   canvas = battlefield.children.find(({ tagName }) => tagName === 'CANVAS')
   canvas.dispatch('webglcontextlost')
   clock.advance(10_000)
@@ -330,6 +336,15 @@ test('idle and active context recovery preserve committed state and deterministi
 
   canvas.dispatch('webglcontextrestored')
   assert.equal(battlefield.dataset.webglRecoveries, '2')
+  assert.deepEqual(
+    {
+      phase: battlefield.dataset.presentationPhase,
+      event: battlefield.dataset.presentationEvent,
+      card: battlefield.dataset.presentationCard,
+      cards: battlefield.dataset.presentationCards,
+    },
+    activePresentation,
+  )
   await finishPresentation(clock, reveal)
   assert.deepEqual(controller.currentMatch, committed)
 
