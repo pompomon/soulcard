@@ -19,6 +19,7 @@ function getDefaultMatchMedia() {
 function assertRepository(repository) {
   const methods = [
     'load',
+    'setBurnEnabled',
     'setQuality',
     'setRenderScaleCap',
     'setAnimationSpeed',
@@ -139,6 +140,11 @@ export function createSettingsController({
   return Object.freeze({
     getSnapshot: () => snapshot,
     subscribe,
+    setBurnEnabled: (value) => update(
+      'burnEnabled',
+      value,
+      repository.setBurnEnabled,
+    ),
     setQuality: (value) => update('quality', value, repository.setQuality),
     setRenderScaleCap: (value) => update(
       'renderScaleCap',

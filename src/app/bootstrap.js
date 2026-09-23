@@ -10,6 +10,7 @@ import { createSettingsController } from '../ui/settings-controller.js'
 import { createGameScreen } from '../ui/hud.js'
 import { createUpdateNotice } from '../ui/update-notice.js'
 import { mountBattlefield as mountResponsiveBattlefield } from '../presentation/battlefield.js'
+import { BASELINE_RULESET, NO_BURN_RULESET } from '../domain/ruleset.js'
 
 const START_OVER_MESSAGE = 'Start a new game? Your current saved game will be replaced.'
 
@@ -196,7 +197,10 @@ export function bootstrap({
       return false
     }
 
-    const match = newMatchFactory()
+    const ruleset = settingsController.getSnapshot().burnEnabled
+      ? BASELINE_RULESET
+      : NO_BURN_RULESET
+    const match = newMatchFactory({ ruleset })
     activeRunController.discardPendingRestore()
     if (coordinator?.activeScreen === 'game') {
       coordinator.navigate('main')

@@ -97,7 +97,7 @@ test('locked encounters save every deterministic clash through the AI run path',
   const cases = [
     [0, { result: 'win', winner: 'player', reason: 'opponentUnableToReveal' }],
     [5, { result: 'win', winner: 'opponent', reason: 'playerUnableToReveal' }],
-    [32, { result: 'draw', reason: 'mutualInability' }],
+    [93, { result: 'draw', reason: 'mutualInability' }],
   ]
 
   for (const [seed, outcome] of cases) {

@@ -1433,7 +1433,7 @@ test('restored terminal wins and draws reopen their completed summaries', async 
     globalThis.document = previousDocument
   })
 
-  for (const [seed, expectedHeading] of [[0, 'Victory'], [32, 'Match drawn']]) {
+  for (const [seed, expectedHeading] of [[0, 'Victory'], [93, 'Match drawn']]) {
     let terminal = createMatch({
       runId: `hud-restored-terminal-${seed}`,
       seed,

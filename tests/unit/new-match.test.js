@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createNewMatch } from '../../src/app/new-match.js'
-import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
+import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
 
 test('new matches use caller-independent entropy for a seeded baseline run', () => {
   const words = [
@@ -39,4 +39,19 @@ test('new matches use caller-independent entropy for a seeded baseline run', () 
 test('new-match creation requires Web Crypto entropy', () => {
   assert.throws(() => createNewMatch({ crypto: null }), /getRandomValues/)
   assert.throws(() => createNewMatch({ crypto: {} }), /getRandomValues/)
+})
+
+test('new-match creation accepts the selected validated ruleset', () => {
+  const match = createNewMatch({
+    crypto: {
+      getRandomValues(target) {
+        target.set([7, 1, 2, 3, 4])
+        return target
+      },
+    },
+    ruleset: NO_BURN_RULESET,
+  })
+
+  assert.deepEqual(match.ruleset, NO_BURN_RULESET)
+  assert.equal(match.ruleset.burn.enabled, false)
 })

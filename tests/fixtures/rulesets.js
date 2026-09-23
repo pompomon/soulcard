@@ -8,7 +8,7 @@ function deepFreeze(value) {
 }
 
 export const BASELINE_RULESET_FIXTURE = deepFreeze({
-  id: 'mvp-baseline-v1',
+  id: 'mvp-baseline-v2',
   burn: {
     enabled: true,
     eligibleScope: 'all-losing-side-cards-in-resolved-contested-pile',
@@ -17,7 +17,7 @@ export const BASELINE_RULESET_FIXTURE = deepFreeze({
 })
 
 export const NO_BURN_RULESET_FIXTURE = deepFreeze({
-  id: 'debug-no-burn-v1',
+  id: 'mvp-no-burn-v2',
   burn: {
     enabled: false,
   },

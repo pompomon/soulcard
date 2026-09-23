@@ -109,23 +109,25 @@ test('system mode follows live media changes and adopts changes made under an ov
   unsubscribe()
 })
 
-test('quality, render cap, and speed updates persist and notify subscribers', () => {
+test('burning, quality, render cap, and speed updates persist and notify subscribers', () => {
   const { controller } = createController()
   const snapshots = []
   controller.subscribe((settings) => snapshots.push(settings))
 
+  controller.setBurnEnabled(false)
   controller.setQuality('high')
   controller.setRenderScaleCap(1.5)
   controller.setAnimationSpeed(2)
 
   assert.deepEqual(controller.getSnapshot(), {
     ...DEFAULT_SETTINGS,
+    burnEnabled: false,
     quality: 'high',
     renderScaleCap: 1.5,
     animationSpeed: 2,
     reducedMotion: false,
   })
-  assert.equal(snapshots.length, 4)
+  assert.equal(snapshots.length, 5)
 })
 
 test('invalid updates and subscribers are rejected without changing settings', () => {
@@ -133,6 +135,7 @@ test('invalid updates and subscribers are rejected without changing settings', (
   const initial = controller.getSnapshot()
 
   assert.throws(() => controller.subscribe(null), TypeError)
+  assert.throws(() => controller.setBurnEnabled('off'), TypeError)
   assert.throws(() => controller.setQuality('ultra'), TypeError)
   assert.throws(() => controller.setRenderScaleCap(Number.NaN), TypeError)
   assert.throws(() => controller.setAnimationSpeed(3), TypeError)
@@ -166,6 +169,7 @@ test('destroy removes media and subscriber listeners and prevents later updates'
 
   assert.equal(media.listenerCount, 0)
   assert.equal(calls, 1)
+  assert.throws(() => controller.setBurnEnabled(false), /has been destroyed/)
   assert.throws(() => controller.setQuality('high'), /has been destroyed/)
   assert.throws(() => controller.subscribe(() => {}), /has been destroyed/)
 })

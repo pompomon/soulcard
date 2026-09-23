@@ -3,6 +3,7 @@ export const RENDER_SCALE_CAPS = Object.freeze([1, 1.5, 2])
 export const ANIMATION_SPEEDS = Object.freeze([0.5, 1, 1.5, 2])
 
 export const DEFAULT_SETTINGS = Object.freeze({
+  burnEnabled: true,
   quality: 'balanced',
   renderScaleCap: 2,
   animationSpeed: 1,
@@ -17,6 +18,8 @@ function includesSameValue(values, value) {
 
 export function isSettingValue(field, value) {
   switch (field) {
+    case 'burnEnabled':
+      return typeof value === 'boolean'
     case 'quality':
       return QUALITY_PRESETS.includes(value)
     case 'renderScaleCap':
@@ -58,6 +61,7 @@ export function createSettingsPreferences(values = DEFAULT_SETTINGS) {
   }
 
   return Object.freeze({
+    burnEnabled: values.burnEnabled,
     quality: values.quality,
     renderScaleCap: values.renderScaleCap,
     animationSpeed: values.animationSpeed,

@@ -1,5 +1,5 @@
 import { evaluateBurn } from './burn-evaluator.js'
-import { getCard } from './cards.js'
+import { compareCards } from './cards.js'
 import {
   createClashDrawnEvent,
   createClashSettledEvent,
@@ -258,7 +258,7 @@ function createStateFingerprint(match, event, machineState = match.machineState)
       ? [match.outcome.result, match.outcome.winner, match.outcome.reason]
       : [match.outcome.result, match.outcome.reason]
   const reveals = event.reveals.map(({ cardId, suppliedBy, from }) => (
-    event.eventVersion === EVENT_VERSION
+    event.eventVersion >= 3
       ? [cardId, suppliedBy, from]
       : [cardId, suppliedBy]
   ))
@@ -608,7 +608,7 @@ function resolveSourceRound(match, rng, revealHistory) {
     'sourceDeck',
     revealHistory,
   )
-  const comparison = getCard(playerCard).value - getCard(opponentCard).value
+  const comparison = compareCards(playerCard, opponentCard)
 
   if (comparison === 0) {
     if (match.zones.sourceDeck.length === 0) {
@@ -645,7 +645,7 @@ function resolvePersonalRound(match, rng, revealHistory) {
     )
   }
 
-  const comparison = getCard(playerCard).value - getCard(opponentCard).value
+  const comparison = compareCards(playerCard, opponentCard)
   if (comparison === 0) {
     return null
   }

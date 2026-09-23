@@ -29,6 +29,7 @@ test('settings repository exposes versioned independent keys and immutable defau
   const repository = createSettingsRepository({ storage })
 
   assert.deepEqual(SETTINGS_STORAGE_KEYS, {
+    burnEnabled: 'soulcard.settings.v1.burnEnabled',
     quality: 'soulcard.settings.v1.quality',
     renderScaleCap: 'soulcard.settings.v1.renderScaleCap',
     animationSpeed: 'soulcard.settings.v1.animationSpeed',
@@ -46,18 +47,21 @@ test('each setting persists independently and reloads with explicit false intact
   const storage = createStorage()
   const repository = createSettingsRepository({ storage })
 
+  repository.setBurnEnabled(false)
   repository.setQuality('high')
   repository.setRenderScaleCap(1.5)
   repository.setAnimationSpeed(2)
   repository.setReducedMotionOverride(false)
 
   assert.deepEqual(Object.fromEntries(storage.values), {
+    [SETTINGS_STORAGE_KEYS.burnEnabled]: 'false',
     [SETTINGS_STORAGE_KEYS.quality]: '"high"',
     [SETTINGS_STORAGE_KEYS.renderScaleCap]: '1.5',
     [SETTINGS_STORAGE_KEYS.animationSpeed]: '2',
     [SETTINGS_STORAGE_KEYS.reducedMotionOverride]: 'false',
   })
   assert.deepEqual(createSettingsRepository({ storage }).load(), {
+    burnEnabled: false,
     quality: 'high',
     renderScaleCap: 1.5,
     animationSpeed: 2,
@@ -71,6 +75,7 @@ test('each setting persists independently and reloads with explicit false intact
 
 test('missing and malformed values fall back independently without disabling storage', () => {
   const storage = createStorage([
+    [SETTINGS_STORAGE_KEYS.burnEnabled, '"false"'],
     [SETTINGS_STORAGE_KEYS.quality, '"high"'],
     [SETTINGS_STORAGE_KEYS.renderScaleCap, '1.25'],
     [SETTINGS_STORAGE_KEYS.animationSpeed, '{'],
@@ -79,6 +84,7 @@ test('missing and malformed values fall back independently without disabling sto
   const repository = createSettingsRepository({ storage })
 
   assert.deepEqual(repository.load(), {
+    burnEnabled: DEFAULT_SETTINGS.burnEnabled,
     quality: 'high',
     renderScaleCap: DEFAULT_SETTINGS.renderScaleCap,
     animationSpeed: DEFAULT_SETTINGS.animationSpeed,
@@ -91,12 +97,14 @@ test('unavailable storage retains validated changes for the current session', ()
   const repository = createSettingsRepository({ storage: null })
 
   assert.equal(repository.persistent, false)
+  repository.setBurnEnabled(false)
   repository.setQuality('low')
   repository.setRenderScaleCap(1)
   repository.setAnimationSpeed(0.5)
   repository.setReducedMotionOverride(true)
 
   assert.deepEqual(repository.load(), {
+    burnEnabled: false,
     quality: 'low',
     renderScaleCap: 1,
     animationSpeed: 0.5,
@@ -156,6 +164,7 @@ test('invalid updates are rejected atomically', () => {
   const repository = createSettingsRepository({ storage })
 
   for (const [method, value] of [
+    ['setBurnEnabled', 'off'],
     ['setQuality', 'ultra'],
     ['setRenderScaleCap', 3],
     ['setAnimationSpeed', 0],
