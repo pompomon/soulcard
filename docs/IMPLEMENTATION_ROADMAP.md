@@ -1241,6 +1241,36 @@ reviewable PR.
 - **Acceptance:** Disposal/context restore from state, accessible status region/semantic
   controls, targets/focus baseline, and measured hypotheses are documented.
 - **Checks/risks:** Device/browser matrix below; do not claim full keyboard support.
+- **Acceptance evidence:** `src/presentation/battlefield.js` prevents default WebGL
+  context loss, suspends rendering and pointer/deck input, cancels active drags,
+  publishes lost/restoring/ready/failed state, and reconstructs a fresh renderer,
+  texture cache, visuals, and listeners from the retained stable snapshot and committed
+  event. Repeated recovery does not invoke domain actions, consume RNG, or alter saves.
+  `src/ui/hud.js` combines domain-pause and graphics-unavailable reasons, gates only
+  Reveal/deck input while retaining safe Pause/save/menu recovery, and reports context
+  state through the existing polite atomic Game status region. Main, Settings, Game,
+  overlays, and update UI retain named semantic controls and labelled/status semantics;
+  the canvas stays presentational and Reveal/Continue stays canonical. Focused unit and
+  integration tests cover recovery, failure, replacement/cleanup, combined pause
+  reasons, accessibility semantics/styles, and exact RNG/zone/outcome/fingerprint/save/
+  continuation equivalence. `tests/browser/milestone-18-profile.html` records seeded
+  frame, draw-call, renderer/cache, texture-generation, context-recovery, remount, and
+  supported-heap observations outside the production bundle. Measured hypotheses,
+  raw summaries, methods, and explicit unavailable/unsupported matrix rows are recorded
+  in [`MILESTONE_18_QA.md`](./MILESTONE_18_QA.md); no unmeasured optimization or release
+  threshold was added.
+- **Validation:** All 313 unit/integration tests and the production build pass on Node
+  24.21.0. A text-only headless Chromium 152 check at the production `/soulcard/`
+  relative path retained one presentational canvas, disabled Reveal but not Pause during
+  real `WEBGL_lose_context` interruption, replaced the canvas and restored input/state,
+  met computed 44×44 target and visible focus requirements across the established four
+  layouts, launched/resumed offline, reported zero installability errors, and entered
+  standalone display mode with no relevant console errors. Seed 0 exercised a tie and
+  source-to-personal transition; seed 32 ended in the retained terminal draw. Firefox
+  155 was available but its headless host reported exhausted WebGL driver options;
+  Safari and required physical iOS, Android, tablet, pen, and representative
+  low/mid/high devices were unavailable. Milestone 18 therefore remains open; no
+  screenshots were produced.
 
 ### 19. MVP release gate and definition of done
 - **Goal/files:** Add release checklist/reproducibility report; depends on 1–18.
