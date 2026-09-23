@@ -54,6 +54,7 @@ test('settled clash events use the canonical versioned shape and detached immuta
     stateFingerprint: SETTLED_INPUT.stateFingerprint,
     pendingPresentation: 'settlement-v1',
   })
+
   assert.equal(Object.hasOwn(event, 'runId'), false)
   assert.ok(allObjects(event).every(Object.isFrozen))
   assert.equal(validateCommittedEvent(event), event)
@@ -65,6 +66,56 @@ test('settled clash events use the canonical versioned shape and detached immuta
   assert.deepEqual(event.reveals, SETTLED_INPUT.reveals)
   assert.deepEqual(event.transfers, SETTLED_INPUT.transfers)
   assert.deepEqual(event.burned, SETTLED_INPUT.burned)
+})
+
+test('settled event validation applies the 2-over-Ace comparison exception', () => {
+  const input = {
+    runId: 'two-over-ace',
+    turn: 1,
+    stage: 'source',
+    winner: 'player',
+    reveals: [
+      { cardId: 'c-2S', suppliedBy: 'player', from: 'sourceDeck' },
+      { cardId: 'c-AH', suppliedBy: 'opponent', from: 'sourceDeck' },
+    ],
+    transfers: [{ cardId: 'c-2S', to: 'player.wonPile' }],
+    burned: ['c-AH'],
+    stateFingerprint: 'two-over-ace-state',
+  }
+
+  assert.doesNotThrow(() => createClashSettledEvent(input))
+  assert.throws(() => createClashSettledEvent({
+    ...clone(input),
+    winner: 'opponent',
+    transfers: [{ cardId: 'c-AH', to: 'opponent.wonPile' }],
+    burned: ['c-2S'],
+  }), /decisive reveal round/)
+})
+
+test('legacy settled events retain value-order validation for Ace over 2', () => {
+  for (const eventVersion of [2, 3]) {
+    const reveals = [
+      { cardId: 'c-2S', suppliedBy: 'player', from: 'sourceDeck' },
+      { cardId: 'c-AH', suppliedBy: 'opponent', from: 'sourceDeck' },
+    ]
+    const event = {
+      eventVersion,
+      id: `legacy-${eventVersion}:clash-1`,
+      type: 'clashSettled',
+      turn: 1,
+      stage: 'source',
+      winner: 'opponent',
+      reveals: eventVersion === 2
+        ? reveals.map(({ cardId, suppliedBy }) => ({ cardId, suppliedBy }))
+        : reveals,
+      transfers: [{ cardId: 'c-AH', to: 'opponent.wonPile' }],
+      burned: ['c-2S'],
+      stateFingerprint: 'legacy-two-over-ace-state',
+      pendingPresentation: 'settlement-v1',
+    }
+
+    assert.equal(validateCommittedEvent(event), event)
+  }
 })
 
 test('terminal draws use a distinct event without settlement fields', () => {

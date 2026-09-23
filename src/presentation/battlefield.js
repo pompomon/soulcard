@@ -23,6 +23,7 @@ const MINIMUM_DECK_TARGET_SIZE = 44
 const DECK_DRAG_LIFT = 0.35
 const DEFAULT_CARD_COLOR = 0xffffff
 const ACTIVE_DECK_COLOR = 0xd9fbff
+const PILE_SCALE_MODE = 'pile'
 const TEXTURE_SCALE_BY_QUALITY = Object.freeze({
   low: 1,
   balanced: 2,
@@ -103,6 +104,16 @@ function actionableDeckZone(match) {
   }
   if (match.zones.player.drawPile.length > 0) return 'playerDrawPile'
   if (match.zones.player.wonPile.length > 0) return 'playerWonPile'
+  return null
+}
+
+function decisiveWinningCardId(event) {
+  if (event.type !== 'clashSettled') return null
+  for (let index = event.reveals.length - 1; index >= 0; index -= 1) {
+    if (event.reveals[index].suppliedBy === event.winner) {
+      return event.reveals[index].cardId
+    }
+  }
   return null
 }
 
@@ -264,6 +275,7 @@ export function mountBattlefield(host, {
   let currentLayout = null
   let currentMatch = null
   let currentEvent = null
+  let currentDecisiveCardId = null
   let paused = false
   let disposed = false
   let previousTime = null
@@ -300,6 +312,9 @@ export function mountBattlefield(host, {
 
   function visualScale(visual) {
     if (currentLayout === null) return 1
+    if (visual.scaleMode === PILE_SCALE_MODE) {
+      return currentLayout.visuals.secondaryPileScale
+    }
     if (visual.transient) return currentLayout.visuals.revealScale
     if (visual.zoneId === activeDeckZoneId) {
       return currentLayout.visuals.activeDeckScale
@@ -308,8 +323,10 @@ export function mountBattlefield(host, {
   }
 
   function applyVisualAppearance(visual) {
-    const scale = visualScale(visual)
-    visual.mesh.scale.set(scale, scale, 1)
+    if (visual.tween === null || visual.tween.scale === null) {
+      const scale = visualScale(visual)
+      visual.mesh.scale.set(scale, scale, 1)
+    }
     visual.material.color.setHex(
       !visual.transient && visual.zoneId === activeDeckZoneId
         ? ACTIVE_DECK_COLOR
@@ -605,6 +622,7 @@ export function mountBattlefield(host, {
       mesh,
       material,
       lease,
+      scaleMode: null,
       tween: null,
     }
     applyVisualAppearance(visual)
@@ -689,7 +707,7 @@ export function mountBattlefield(host, {
     visual.mesh.position.set(position.x, position.y, position.z)
   }
 
-  function startTween(visual, zoneId, offset, durationMs) {
+  function startTween(visual, zoneId, offset, durationMs, scaleMode = null) {
     const target = zoneWorldPosition(zoneId, offset)
     visual.zoneId = zoneId
     visual.offset = offset
@@ -700,12 +718,24 @@ export function mountBattlefield(host, {
         z: visual.mesh.position.z,
       },
       to: target,
+      scale: scaleMode === null
+        ? null
+        : {
+            from: visual.mesh.scale.x,
+            to: currentLayout?.visuals.secondaryPileScale ?? 1,
+            mode: scaleMode,
+          },
       elapsedMs: 0,
       durationMs,
     }
     tweens.add(visual)
     if (durationMs === 0) {
       visual.mesh.position.set(target.x, target.y, target.z)
+      if (visual.tween.scale !== null) {
+        const { mode, to } = visual.tween.scale
+        visual.mesh.scale.set(to, to, 1)
+        visual.scaleMode = mode
+      }
       visual.tween = null
       tweens.delete(visual)
     }
@@ -726,11 +756,30 @@ export function mountBattlefield(host, {
         tween.from.y + (tween.to.y - tween.from.y) * eased,
         tween.from.z + (tween.to.z - tween.from.z) * eased,
       )
+      if (tween.scale !== null) {
+        const scale = tween.scale.from + (tween.scale.to - tween.scale.from) * eased
+        visual.mesh.scale.set(scale, scale, 1)
+      }
       if (progress >= 1) {
+        if (tween.scale !== null) visual.scaleMode = tween.scale.mode
         visual.tween = null
         tweens.delete(visual)
       }
     }
+  }
+
+  function rebaseTween(visual) {
+    const tween = visual.tween
+    if (tween === null) return null
+    tween.from = {
+      x: visual.mesh.position.x,
+      y: visual.mesh.position.y,
+      z: visual.mesh.position.z,
+    }
+    if (tween.scale !== null) tween.scale.from = visual.mesh.scale.x
+    tween.durationMs = Math.max(0, tween.durationMs - tween.elapsedMs)
+    tween.elapsedMs = 0
+    return tween
   }
 
   function transientOffset(step) {
@@ -797,10 +846,9 @@ export function mountBattlefield(host, {
   function rescaleTweens(previousSpeed, nextSpeed) {
     if (Object.is(previousSpeed, nextSpeed)) return
     for (const visual of tweens) {
-      const tween = visual.tween
+      const tween = rebaseTween(visual)
       if (tween === null) continue
-      const remaining = Math.max(0, tween.durationMs - tween.elapsedMs)
-      tween.durationMs = tween.elapsedMs + remaining * previousSpeed / nextSpeed
+      tween.durationMs *= previousSpeed / nextSpeed
     }
   }
 
@@ -939,7 +987,11 @@ export function mountBattlefield(host, {
       if (visual.tween === null) {
         placeTransient(visual)
       } else {
-        visual.tween.to = zoneWorldPosition(visual.zoneId, visual.offset)
+        const tween = rebaseTween(visual)
+        tween.to = zoneWorldPosition(visual.zoneId, visual.offset)
+        if (tween.scale !== null) {
+          tween.scale.to = currentLayout.visuals.secondaryPileScale
+        }
       }
     }
 
@@ -1006,6 +1058,7 @@ export function mountBattlefield(host, {
     clearCardVisuals()
     currentMatch = match
     currentEvent = null
+    currentDecisiveCardId = null
     renderSnapshotCards(match)
     publishPresentation(context.reason === 'skipped' ? 'skipped' : 'snapshot')
     renderCurrentFrame()
@@ -1025,6 +1078,7 @@ export function mountBattlefield(host, {
     clearCardVisuals()
     currentMatch = match
     currentEvent = event
+    currentDecisiveCardId = decisiveWinningCardId(event)
     renderSnapshotCards(match, new Set(event.reveals.map(({ cardId }) => cardId)))
     publishPresentation('prepared')
     renderCurrentFrame()
@@ -1084,6 +1138,9 @@ export function mountBattlefield(host, {
         destinationZone(step.to),
         Object.freeze({ x: 0, y: 0, z: 0.14 }),
         context.durationMs,
+        step.kind === 'transfer' && step.cardId === currentDecisiveCardId
+          ? PILE_SCALE_MODE
+          : null,
       )
       settledVisuals.add(visual)
       publishPresentation(step.kind, step.cardId)

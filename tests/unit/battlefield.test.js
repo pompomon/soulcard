@@ -244,6 +244,20 @@ function createSettings(overrides = {}) {
   }
 }
 
+function transitionAt(seed, turn) {
+  let match = createMatch({
+    runId: `battlefield-transition-${seed}`,
+    seed,
+    ruleset: BASELINE_RULESET,
+  })
+  while (match.status === 'active') {
+    const transition = revealOrContinue(match)
+    match = transition.match
+    if (transition.event.turn === turn) return transition
+  }
+  throw new Error(`Seed ${seed} ended before turn ${turn}`)
+}
+
 function createObserverHarness() {
   const instances = []
   class FakeResizeObserver {
@@ -506,6 +520,165 @@ test('battlefield renders committed snapshots and routes event cards through bou
   handle.teardown()
   assert.equal(textures.destroyCalls, 1)
   assert.ok(textures.leases.every(({ releaseCalls }) => releaseCalls === 1))
+})
+
+test('opponent winning card scales down while moving to its pile', () => {
+  const host = createHost(1024, 768)
+  const windowObject = createWindow({ width: 1024, height: 768 })
+  const observer = createObserverHarness()
+  const renderer = new FakeRenderer(host, {})
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => renderer,
+    textureCacheFactory: () => createTextureCacheHarness().cache,
+  })
+  const transition = transitionAt(0, 1)
+  const timeline = createEventTimeline(transition.event)
+  handle.beginEvent(transition.event, transition.match)
+  for (const step of timeline.filter(({ kind }) => kind === 'reveal')) {
+    handle.applyStep(step, { durationMs: 0 })
+  }
+
+  const burn = timeline.find(({ kind }) => kind === 'burn')
+  handle.applyStep(burn, { durationMs: 0 })
+  const burnedMesh = renderer.scene.getObjectByName(
+    `battlefield-card:${burn.cardId}:front`,
+  )
+  assert.equal(burnedMesh.scale.x, handle.layout.visuals.revealScale)
+
+  const winningStep = timeline.find(({ kind }) => kind === 'transfer')
+  handle.applyStep(winningStep, { durationMs: 100 })
+  const winningMesh = renderer.scene.getObjectByName(
+    `battlefield-card:${winningStep.cardId}:front`,
+  )
+  const start = winningMesh.position.clone()
+  const destination = handle.layout.zones.opponentWonPile
+  const revealScale = handle.layout.visuals.revealScale
+  const pileScale = handle.layout.visuals.secondaryPileScale
+  assert.equal(winningMesh.scale.x, revealScale)
+
+  renderer.animationLoop(0)
+  renderer.animationLoop(50)
+  assert.equal(winningMesh.scale.x, (revealScale + pileScale) / 2)
+  assert.ok(Math.abs(winningMesh.position.x - (start.x + destination.x) / 2) < 1e-12)
+  assert.ok(Math.abs(winningMesh.position.y - (start.y + destination.y) / 2) < 1e-12)
+
+  renderer.animationLoop(100)
+  assert.equal(winningMesh.scale.x, pileScale)
+  assert.equal(winningMesh.scale.y, pileScale)
+  assert.equal(winningMesh.position.x, destination.x)
+  assert.equal(winningMesh.position.y, destination.y)
+  assert.equal(winningMesh.position.z, destination.z + 0.14)
+
+  handle.teardown()
+})
+
+test('tied player win scales only its decisive card across speed and resize changes', () => {
+  const host = createHost(1024, 768)
+  const windowObject = createWindow({ width: 1024, height: 768 })
+  const observer = createObserverHarness()
+  const settings = createSettings({ animationSpeed: 1 })
+  const renderer = new FakeRenderer(host, {})
+  const handle = mountBattlefield(host, {
+    settingsController: settings,
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => renderer,
+    textureCacheFactory: () => createTextureCacheHarness().cache,
+  })
+  const transition = transitionAt(0, 26)
+  const timeline = createEventTimeline(transition.event)
+  handle.beginEvent(transition.event, transition.match)
+  for (const step of timeline.filter(({ kind }) => kind === 'reveal')) {
+    handle.applyStep(step, { durationMs: 0 })
+  }
+
+  const settlement = timeline.slice(transition.event.reveals.length)
+  const decisiveCardId = transition.event.reveals.at(-2).cardId
+  const decisiveIndex = settlement.findIndex(({ cardId }) => cardId === decisiveCardId)
+  assert.ok(decisiveIndex > 1)
+
+  handle.applyStep(settlement[0], { durationMs: 100 })
+  const nonDecisiveMesh = renderer.scene.getObjectByName(
+    `battlefield-card:${settlement[0].cardId}:front`,
+  )
+  renderer.animationLoop(0)
+  renderer.animationLoop(50)
+  assert.equal(nonDecisiveMesh.scale.x, handle.layout.visuals.revealScale)
+  renderer.animationLoop(100)
+
+  handle.applyStep(settlement[1], { durationMs: 100 })
+  const burnedMesh = renderer.scene.getObjectByName(
+    `battlefield-card:${settlement[1].cardId}:front`,
+  )
+  renderer.animationLoop(150)
+  assert.equal(burnedMesh.scale.x, handle.layout.visuals.revealScale)
+  renderer.animationLoop(200)
+
+  const decisiveStep = settlement[decisiveIndex]
+  handle.applyStep(decisiveStep, { durationMs: 200 })
+  const decisiveMesh = renderer.scene.getObjectByName(
+    `battlefield-card:${decisiveCardId}:front`,
+  )
+  renderer.animationLoop(250)
+  const scaleBeforeResize = decisiveMesh.scale.x
+  assert.ok(scaleBeforeResize < handle.layout.visuals.revealScale)
+  assert.ok(scaleBeforeResize > handle.layout.visuals.secondaryPileScale)
+
+  settings.emit({ animationSpeed: 2 })
+  host.width = 844
+  host.height = 390
+  observer.instances[0].callback()
+  windowObject.flushFrames()
+  assert.equal(handle.layout.mode, 'phone-landscape')
+  assert.equal(decisiveMesh.scale.x, scaleBeforeResize)
+
+  renderer.animationLoop(250)
+  assert.equal(decisiveMesh.scale.x, scaleBeforeResize)
+  renderer.animationLoop(251)
+  assert.ok(Math.abs(decisiveMesh.scale.x - scaleBeforeResize) < 0.01)
+  renderer.animationLoop(325)
+  assert.equal(decisiveMesh.scale.x, handle.layout.visuals.secondaryPileScale)
+  assert.equal(decisiveMesh.position.x, handle.layout.zones.playerWonPile.x)
+  assert.equal(decisiveMesh.position.y, handle.layout.zones.playerWonPile.y)
+
+  handle.teardown()
+})
+
+test('one-sided terminal winning card scales immediately for a zero-duration transfer', () => {
+  const host = createHost(1024, 768)
+  const windowObject = createWindow({ width: 1024, height: 768 })
+  const observer = createObserverHarness()
+  const renderer = new FakeRenderer(host, {})
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => renderer,
+    textureCacheFactory: () => createTextureCacheHarness().cache,
+  })
+  const transition = transitionAt(0, 44)
+  const timeline = createEventTimeline(transition.event)
+  handle.beginEvent(transition.event, transition.match)
+  const decisiveCardId = transition.event.reveals.at(-1).cardId
+  const decisiveIndex = timeline.findIndex(
+    ({ kind, cardId }) => kind === 'transfer' && cardId === decisiveCardId,
+  )
+  for (const step of timeline.slice(0, decisiveIndex)) {
+    handle.applyStep(step, { durationMs: 0 })
+  }
+  handle.applyStep(timeline[decisiveIndex], { durationMs: 0 })
+
+  const decisiveMesh = renderer.scene.getObjectByName(
+    `battlefield-card:${decisiveCardId}:front`,
+  )
+  assert.equal(transition.event.reveals.length % 2, 1)
+  assert.equal(decisiveMesh.scale.x, handle.layout.visuals.secondaryPileScale)
+  assert.equal(decisiveMesh.scale.y, handle.layout.visuals.secondaryPileScale)
+  assert.equal(decisiveMesh.position.x, handle.layout.zones.playerWonPile.x)
+  assert.equal(decisiveMesh.position.y, handle.layout.zones.playerWonPile.y)
+
+  handle.teardown()
 })
 
 test('battlefield scales prominent cards and hit tests only the enabled active deck', () => {
@@ -834,7 +1007,7 @@ test('battlefield keeps a bounded terminal draw contest and validates event adap
   })
   let match = createMatch({
     runId: 'battlefield-draw',
-    seed: 32,
+    seed: 492,
     ruleset: BASELINE_RULESET,
   })
   while (match.status === 'active') {

@@ -1,19 +1,19 @@
 # Roguelike adventure-run plan
 
 This is a post-MVP implementation plan. It does not implement or mark complete any
-gameplay milestone. It refines roadmap milestone 20 into five cumulative, playable
-sub-milestones. Roadmap milestone 20's first-class full keyboard support must be
-complete before sub-milestone 20.1 begins.
+gameplay milestone. It refines roadmap milestone 21 into five cumulative, playable
+sub-milestones. Roadmap milestone 21's first-class full keyboard support must be
+complete before sub-milestone 21.1 begins.
 
 ## Progress checklist
 
 | Status | Milestone | Depends on | Playable outcome |
 | --- | --- | --- | --- |
-| [ ] | 20.1 Campaign Duel | 19 + milestone 20 keyboard support | Three retryable encounters with health, a persistent deck, and Hold |
-| [ ] | 20.2 Reward Drafts and Hold Upgrades | 20.1 | Build-changing rewards and the opponent-reveal Hold boon |
-| [ ] | 20.3 Branching Expedition | 20.2 | A route with combat, shops, and events |
-| [ ] | 20.4 Encounter Archetypes and Elite Ladder | 20.3 | Elites, rest nodes, and a boss campaign |
-| [ ] | 20.5 Seeded Procedural Campaign | 20.4 | A replayable generated roguelike campaign |
+| [ ] | 21.1 Campaign Duel | 20 + milestone 21 keyboard support | Three retryable encounters with health, a persistent deck, and Hold |
+| [ ] | 21.2 Reward Drafts and Hold Upgrades | 21.1 | Build-changing rewards and the opponent-reveal Hold boon |
+| [ ] | 21.3 Branching Expedition | 21.2 | A route with combat, shops, and events |
+| [ ] | 21.4 Encounter Archetypes and Elite Ladder | 21.3 | Elites, rest nodes, and a boss campaign |
+| [ ] | 21.5 Seeded Procedural Campaign | 21.4 | A replayable generated roguelike campaign |
 
 ## Shared decisions and invariants
 
@@ -57,7 +57,7 @@ complete before sub-milestone 20.1 begins.
   authoritative domain concerns. Three.js and HUD presentation consume committed
   snapshots/events only. Every new stable choice must be serializable and deterministic.
 
-## 20.1 Campaign Duel
+## 21.1 Campaign Duel
 
 **Goal:** establish the campaign/run model while delivering a compact playable
 three-encounter expedition.
@@ -94,7 +94,7 @@ three-encounter expedition.
   replay. Browser checks confirm the canvas, semantic choices, and no relevant console
   errors.
 
-## 20.2 Reward Drafts and Hold Upgrades
+## 21.2 Reward Drafts and Hold Upgrades
 
 **Goal:** make wins create meaningful deterministic deckbuilding choices.
 
@@ -120,7 +120,7 @@ three-encounter expedition.
   and replacement effects, modifier lifetime, replay, save/resume, and event
   fingerprints.
 
-## 20.3 Branching Expedition
+## 21.3 Branching Expedition
 
 **Goal:** turn the compact expedition into a route-based roguelike while retaining the
 same encounter and Hold rules.
@@ -143,7 +143,7 @@ same encounter and Hold rules.
 - Tests cover alternate paths, all node decisions, retries, exhausted shops, save/resume,
   and refusal of stale or duplicate decisions.
 
-## 20.4 Encounter Archetypes and Elite Ladder
+## 21.4 Encounter Archetypes and Elite Ladder
 
 **Goal:** provide strategic route risk through authored enemy identity and a full
 campaign finale.
@@ -167,7 +167,7 @@ campaign finale.
 - Tests cover each archetype, elite/boss rewards, modifier stacks and expiry, health
   recovery, retry behavior, deterministic full-campaign replay, and save/resume.
 
-## 20.5 Seeded Procedural Campaign
+## 21.5 Seeded Procedural Campaign
 
 **Goal:** create the full repeatable roguelike mode from deterministic generated content.
 

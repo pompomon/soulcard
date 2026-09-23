@@ -86,7 +86,7 @@ evidence appropriate to the affected subsystem. Examples include repeatable prof
 frame traces, renderer resource counts, heap observations, texture-generation timing,
 or bundle-size comparisons.
 
-Do not invent FPS, memory, bundle-size, or timing budgets. Until milestone 18 documents
+Do not invent FPS, memory, bundle-size, or timing budgets. Until milestone 19 documents
 measured performance hypotheses, assess boundedness, regressions, and evidence rather than
 arbitrary numbers.
 
