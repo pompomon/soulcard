@@ -241,13 +241,16 @@ test('activation removes only obsolete Soulcard caches before claiming clients',
   assert.equal(harness.claimCalls, 1)
 })
 
-test('activation preserves the latest shell for a newer viable worker', async () => {
-  const harness = await createHarness({ registration: { installing: {} } })
+test('activation preserves shells for newer viable workers', async () => {
+  const harness = await createHarness({
+    registration: { installing: {}, waiting: {} },
+  })
   for (const name of [
     'soulcard-shell-obsolete',
     'soulcard-shell-dev',
     'soulcard-runtime-dev',
-    'soulcard-shell-next',
+    'soulcard-shell-waiting',
+    'soulcard-shell-installing',
   ]) {
     harness.cacheStorage.caches.set(name, new FakeCache(SCOPE))
   }
@@ -260,7 +263,8 @@ test('activation preserves the latest shell for a newer viable worker', async ()
       'soulcard-active-dev',
       'soulcard-runtime-dev',
       'soulcard-shell-dev',
-      'soulcard-shell-next',
+      'soulcard-shell-installing',
+      'soulcard-shell-waiting',
     ],
   )
 })
