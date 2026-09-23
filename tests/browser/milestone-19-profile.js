@@ -79,7 +79,7 @@ function createProfileMount(host, settingsController, onContextStatus) {
 
 function profileMatch(handle, seed) {
   let match = createMatch({
-    runId: `milestone-18-profile-${seed}`,
+    runId: `milestone-19-profile-${seed}`,
     seed,
     ruleset: BASELINE_RULESET,
   })
@@ -244,7 +244,7 @@ async function run() {
     const startedAt = performance.now()
     handle.resize()
     handle.syncSnapshot(createMatch({
-      runId: `milestone-18-viewport-${viewport.name}`,
+      runId: `milestone-19-viewport-${viewport.name}`,
       seed: 0,
       ruleset: BASELINE_RULESET,
     }))
@@ -293,7 +293,7 @@ async function run() {
       },
     )
     handle.syncSnapshot(createMatch({
-      runId: `milestone-18-remount-${index}`,
+      runId: `milestone-19-remount-${index}`,
       seed: index,
       ruleset: BASELINE_RULESET,
     }))
@@ -349,10 +349,10 @@ async function run() {
     heap: heapObservation(),
   })
 
-  globalThis.__SOULCARD_MILESTONE_18_REPORT__ = report
+  globalThis.__SOULCARD_MILESTONE_19_REPORT__ = report
   output.dataset.status = 'complete'
   output.textContent = JSON.stringify(report, null, 2)
-  console.info(`SOULCARD_MILESTONE_18 ${JSON.stringify(report)}`)
+  console.info(`SOULCARD_MILESTONE_19 ${JSON.stringify(report)}`)
 }
 
 run().catch((error) => {

@@ -1300,11 +1300,11 @@ reviewable PR.
   the canvas stays presentational and Reveal/Continue stays canonical. Focused unit and
   integration tests cover recovery, failure, replacement/cleanup, combined pause
   reasons, accessibility semantics/styles, and exact RNG/zone/outcome/fingerprint/save/
-  continuation equivalence. `tests/browser/milestone-18-profile.html` records seeded
+  continuation equivalence. `tests/browser/milestone-19-profile.html` records seeded
   frame, draw-call, renderer/cache, texture-generation, context-recovery, remount, and
   supported-heap observations outside the production bundle. Measured hypotheses,
   raw summaries, methods, and explicit unavailable/unsupported matrix rows are recorded
-  in [`MILESTONE_18_QA.md`](./MILESTONE_18_QA.md); no unmeasured optimization or release
+  in [`MILESTONE_19_QA.md`](./MILESTONE_19_QA.md); no unmeasured optimization or release
   threshold was added.
 - **Validation:** All 313 unit/integration tests and the production build pass on Node
   24.21.0. A text-only headless Chromium 152 check at the production `/soulcard/`
@@ -1316,7 +1316,7 @@ reviewable PR.
   source-to-personal transition; seed 32 ended in the retained terminal draw. Firefox
   155 was available but its headless host reported exhausted WebGL driver options;
   Safari and required physical iOS, Android, tablet, pen, and representative
-  low/mid/high devices were unavailable. Milestone 18 therefore remains open; no
+  low/mid/high devices were unavailable. Milestone 19 therefore remains open; no
   screenshots were produced.
 
 ### 20. MVP release gate and definition of done

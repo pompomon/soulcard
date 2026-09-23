@@ -155,9 +155,9 @@ and a production build, independently of the Copilot agent session. CI also supp
 manual runs via Actions → CI → Run workflow once the workflow is on the default
 branch. Deployment runs tests before building. There is no configured lint command.
 
-The dependency-free milestone 18 browser profiler is available while the development
+The dependency-free milestone 19 browser profiler is available while the development
 server is running at
-`/tests/browser/milestone-18-profile.html`. It emits a JSON report in the page and to
+`/tests/browser/milestone-19-profile.html`. It emits a JSON report in the page and to
 the console for frame intervals, renderer/resource bounds, texture generation, seeded
 full matches, remounts, heap support, and repeated context recovery. It is not a
 production entry point or service-worker asset.

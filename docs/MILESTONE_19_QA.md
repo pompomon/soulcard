@@ -1,10 +1,10 @@
-# Milestone 18 performance, accessibility, and device QA
+# Milestone 19 performance, accessibility, and device QA
 
 ## Status and method
 
 **Status:** Incomplete. Automated Chromium evidence passes, but the required physical
 iOS Safari, Android Chrome, tablet/touch, pen, Safari, supported-Firefox-WebGL, and
-representative low/mid/high-device rows were unavailable. Milestone 18 therefore
+representative low/mid/high-device rows were unavailable. Milestone 19 therefore
 remains unchecked.
 
 | Item | Value |
@@ -20,7 +20,7 @@ remains unchecked.
 | Screenshots | None produced |
 
 The dependency-free fixture at
-`tests/browser/milestone-18-profile.html` ran from the Vite development server. It
+`tests/browser/milestone-19-profile.html` ran from the Vite development server. It
 used deterministic seeds 0 and 32, four logical viewport sizes, low/high quality,
 normal/reduced motion, texture scales 1 and 3, two real
 `WEBGL_lose_context` cycles, and three battlefield remounts. Separate text-only
@@ -220,9 +220,9 @@ physical-device row.
 | Deferred update at a stable boundary | Pass (automated) | Existing PWA update/save-boundary regressions passed in the full suite |
 | WebGL interruption and restoration | Pass (automated Chromium) | Idle/active integration equivalence, two fixture cycles, and production canvas replacement |
 
-## Remaining milestone 18 sign-off
+## Remaining milestone 19 sign-off
 
-Milestone 18 must stay open until evidence is recorded for:
+Milestone 19 must stay open until evidence is recorded for:
 
 - physical iOS Safari phone portrait and landscape with touch;
 - physical Android Chrome phone portrait and landscape with touch;
@@ -231,4 +231,4 @@ Milestone 18 must stay open until evidence is recorded for:
 - representative low-, mid-, and high-capability device responsiveness; and
 - browser heap/resource trends over repeated complete runs on supported hardware.
 
-Milestone 19 should repeat the final matrix against the release-candidate revision.
+Milestone 20 should repeat the final matrix against the release-candidate revision.
