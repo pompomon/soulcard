@@ -29,6 +29,7 @@ class FakeCanvas {
     this.listeners = new Map()
     this.ownerDocument = null
     this.removeCalls = 0
+    this.capturedPointers = new Set()
   }
 
   setAttribute(name, value) {
@@ -43,6 +44,18 @@ class FakeCanvas {
 
   removeEventListener(type, listener) {
     this.listeners.get(type)?.delete(listener)
+  }
+
+  setPointerCapture(pointerId) {
+    this.capturedPointers.add(pointerId)
+  }
+
+  hasPointerCapture(pointerId) {
+    return this.capturedPointers.has(pointerId)
+  }
+
+  releasePointerCapture(pointerId) {
+    this.capturedPointers.delete(pointerId)
   }
 
   dispatch(type, values = {}) {
@@ -121,6 +134,16 @@ function clientPointFor(mesh, renderer, host) {
   renderer.scene.updateMatrixWorld(true)
   renderer.camera.updateMatrixWorld(true)
   const point = mesh.getWorldPosition(new THREE.Vector3()).project(renderer.camera)
+  return {
+    clientX: (point.x + 1) / 2 * host.width,
+    clientY: (1 - point.y) / 2 * host.height,
+  }
+}
+
+function clientPointForPosition(position, renderer, host) {
+  renderer.scene.updateMatrixWorld(true)
+  renderer.camera.updateMatrixWorld(true)
+  const point = new THREE.Vector3(position.x, position.y, position.z).project(renderer.camera)
   return {
     clientX: (point.x + 1) / 2 * host.width,
     clientY: (1 - point.y) / 2 * host.height,
@@ -653,6 +676,96 @@ test('active deck hit testing preserves a 44px target at minimum orientations', 
     assert.equal(activations, 2)
     handle.teardown()
   }
+})
+
+test('battlefield drags only the active top card to the player reveal target and snaps back', () => {
+  const host = createHost(768, 1024)
+  const windowObject = createWindow({ width: 768, height: 1024 })
+  const observer = createObserverHarness()
+  const renderer = new FakeRenderer(host, {})
+  let activations = 0
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => renderer,
+    textureCacheFactory: () => createTextureCacheHarness().cache,
+    onDeckActivate() {
+      activations += 1
+    },
+  })
+  windowObject.flushFrames()
+  handle.setDeckInputState({ enabled: true, busy: false })
+  const canvas = renderer.domElement
+  let pointerId = 1
+
+  const drag = (mesh, dropPoint, expectedActivations) => {
+    const start = clientPointFor(mesh, renderer, host)
+    const originalParent = mesh.parent
+    const originalPosition = mesh.position.clone()
+    canvas.dispatch('pointerdown', { ...start, pointerId })
+    canvas.dispatch('pointermove', { ...dropPoint, pointerId })
+    assert.equal(mesh.parent, renderer.scene)
+    assert.equal(host.dataset.deckDragging, 'true')
+    assert.equal(canvas.dataset.deckDragging, 'true')
+    canvas.dispatch('pointerup', { ...dropPoint, pointerId })
+    canvas.dispatch('click', { ...dropPoint, detail: 1 })
+    assert.equal(mesh.parent, originalParent)
+    assert.deepEqual(mesh.position.toArray(), originalPosition.toArray())
+    assert.equal(host.dataset.deckDragging, 'false')
+    assert.equal(canvas.dataset.deckDragging, 'false')
+    assert.equal(activations, expectedActivations)
+    pointerId += 1
+  }
+
+  let match = createMatch({
+    runId: 'battlefield-deck-drag',
+    seed: 0,
+    ruleset: BASELINE_RULESET,
+  })
+  handle.syncSnapshot(match)
+  let target = clientPointForPosition(handle.layout.zones.playerReveal, renderer, host)
+  let active = renderer.scene.getObjectByName(
+    `battlefield-card:${match.zones.sourceDeck[0]}:back`,
+  )
+  drag(active, target, 1)
+
+  while (match.stage === 'source') match = revealOrContinue(match).match
+  handle.syncSnapshot(match)
+  target = clientPointForPosition(handle.layout.zones.playerReveal, renderer, host)
+  active = renderer.scene.getObjectByName(
+    `battlefield-card:${match.zones.player.drawPile[0]}:back`,
+  )
+  drag(active, target, 2)
+
+  while (
+    match.status === 'active'
+    && (match.zones.player.drawPile.length !== 0 || match.zones.player.wonPile.length === 0)
+  ) {
+    match = revealOrContinue(match).match
+  }
+  assert.equal(match.status, 'active')
+  handle.syncSnapshot(match)
+  active = renderer.scene.getObjectByName(
+    `battlefield-card:${match.zones.player.wonPile.at(-1)}:back`,
+  )
+  drag(active, { clientX: host.width - 5, clientY: 5 }, 2)
+
+  const start = clientPointFor(active, renderer, host)
+  const originalParent = active.parent
+  const originalPosition = active.position.clone()
+  canvas.dispatch('pointerdown', { ...start, pointerId })
+  canvas.dispatch('pointermove', { clientX: start.clientX + 40, clientY: start.clientY, pointerId })
+  canvas.dispatch('pointercancel', {
+    clientX: start.clientX + 40,
+    clientY: start.clientY,
+    pointerId,
+  })
+  assert.equal(active.parent, originalParent)
+  assert.deepEqual(active.position.toArray(), originalPosition.toArray())
+  assert.equal(activations, 2)
+
+  handle.teardown()
+  assert.ok([...canvas.listeners.values()].every((listeners) => listeners.size === 0))
 })
 
 test('source-to-personal events route each reveal from its committed origin', () => {

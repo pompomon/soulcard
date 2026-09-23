@@ -20,6 +20,7 @@ const MAX_CONTEST_CARDS = 4
 const TEXTURE_CACHE_ENTRIES = 24
 const LEGACY_REVEAL_ORIGIN_ZONE = 'contestedPile'
 const MINIMUM_DECK_TARGET_SIZE = 44
+const DECK_DRAG_LIFT = 0.35
 const DEFAULT_CARD_COLOR = 0xffffff
 const ACTIVE_DECK_COLOR = 0xd9fbff
 const TEXTURE_SCALE_BY_QUALITY = Object.freeze({
@@ -243,6 +244,12 @@ export function mountBattlefield(host, {
   const deckCenter = new THREE.Vector3()
   const deckRightEdge = new THREE.Vector3()
   const deckTopEdge = new THREE.Vector3()
+  const dropCenter = new THREE.Vector3()
+  const dropRightEdge = new THREE.Vector3()
+  const dropTopEdge = new THREE.Vector3()
+  const deckDragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1))
+  const deckDragPoint = new THREE.Vector3()
+  const deckWorldPosition = new THREE.Vector3()
 
   let currentSettings = settingsController?.getSnapshot() ?? FALLBACK_SETTINGS
   let renderer = null
@@ -251,6 +258,7 @@ export function mountBattlefield(host, {
   let deckInputBusy = false
   let activeDeckZoneId = null
   let activeDeckVisual = null
+  let deckDrag = null
   let textureCache = null
   let currentLayout = null
   let currentMatch = null
@@ -286,6 +294,7 @@ export function mountBattlefield(host, {
     host.dataset.activeDeckZone = activeDeckZoneId ?? ''
     host.dataset.deckInputEnabled = String(deckInputEnabled)
     host.dataset.deckInputBusy = String(deckInputBusy)
+    host.dataset.deckDragging = String(deckDrag !== null)
   }
 
   function visualScale(visual) {
@@ -329,6 +338,7 @@ export function mountBattlefield(host, {
     ) {
       return false
     }
+
     const bounds = canvas.getBoundingClientRect()
     if (
       !Number.isFinite(bounds.width)
@@ -367,6 +377,136 @@ export function mountBattlefield(host, {
       Math.abs(event.clientX - centerX) <= halfWidth
       && Math.abs(event.clientY - centerY) <= halfHeight
     )
+  }
+
+  function hitTestPlayerReveal(event) {
+    const canvas = renderer?.domElement
+    const target = currentLayout?.zones.playerReveal
+    if (
+      deckDrag === null
+      || target === null
+      || target === undefined
+      || canvas === null
+      || canvas === undefined
+      || !Number.isFinite(event.clientX)
+      || !Number.isFinite(event.clientY)
+      || typeof canvas.getBoundingClientRect !== 'function'
+    ) {
+      return false
+    }
+    const bounds = canvas.getBoundingClientRect()
+    if (
+      !Number.isFinite(bounds.width)
+      || bounds.width <= 0
+      || !Number.isFinite(bounds.height)
+      || bounds.height <= 0
+    ) {
+      return false
+    }
+    camera.updateMatrixWorld(true)
+    const scale = currentLayout.visuals.revealScale
+    dropCenter.set(target.x, target.y, target.z).project(camera)
+    dropRightEdge.set(target.x + 0.525 * scale, target.y, target.z).project(camera)
+    dropTopEdge.set(target.x, target.y + 0.725 * scale, target.z).project(camera)
+    const centerX = bounds.left + (dropCenter.x + 1) / 2 * bounds.width
+    const centerY = bounds.top + (1 - dropCenter.y) / 2 * bounds.height
+    const halfWidth = Math.max(
+      Math.abs(dropRightEdge.x - dropCenter.x) * bounds.width / 2,
+      MINIMUM_DECK_TARGET_SIZE / 2,
+    )
+    const halfHeight = Math.max(
+      Math.abs(dropTopEdge.y - dropCenter.y) * bounds.height / 2,
+      MINIMUM_DECK_TARGET_SIZE / 2,
+    )
+    return (
+      Math.abs(event.clientX - centerX) <= halfWidth
+      && Math.abs(event.clientY - centerY) <= halfHeight
+    )
+  }
+
+  function pointOnDeckDragPlane(event, z) {
+    const canvas = renderer?.domElement
+    if (
+      canvas === null
+      || canvas === undefined
+      || !Number.isFinite(event.clientX)
+      || !Number.isFinite(event.clientY)
+      || typeof canvas.getBoundingClientRect !== 'function'
+    ) {
+      return null
+    }
+    const bounds = canvas.getBoundingClientRect()
+    if (
+      !Number.isFinite(bounds.width)
+      || bounds.width <= 0
+      || !Number.isFinite(bounds.height)
+      || bounds.height <= 0
+    ) {
+      return null
+    }
+    deckPointer.set(
+      (event.clientX - bounds.left) / bounds.width * 2 - 1,
+      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+    )
+    camera.updateMatrixWorld(true)
+    deckRaycaster.setFromCamera(deckPointer, camera)
+    deckDragPlane.constant = -z
+    return deckRaycaster.ray.intersectPlane(deckDragPlane, deckDragPoint)
+  }
+
+  function setDeckDragging(dragging) {
+    if (renderer?.domElement?.dataset) {
+      renderer.domElement.dataset.deckDragging = String(dragging)
+    }
+    publishDeckInput()
+  }
+
+  function beginDeckDrag(event, gesture) {
+    const visual = activeDeckVisual
+    if (visual === null || visual.mesh.parent === null) return
+    scene.updateMatrixWorld(true)
+    const originalParent = visual.mesh.parent
+    const originalPosition = visual.mesh.position.clone()
+    visual.mesh.getWorldPosition(deckWorldPosition)
+    const planeZ = deckWorldPosition.z + DECK_DRAG_LIFT
+    scene.attach(visual.mesh)
+    visual.mesh.position.z = planeZ
+    const startPoint = pointOnDeckDragPlane({
+      clientX: gesture.startX,
+      clientY: gesture.startY,
+    }, planeZ)
+    deckDrag = {
+      visual,
+      originalParent,
+      originalPosition,
+      planeZ,
+      grabOffsetX: startPoint === null ? 0 : visual.mesh.position.x - startPoint.x,
+      grabOffsetY: startPoint === null ? 0 : visual.mesh.position.y - startPoint.y,
+    }
+    setDeckDragging(true)
+    renderCurrentFrame()
+  }
+
+  function moveDeckDrag(event) {
+    if (deckDrag === null) return
+    const point = pointOnDeckDragPlane(event, deckDrag.planeZ)
+    if (point === null) return
+    deckDrag.visual.mesh.position.set(
+      point.x + deckDrag.grabOffsetX,
+      point.y + deckDrag.grabOffsetY,
+      deckDrag.planeZ,
+    )
+    renderCurrentFrame()
+  }
+
+  function finishDeckDrag() {
+    const currentDrag = deckDrag
+    if (currentDrag === null) return
+    deckDrag = null
+    currentDrag.originalParent.attach(currentDrag.visual.mesh)
+    currentDrag.visual.mesh.position.copy(currentDrag.originalPosition)
+    setDeckDragging(false)
+    renderCurrentFrame()
   }
 
   function ensureTextureCache() {
@@ -419,6 +559,8 @@ export function mountBattlefield(host, {
   }
 
   function clearCardVisuals() {
+    deckInput?.cancel?.()
+    finishDeckDrag()
     for (const visual of staticVisuals) releaseVisual(visual)
     staticVisuals.clear()
     for (const visual of transientVisuals.values()) releaseVisual(visual)
@@ -736,6 +878,13 @@ export function mountBattlefield(host, {
           target: nextRenderer.domElement,
           onActivate: onDeckActivate,
           hitTest: hitTestActiveDeck,
+          drag: {
+            dropTest: hitTestPlayerReveal,
+            onStart: beginDeckDrag,
+            onMove: moveDeckDrag,
+            onEnd: finishDeckDrag,
+            onCancel: finishDeckDrag,
+          },
           enabled: deckInputEnabled,
           busy: deckInputBusy,
         })
@@ -751,6 +900,8 @@ export function mountBattlefield(host, {
 
   function resize() {
     if (disposed || !renderer) return null
+    deckInput?.cancel?.()
+    finishDeckDrag()
     const { width, height } = getMeasuredSize(host, windowObject)
     const layout = createBattlefieldLayout({
       width,

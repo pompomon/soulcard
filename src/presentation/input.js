@@ -1,4 +1,5 @@
 const POINTER_TYPES = new Set(['mouse', 'touch', 'pen'])
+const DEFAULT_DRAG_THRESHOLD = 8
 
 function assertTarget(target) {
   if (
@@ -26,6 +27,33 @@ function isPrimaryPointer(event) {
   )
 }
 
+function assertDragOptions(drag) {
+  if (drag === undefined) return null
+  if (drag === null || typeof drag !== 'object' || Array.isArray(drag)) {
+    throw new TypeError('drag must be an object')
+  }
+  if (typeof drag.dropTest !== 'function') {
+    throw new TypeError('drag.dropTest must be a function')
+  }
+  for (const name of ['onStart', 'onMove', 'onEnd', 'onCancel']) {
+    if (drag[name] !== undefined && typeof drag[name] !== 'function') {
+      throw new TypeError(`drag.${name} must be a function`)
+    }
+  }
+  const threshold = drag.threshold ?? DEFAULT_DRAG_THRESHOLD
+  if (!Number.isFinite(threshold) || threshold < 0) {
+    throw new TypeError('drag.threshold must be a nonnegative finite number')
+  }
+  return Object.freeze({
+    threshold,
+    dropTest: drag.dropTest,
+    onStart: drag.onStart,
+    onMove: drag.onMove,
+    onEnd: drag.onEnd,
+    onCancel: drag.onCancel,
+  })
+}
+
 function isPointerInside(target, event) {
   if (
     !Number.isFinite(event.clientX)
@@ -47,6 +75,7 @@ export function createInputController({
   target,
   onActivate,
   hitTest,
+  drag,
   enabled = true,
   busy = false,
 } = {}) {
@@ -59,12 +88,14 @@ export function createInputController({
   }
   assertBoolean(enabled, 'enabled')
   assertBoolean(busy, 'busy')
+  const dragOptions = assertDragOptions(drag)
 
   let currentEnabled = enabled
   let currentBusy = busy
-  let pendingPointerId = null
+  let pendingPointer = null
   let suppressCompatibilityClick = false
   let destroyed = false
+  let lastPointerMoveEvent = null
   const pointerRoot = (
     target.ownerDocument !== null
     && typeof target.ownerDocument === 'object'
@@ -82,29 +113,154 @@ export function createInputController({
     if (target.dataset) {
       target.dataset.inputEnabled = String(currentEnabled)
       target.dataset.inputBusy = String(currentBusy)
+      target.dataset.inputDragging = String(pendingPointer?.dragging === true)
+    }
+  }
+
+  function releasePointerCapture(pointer) {
+    if (!pointer?.captured || typeof target.releasePointerCapture !== 'function') return
+    try {
+      target.releasePointerCapture(pointer.id)
+    } catch {}
+  }
+
+  function clearPendingPointer(event, notifyDragCancel = false) {
+    const pointer = pendingPointer
+    pendingPointer = null
+    lastPointerMoveEvent = null
+    syncTarget()
+    releasePointerCapture(pointer)
+    if (notifyDragCancel && pointer?.dragging) {
+      dragOptions?.onCancel?.(event)
+    }
+    return pointer
+  }
+
+  function cancelPendingPointer(event, suppressClick = true) {
+    if (pendingPointer === null) return
+    if (suppressClick) suppressCompatibilityClick = true
+    clearPendingPointer(event, true)
+  }
+
+  function capturePointer(pointer) {
+    if (typeof target.setPointerCapture !== 'function') return
+    try {
+      target.setPointerCapture(pointer.id)
+      pointer.captured = typeof target.hasPointerCapture === 'function'
+        ? target.hasPointerCapture(pointer.id)
+        : true
+    } catch {
+      pointer.captured = false
     }
   }
 
   function handlePointerDown(event) {
+    if (pendingPointer !== null) {
+      if (event.pointerId !== pendingPointer.id) {
+        cancelPendingPointer(event)
+      }
+      return
+    }
     if (!isPrimaryPointer(event)) return
     suppressCompatibilityClick = false
     if (!canActivate() || !hitsTarget(event)) {
-      pendingPointerId = null
       suppressCompatibilityClick = true
       return
     }
-    pendingPointerId = event.pointerId
+    pendingPointer = {
+      id: event.pointerId,
+      pointerType: event.pointerType,
+      startX: event.clientX,
+      startY: event.clientY,
+      dragging: false,
+      captured: false,
+    }
+    syncTarget()
+  }
+
+  function handlePointerMove(event) {
+    if (event === lastPointerMoveEvent) return
+    lastPointerMoveEvent = event
+    const pointer = pendingPointer
+    if (
+      pointer === null
+      || event.pointerId !== pointer.id
+      || dragOptions === null
+    ) {
+      return
+    }
+    if (!canActivate()) {
+      cancelPendingPointer(event)
+      return
+    }
+    if (
+      !Number.isFinite(pointer.startX)
+      || !Number.isFinite(pointer.startY)
+      || !Number.isFinite(event.clientX)
+      || !Number.isFinite(event.clientY)
+    ) {
+      return
+    }
+    if (!pointer.dragging) {
+      const distance = Math.hypot(
+        event.clientX - pointer.startX,
+        event.clientY - pointer.startY,
+      )
+      if (distance < dragOptions.threshold) return
+      pointer.dragging = true
+      capturePointer(pointer)
+      syncTarget()
+      try {
+        dragOptions.onStart?.(event, Object.freeze({
+          pointerId: pointer.id,
+          pointerType: pointer.pointerType,
+          startX: pointer.startX,
+          startY: pointer.startY,
+        }))
+      } catch (error) {
+        cancelPendingPointer(event)
+        throw error
+      }
+    }
+    if (pendingPointer !== pointer || !pointer.dragging) return
+    event.preventDefault?.()
+    try {
+      dragOptions.onMove?.(event)
+    } catch (error) {
+      cancelPendingPointer(event)
+      throw error
+    }
+  }
+
+  function finishDrag(event) {
+    const pointer = clearPendingPointer(event)
+    suppressCompatibilityClick = true
+    event.preventDefault?.()
+    let accepted = false
+    try {
+      accepted = canActivate() && dragOptions.dropTest(event)
+      dragOptions.onEnd?.(event, accepted)
+    } catch (error) {
+      dragOptions.onCancel?.(event)
+      throw error
+    }
+    if (accepted && canActivate()) onActivate(event)
   }
 
   function handlePointerUp(event) {
+    const pointer = pendingPointer
     if (
-      pendingPointerId === null
-      || event.pointerId !== pendingPointerId
+      pointer === null
+      || event.pointerId !== pointer.id
       || !isPrimaryPointer(event)
     ) {
       return
     }
-    pendingPointerId = null
+    if (pointer.dragging) {
+      finishDrag(event)
+      return
+    }
+    clearPendingPointer(event)
     suppressCompatibilityClick = true
     if (
       !canActivate()
@@ -117,14 +273,24 @@ export function createInputController({
   }
 
   function handlePointerCancel(event) {
-    if (event.pointerId === pendingPointerId) {
-      pendingPointerId = null
+    if (event.pointerId === pendingPointer?.id) {
+      cancelPendingPointer(event)
     }
   }
 
   function handleRootPointerEnd(event) {
-    if (event.pointerId === pendingPointerId) {
-      pendingPointerId = null
+    const pointer = pendingPointer
+    if (event.pointerId !== pointer?.id) return
+    if (pointer.dragging && event.type === 'pointerup' && isPrimaryPointer(event)) {
+      finishDrag(event)
+    } else {
+      cancelPendingPointer(event)
+    }
+  }
+
+  function handleLostPointerCapture(event) {
+    if (event.pointerId === pendingPointer?.id) {
+      cancelPendingPointer(event)
     }
   }
 
@@ -147,9 +313,14 @@ export function createInputController({
   }
 
   target.addEventListener('pointerdown', handlePointerDown)
+  if (dragOptions !== null) target.addEventListener('pointermove', handlePointerMove)
   target.addEventListener('pointerup', handlePointerUp)
   target.addEventListener('pointercancel', handlePointerCancel)
+  if (dragOptions !== null) {
+    target.addEventListener('lostpointercapture', handleLostPointerCapture)
+  }
   target.addEventListener('click', handleClick)
+  if (dragOptions !== null) pointerRoot?.addEventListener('pointermove', handlePointerMove)
   pointerRoot?.addEventListener('pointerup', handleRootPointerEnd)
   pointerRoot?.addEventListener('pointercancel', handleRootPointerEnd)
   syncTarget()
@@ -159,25 +330,36 @@ export function createInputController({
       assertBoolean(nextEnabled, 'enabled')
       if (destroyed || currentEnabled === nextEnabled) return
       currentEnabled = nextEnabled
-      if (!currentEnabled) pendingPointerId = null
+      if (!currentEnabled) cancelPendingPointer()
       syncTarget()
     },
     setBusy(nextBusy) {
       assertBoolean(nextBusy, 'busy')
       if (destroyed || currentBusy === nextBusy) return
       currentBusy = nextBusy
-      if (currentBusy) pendingPointerId = null
+      if (currentBusy) cancelPendingPointer()
       syncTarget()
+    },
+    cancel() {
+      if (destroyed) return
+      cancelPendingPointer()
     },
     destroy() {
       if (destroyed) return
+      cancelPendingPointer()
       destroyed = true
-      pendingPointerId = null
       suppressCompatibilityClick = false
       target.removeEventListener('pointerdown', handlePointerDown)
+      if (dragOptions !== null) target.removeEventListener('pointermove', handlePointerMove)
       target.removeEventListener('pointerup', handlePointerUp)
       target.removeEventListener('pointercancel', handlePointerCancel)
+      if (dragOptions !== null) {
+        target.removeEventListener('lostpointercapture', handleLostPointerCapture)
+      }
       target.removeEventListener('click', handleClick)
+      if (dragOptions !== null) {
+        pointerRoot?.removeEventListener('pointermove', handlePointerMove)
+      }
       pointerRoot?.removeEventListener('pointerup', handleRootPointerEnd)
       pointerRoot?.removeEventListener('pointercancel', handleRootPointerEnd)
     },
@@ -185,7 +367,8 @@ export function createInputController({
       return Object.freeze({
         enabled: currentEnabled,
         busy: currentBusy,
-        pendingPointerId,
+        pendingPointerId: pendingPointer?.id ?? null,
+        dragging: pendingPointer?.dragging === true,
         destroyed,
       })
     },

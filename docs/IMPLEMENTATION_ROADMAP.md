@@ -599,9 +599,11 @@ Pointer Events unify mouse, touch, and pen. Primary actions are semantic DOM but
 with targets at least 44×44 CSS px, work by click/tap, never require gestures or hover,
 keep visible focus styles, define `touch-action` deliberately, handle `pointercancel`,
 and suppress synthetic duplicate click/tap activation. A hit-tested active-deck
-shortcut may invoke the same guarded action, but the semantic button remains the
-accessible canonical control. Drag, swipe, and other battlefield gestures and their
-pointer-capture behavior are post-MVP.
+shortcut may invoke the same guarded action by click/tap or by dragging its top card to
+the player reveal area, but the semantic button remains the accessible canonical
+control. The dedicated deck drag uses a movement threshold and pointer capture with a
+document fallback; invalid or interrupted drops restore the presentation-only visual.
+Swipe and other general battlefield gestures remain post-MVP.
 
 ## Persistence
 
@@ -1077,18 +1079,22 @@ reviewable PR.
 - **Goal/files:** Add input controller and complete HUD; depends on 7, 11, 13.
 - **Acceptance:** Click/tap reveal/continue/pause and the supplemental active-deck
   shortcut work for mouse/touch/pen with target sizes, cancellation, focus styles, and
-  no duplicate activation.
+  no duplicate activation. The active deck's top card can also be dragged to the player
+  reveal area to invoke that same guarded action; rejected drops snap back.
 - **Checks/risks:** Playwright/device-emulation plus real touch manual checks; keyboard
   remains explicitly post-MVP.
 - **Acceptance evidence:** `src/presentation/input.js` owns primary mouse, touch, and pen
-  press/release sequences for semantic Game buttons and hit-tested sub-targets, cancels
-  explicit and out-of-target completions without pointer capture, suppresses
-  compatibility clicks, preserves native button click fallback, gates enabled/busy
-  state synchronously, and removes target/document listeners idempotently.
+  press/release sequences for semantic Game buttons and hit-tested sub-targets, applies
+  a movement threshold for optional drags, captures active drags with document fallback,
+  cancels invalid, interrupted, disabled, busy, and multi-pointer interactions,
+  suppresses compatibility clicks, preserves native button click fallback, gates
+  enabled/busy state synchronously, and removes target/document listeners idempotently.
   `src/presentation/layout.js` and `src/presentation/battlefield.js` enlarge active decks
   and revealed cards per responsive mode, keep secondary piles bounded, identify the
   source deck or the player's drawable/recyclable pile from stable snapshots, and
-  raycast that one visual with a 44×44 CSS-pixel minimum screen-space target.
+  raycast that one visual with a 44×44 CSS-pixel minimum screen-space target. Battlefield
+  drag state moves only that visual, accepts release over the player reveal area, and
+  restores it before dispatch or cancellation.
   `src/ui/hud.js` routes both the deck shortcut and Reveal/Continue through one guarded
   `run-controller` action, holds them through save and presentation settlement, and
   derives responsive counts, human-readable stage, latest-clash/tie/burn summary,
@@ -1099,10 +1105,11 @@ reviewable PR.
   CSS-pixel controls, including letterboxed layouts. `src/app/new-match.js` creates a
   baseline seeded run from Web Crypto entropy, and `src/app/bootstrap.js` installs it and
   queues its stable save before Start New Game opens Game. Focused input/HUD/bootstrap
-  tests cover pointer types, hit-tested active-deck source/personal/recycle selection and
-  minimum target size,
-  secondary/non-primary rejection, cancellation and drag-off, duplicate suppression,
-  native fallback, shared button/deck gating, teardown, save/presentation ordering,
+  tests cover pointer types, hit-tested active-deck source/personal/recycle selection,
+  minimum target size, thresholded valid and invalid drops, visual restoration, pointer
+  capture and fallback, secondary/non-primary rejection, cancellation, drag-in and
+  drag-off rejection, duplicate suppression, native fallback, shared button/deck
+  gating, teardown, save/presentation ordering,
   skipped and failed presentation, terminal state, injected ownership, initial-run
   persistence, overwrite confirmation, pending-restore races, and stale completions
   from replaced runs. Integration tests prove button and active-deck actions each

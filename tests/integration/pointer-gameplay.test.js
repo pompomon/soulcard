@@ -4,6 +4,7 @@ import { createRunController } from '../../src/app/run-controller.js'
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { createEventPlayer } from '../../src/presentation/event-player.js'
+import { createInputController } from '../../src/presentation/input.js'
 import { createGameScreen } from '../../src/ui/hud.js'
 
 const ZERO_TIMING = Object.freeze({
@@ -24,6 +25,7 @@ class FakeElement {
     this.hidden = false
     this.disabled = false
     this.style = { setProperty() {} }
+    this.capturedPointers = new Set()
   }
 
   append(...children) {
@@ -44,6 +46,18 @@ class FakeElement {
     this.listeners.get(type)?.delete(listener)
   }
 
+  setPointerCapture(pointerId) {
+    this.capturedPointers.add(pointerId)
+  }
+
+  hasPointerCapture(pointerId) {
+    return this.capturedPointers.has(pointerId)
+  }
+
+  releasePointerCapture(pointerId) {
+    this.capturedPointers.delete(pointerId)
+  }
+
   dispatch(type, values = {}) {
     const event = {
       type,
@@ -59,6 +73,10 @@ class FakeElement {
       ...values,
     }
     for (const listener of [...(this.listeners.get(type) ?? [])]) listener(event)
+  }
+
+  getBoundingClientRect() {
+    return { top: 0, right: 100, bottom: 100, left: 0, width: 100, height: 100 }
   }
 }
 
@@ -236,4 +254,113 @@ test('source and personal active-deck activation each use the guarded Reveal flo
     screen.teardown()
     await controller.destroy()
   }
+})
+
+test('one accepted deck drop commits, saves, and presents exactly one clash', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const initial = createMatch({
+    runId: 'deck-drop-integration',
+    seed: 12345,
+    ruleset: BASELINE_RULESET,
+  })
+  const expected = revealOrContinue(initial).match
+  const saves = []
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      async save(match) {
+        saves.push(match)
+        return {
+          status: 'saved',
+          savedAt: '2026-09-23T05:00:00.000Z',
+        }
+      },
+    },
+    initialMatch: initial,
+  })
+  let canvas
+  let input
+  const presented = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: (host, { onDeckActivate }) => {
+      canvas = new FakeElement('canvas')
+      host.append(canvas)
+      input = createInputController({
+        target: canvas,
+        onActivate: onDeckActivate,
+        hitTest: (event) => event.clientX <= 20,
+        drag: {
+          threshold: 5,
+          dropTest: (event) => event.clientX >= 80,
+        },
+        enabled: false,
+      })
+      return {
+        syncSnapshot() {},
+        beginEvent() {},
+        applyStep() {},
+        setPaused() {},
+        setDeckInputState({ enabled, busy }) {
+          input.setEnabled(enabled)
+          input.setBusy(busy)
+        },
+        teardown() {
+          input.destroy()
+        },
+      }
+    },
+    eventPlayerFactory: (options) => {
+      const player = createEventPlayer({
+        ...options,
+        timing: ZERO_TIMING,
+      })
+      return {
+        ...player,
+        present(match) {
+          if (match.pendingEvent !== null) presented.push(match.pendingEvent.id)
+          return player.present(match)
+        },
+      }
+    },
+  })
+
+  canvas.dispatch('pointerdown', {
+    pointerType: 'touch', pointerId: 17, clientX: 10, clientY: 50,
+  })
+  canvas.dispatch('pointermove', {
+    pointerType: 'touch', pointerId: 17, clientX: 50, clientY: 50,
+  })
+  canvas.dispatch('pointerup', {
+    pointerType: 'touch', pointerId: 17, clientX: 90, clientY: 50,
+  })
+  canvas.dispatch('click', { detail: 1, button: 0, clientX: 90, clientY: 50 })
+  canvas.dispatch('pointerdown', {
+    pointerType: 'touch', pointerId: 18, clientX: 10, clientY: 50,
+  })
+  canvas.dispatch('pointermove', {
+    pointerType: 'touch', pointerId: 18, clientX: 50, clientY: 50,
+  })
+  canvas.dispatch('pointerup', {
+    pointerType: 'touch', pointerId: 18, clientX: 90, clientY: 50,
+  })
+
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(canvas.disabled, true)
+  await controller.whenIdle()
+  await waitFor(() => !canvas.disabled)
+
+  assert.equal(saves.length, 1)
+  assert.deepEqual(controller.currentMatch, expected)
+  assert.deepEqual(presented, [expected.pendingEvent.id])
+
+  screen.teardown()
+  await controller.destroy()
 })
