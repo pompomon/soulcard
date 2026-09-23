@@ -44,6 +44,18 @@ function validateEncounterAction(action) {
   }
 }
 
+function immutableClone(value) {
+  if (Array.isArray(value)) {
+    return Object.freeze(value.map(immutableClone))
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.freeze(Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [key, immutableClone(child)]),
+    ))
+  }
+  return value
+}
+
 function storageFailure(operation, error) {
   return Object.freeze({
     status: 'storage-unavailable',
@@ -274,7 +286,7 @@ export function createRunController({
     }
     const currentMatch = match
     const currentRevision = revision
-    validateEncounterAction(aiController.chooseEncounterAction(currentMatch))
+    validateEncounterAction(aiController.chooseEncounterAction(immutableClone(currentMatch)))
     if (destroyed || revision !== currentRevision) {
       throw new Error('Run changed while choosing an encounter action')
     }

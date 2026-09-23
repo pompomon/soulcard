@@ -1151,7 +1151,7 @@ reviewable PR.
   snapshot/event/RNG state with canonical replay, assert one save per clash, and drive
   the HUD through the source-to-personal transition and terminal control lockout with
   one presentation per player activation.
-- **Validation:** The Node 24 test runner reports 249 passing unit/integration tests, and
+- **Validation:** The Node 24 test runner reports 252 passing unit/integration tests, and
   the production build passes.
   A text-only headless Chromium 152 reduced-motion run completed a live 40-clash match,
   observed Source and Personal HUD stages, showed a paired automatic-opponent reveal after

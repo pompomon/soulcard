@@ -127,6 +127,58 @@ test('run controller applies one injected AI action through the match machine be
   assert.equal(controller.currentMatch, result.match)
 })
 
+test('injected AI cannot mutate the authoritative match snapshot', async () => {
+  const initialMatch = structuredClone(createActiveMatch('immutable-ai-input'))
+  const expected = revealOrContinue(initialMatch)
+  const repository = createRepository()
+  let receivedMatch
+  const controller = createRunController({
+    repository,
+    initialMatch,
+    aiController: {
+      chooseEncounterAction(match) {
+        receivedMatch = match
+        assert.notEqual(match, initialMatch)
+        assert.ok(Object.isFrozen(match))
+        assert.ok(Object.isFrozen(match.zones.sourceDeck))
+        assert.throws(() => {
+          match.zones.sourceDeck.pop()
+        }, TypeError)
+        return REVEAL_OR_CONTINUE_ACTION
+      },
+    },
+  })
+
+  const result = await controller.revealOrContinue()
+
+  assert.deepEqual(receivedMatch, initialMatch)
+  assert.deepEqual(result.match, expected.match)
+  assert.deepEqual(repository.saves, [expected.match])
+})
+
+test('AI mutation before throwing leaves the authoritative match unchanged and unsaved', async () => {
+  const initialMatch = structuredClone(createActiveMatch('immutable-ai-failure'))
+  const before = structuredClone(initialMatch)
+  const repository = createRepository()
+  const controller = createRunController({
+    repository,
+    initialMatch,
+    aiController: {
+      chooseEncounterAction(match) {
+        assert.throws(() => {
+          match.rng.value = 0
+        }, TypeError)
+        throw new Error('AI failed after mutation attempt')
+      },
+    },
+  })
+
+  assert.throws(() => controller.revealOrContinue(), /AI failed after mutation attempt/)
+  assert.deepEqual(initialMatch, before)
+  assert.equal(controller.currentMatch, initialMatch)
+  assert.deepEqual(repository.saves, [])
+})
+
 test('run controller rejects paused and ended matches before invoking injected AI', () => {
   const repository = createRepository()
 
