@@ -749,7 +749,7 @@ export function createGameScreen({
     throw error
   }
 
-  const present = (match) => {
+  const present = (match, { saveSucceeded = false } = {}) => {
     const eventId = match.pendingEvent?.id
     if (eventId !== undefined && presentationJobs.has(eventId)) {
       return presentationJobs.get(eventId)
@@ -840,6 +840,7 @@ export function createGameScreen({
         const continueAutomatically = (
           autoRevealChainActive
           && autoRevealCheckbox.checked
+          && saveSucceeded
           && ['completed', 'skipped'].includes(settledResult?.status)
           && currentMatch?.runId === match.runId
           && currentMatch.pendingEvent?.id === eventId
@@ -891,7 +892,9 @@ export function createGameScreen({
         const committedMatch = result?.match
         if (committedMatch?.pendingEvent !== null && committedMatch?.pendingEvent !== undefined) {
           revealActionEventId ??= committedMatch.pendingEvent.id
-          return present(committedMatch)
+          return present(committedMatch, {
+            saveSucceeded: result?.save?.status === 'saved',
+          })
         }
         revealActionPending = false
         revealActionEventId = null
@@ -969,7 +972,9 @@ export function createGameScreen({
     if (isSaveFailureStatus(result?.status)) {
       showSaveWarning(result.reason)
     }
-    if (match.pendingEvent !== null) present(match)
+    if (match.pendingEvent !== null) {
+      present(match, { saveSucceeded: result?.status === 'saved' })
+    }
   })
   const unsubscribeRun = runController?.subscribe((snapshot) => {
     latestSnapshot = snapshot
@@ -987,7 +992,7 @@ export function createGameScreen({
 
     const saveSettled = snapshot.saveStatus === 'saved' || snapshot.saveStatus === 'failed'
     if (match !== null && match !== undefined && (match.pendingEvent === null || saveSettled)) {
-      present(match)
+      present(match, { saveSucceeded: snapshot.saveStatus === 'saved' })
     }
   })
 

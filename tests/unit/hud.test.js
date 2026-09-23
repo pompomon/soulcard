@@ -528,6 +528,66 @@ test('Auto-reveal waits for presentation and disabling it stops the active chain
   await controller.destroy()
 })
 
+test('Auto-reveal stops when the committed clash save fails', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  let saveCount = 0
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      async save() {
+        saveCount += 1
+        return {
+          status: 'storage-unavailable',
+          operation: 'save',
+          reason: 'quota-exceeded',
+        }
+      },
+    },
+    initialMatch: createMatch({
+      runId: 'hud-auto-save-failure',
+      seed: 12345,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const presentations = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createControlledEventPlayerFactory(presentations),
+  })
+  const autoReveal = byAction(screen, 'auto-reveal')
+  const reveal = byAction(screen, 'reveal')
+
+  autoReveal.checked = true
+  autoReveal.dispatch('change')
+  reveal.dispatch('click')
+  await waitFor(() => presentations.length === 1)
+  presentations[0].completion.resolve({ status: 'completed' })
+  await waitFor(() => reveal.disabled === false)
+  await flushMicrotasks()
+
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(presentations.length, 1)
+  assert.equal(saveCount, 1)
+
+  reveal.dispatch('click')
+  await waitFor(() => presentations.length === 2)
+  assert.equal(controller.currentMatch.turn, 2)
+  assert.equal(saveCount, 2)
+  presentations[1].completion.resolve({ status: 'completed' })
+  await waitFor(() => reveal.disabled === false)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
 test('Auto-reveal continues after a reduced-motion presentation skip', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
@@ -765,7 +825,6 @@ test('Auto-reveal stops at a terminal match', async (t) => {
     },
     initialMatch: penultimate,
   })
-  await controller.saveStable()
   const presentations = []
   const screen = createGameScreen({
     runController: controller,
@@ -773,20 +832,16 @@ test('Auto-reveal stops at a terminal match', async (t) => {
     eventPlayerFactory: createControlledEventPlayerFactory(presentations),
   })
 
-  await waitFor(() => presentations.length === 1)
-  presentations[0].completion.resolve({ status: 'completed' })
-  await waitFor(() => byAction(screen, 'reveal').disabled === false)
-
   const autoReveal = byAction(screen, 'auto-reveal')
   autoReveal.checked = true
   autoReveal.dispatch('change')
   byAction(screen, 'reveal').dispatch('click')
-  await waitFor(() => presentations.length === 2)
+  await waitFor(() => presentations.length === 1)
   assert.equal(controller.currentMatch.status, 'ended')
-  presentations[1].completion.resolve({ status: 'completed' })
+  presentations[0].completion.resolve({ status: 'completed' })
   await flushMicrotasks()
 
-  assert.equal(presentations.length, 2)
+  assert.equal(presentations.length, 1)
   assert.equal(byAction(screen, 'reveal').disabled, true)
   assert.equal(autoReveal.disabled, true)
 
