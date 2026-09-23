@@ -390,6 +390,7 @@ test('bootstrap enables Resume for restored and pre-populated runs', async (t) =
     discardPendingRestore: () => undefined,
     setMatch: () => undefined,
     saveStable: async () => Object.freeze({ status: 'skipped' }),
+    whenIdle: async () => undefined,
     subscribe: () => () => undefined,
     revealOrContinue: () => undefined,
     pause: () => undefined,
@@ -457,6 +458,7 @@ test('bootstrap does not refresh Resume after teardown', async (t) => {
     discardPendingRestore: () => undefined,
     setMatch: () => undefined,
     saveStable: async () => Object.freeze({ status: 'skipped' }),
+    whenIdle: async () => undefined,
     subscribe: () => () => undefined,
     revealOrContinue: () => undefined,
     pause: () => undefined,
@@ -517,6 +519,7 @@ test('Start New wins races with pending restore results', async (t) => {
         currentMatch = match
       },
       saveStable: async () => Object.freeze({ status: 'skipped' }),
+      whenIdle: async () => undefined,
       subscribe: () => () => undefined,
       revealOrContinue: () => undefined,
       pause: () => undefined,

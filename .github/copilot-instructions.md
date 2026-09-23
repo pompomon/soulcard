@@ -11,6 +11,8 @@
 - Do not create screenshots unless the user explicitly requests them. Never pass a
   generated screenshot or other image artifact to `view` or attach one to the
   conversation; report text-only browser evidence instead.
+- Validate raster icons with file metadata or programmatic header/dimension checks.
+  Never pass PNG, JPEG, WebP, or other raster assets to `view`.
 - Chrome may try to contact Google telemetry, account, or update endpoints during a
   local headless check. Firewall warnings for those endpoints are non-fatal when the
   local page loads, the DOM/canvas checks pass, and the browser reports no relevant
