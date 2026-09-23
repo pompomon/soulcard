@@ -128,6 +128,26 @@ function canRuntimeCache(request, url) {
   )
 }
 
+async function runtimeResponse(request) {
+  let cache = null
+  try {
+    cache = await caches.open(RUNTIME_CACHE)
+    const cached = await cache.match(request)
+    if (cached) return cached
+  } catch {
+    cache = null
+  }
+
+  const response = await fetch(request)
+  if (cache && response.ok && response.type !== 'opaque') {
+    try {
+      await cache.put(request, response.clone())
+      await trimRuntimeCache(cache)
+    } catch {}
+  }
+  return response
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(precacheShell())
 })
@@ -172,17 +192,5 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (!canRuntimeCache(request, url)) return
-  event.respondWith(
-    caches.open(RUNTIME_CACHE).then(async (cache) => {
-      const cached = await cache.match(request)
-      if (cached) return cached
-
-      const response = await fetch(request)
-      if (response.ok && response.type !== 'opaque') {
-        await cache.put(request, response.clone())
-        await trimRuntimeCache(cache)
-      }
-      return response
-    }),
-  )
+  event.respondWith(runtimeResponse(request))
 })

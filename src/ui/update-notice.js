@@ -94,7 +94,7 @@ export function createUpdateNotice({ updateController, host } = {}) {
   const unsubscribe = updateController.subscribe((snapshot) => {
     const visible = snapshot.status !== 'current'
     const blocked = BLOCKING_STATUSES.has(snapshot.status)
-    if (!visible) dismissed = false
+    if (!visible || snapshot.status === 'available') dismissed = false
     element.hidden = !visible || (dismissed && !blocked)
     status.textContent = noticeText(snapshot)
     dismissButton.hidden = blocked

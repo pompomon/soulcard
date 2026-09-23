@@ -113,9 +113,10 @@ export function createUpdateController({
 
   function offerUpdate(worker) {
     if (destroyed || !isWaitingWorker(worker)) return
+    const alreadyOffered = waitingWorker === worker
     waitingWorker = worker
     if (snapshot.status === 'preparing' || snapshot.status === 'activating') return
-    if (waitingWorker === worker && snapshot.status === 'available') return
+    if (alreadyOffered && snapshot.status === 'available') return
     setStatus('available', null, true)
   }
 
@@ -227,13 +228,20 @@ export function createUpdateController({
     reloadAfterActivation()
   }
 
+  function skipUnavailableUpdate() {
+    waitingWorker = null
+    activationPromise = null
+    setStatus('current')
+    return Object.freeze({ status: 'skipped', reason: 'no-update' })
+  }
+
   function requestActivation() {
     if (activationPromise) return activationPromise
     if (destroyed) {
       return Promise.resolve(Object.freeze({ status: 'skipped', reason: 'destroyed' }))
     }
     if (latestWaitingWorker() === null) {
-      return Promise.resolve(Object.freeze({ status: 'skipped', reason: 'no-update' }))
+      return Promise.resolve(skipUnavailableUpdate())
     }
 
     setStatus('preparing', null, false)
@@ -251,9 +259,7 @@ export function createUpdateController({
 
         const targetWorker = latestWaitingWorker()
         if (targetWorker === null) {
-          const error = new Error('The waiting update is no longer available')
-          error.reason = 'no-update'
-          throw error
+          return skipUnavailableUpdate()
         }
         waitingWorker = targetWorker
         setStatus('activating', null, false)

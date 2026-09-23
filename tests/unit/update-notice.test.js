@@ -124,6 +124,15 @@ test('update notice reports availability and blocks only underlying content duri
   assert.equal(notice.element.hidden, true)
 
   controller.publish({
+    status: 'available',
+    reason: null,
+    canActivate: true,
+  })
+  assert.equal(notice.element.hidden, false)
+  dismissButton.dispatch('click')
+  assert.equal(notice.element.hidden, true)
+
+  controller.publish({
     status: 'preparing',
     reason: null,
     canActivate: false,

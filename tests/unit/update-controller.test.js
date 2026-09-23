@@ -230,6 +230,78 @@ test('activation targets a replacement update discovered during preparation', as
   assert.deepEqual(replacement.messages, [{ type: ACTIVATE_UPDATE_MESSAGE }])
 })
 
+test('a replacement waiting worker republishes update availability', async () => {
+  const original = new FakeWorker()
+  const registration = new FakeRegistration({ waiting: original })
+  const browser = createBrowser({ registration })
+  const statuses = []
+  const controller = createUpdateController({
+    production: true,
+    ...browser,
+  })
+  controller.subscribe(({ status }) => statuses.push(status))
+  await controller.ready
+
+  const replacement = new FakeWorker('installing')
+  registration.waiting = replacement
+  registration.discover(replacement)
+  replacement.setState('installed')
+
+  assert.deepEqual(statuses, ['current', 'available', 'available'])
+})
+
+test('requesting a redundant offered worker clears stale availability', async () => {
+  const worker = new FakeWorker()
+  const browser = createBrowser({
+    registration: new FakeRegistration({ waiting: worker }),
+  })
+  const controller = createUpdateController({
+    production: true,
+    ...browser,
+  })
+  await controller.ready
+  worker.setState('redundant')
+
+  assert.deepEqual(await controller.requestActivation(), {
+    status: 'skipped',
+    reason: 'no-update',
+  })
+  assert.deepEqual(controller.getSnapshot(), {
+    status: 'current',
+    reason: null,
+    canActivate: false,
+  })
+})
+
+test('redundancy during preparation skips cleanly and permits a replacement', async () => {
+  const preparation = deferred()
+  const worker = new FakeWorker()
+  const registration = new FakeRegistration({ waiting: worker })
+  const browser = createBrowser({ registration })
+  const controller = createUpdateController({
+    production: true,
+    prepareForActivation: () => preparation.promise,
+    ...browser,
+  })
+  await controller.ready
+
+  const activation = controller.requestActivation()
+  worker.setState('redundant')
+  preparation.resolve({ status: 'ready' })
+  assert.deepEqual(await activation, {
+    status: 'skipped',
+    reason: 'no-update',
+  })
+  assert.equal(controller.getSnapshot().status, 'current')
+
+  const replacement = new FakeWorker('installing')
+  registration.waiting = replacement
+  registration.discover(replacement)
+  replacement.setState('installed')
+  assert.equal((await controller.requestActivation()).status, 'activating')
+  assert.deepEqual(replacement.messages, [{ type: ACTIVATE_UPDATE_MESSAGE }])
+})
+
 test('preparation failures leave the waiting update retryable', async () => {
   const worker = new FakeWorker()
   const browser = createBrowser({

@@ -22,9 +22,15 @@ function createResponse(value, { ok = true, type = 'basic' } = {}) {
 }
 
 class FakeCache {
-  constructor(scope, { failAddAll = false } = {}) {
+  constructor(scope, {
+    failAddAll = false,
+    failMatch = false,
+    failPut = false,
+  } = {}) {
     this.scope = scope
     this.failAddAll = failAddAll
+    this.failMatch = failMatch
+    this.failPut = failPut
     this.entries = new Map()
     this.added = []
   }
@@ -40,10 +46,12 @@ class FakeCache {
   }
 
   async match(request) {
+    if (this.failMatch) throw new Error('cache read failed')
     return this.entries.get(requestKey(request))
   }
 
   async put(request, response) {
+    if (this.failPut) throw new Error('cache write failed')
     this.entries.set(requestKey(request), response)
   }
 
@@ -68,6 +76,8 @@ class FakeCacheStorage {
     if (!this.caches.has(name)) {
       this.caches.set(name, new FakeCache(this.scope, {
         failAddAll: this.options.failAddAll === name,
+        failMatch: this.options.failMatch === name,
+        failPut: this.options.failPut === name,
       }))
     }
     return this.caches.get(name)
@@ -103,10 +113,20 @@ function createEvent(values = {}) {
   }
 }
 
-async function createHarness({ failAddAll = null, fetchImpl, registration = {} } = {}) {
+async function createHarness({
+  failAddAll = null,
+  failMatch = null,
+  failPut = null,
+  fetchImpl,
+  registration = {},
+} = {}) {
   const source = await readFile(SERVICE_WORKER_PATH, 'utf8')
   const listeners = new Map()
-  const cacheStorage = new FakeCacheStorage(SCOPE, { failAddAll })
+  const cacheStorage = new FakeCacheStorage(SCOPE, {
+    failAddAll,
+    failMatch,
+    failPut,
+  })
   let skipWaitingCalls = 0
   let claimCalls = 0
   let fetchCalls = 0
@@ -406,4 +426,21 @@ test('runtime caching is same-origin, successful, asset-only, and bounded', asyn
     failedHarness.cacheStorage.caches.get('soulcard-runtime-dev').entries.size,
     0,
   )
+})
+
+test('runtime cache failures preserve successful network responses', async () => {
+  for (const failure of ['failMatch', 'failPut']) {
+    const harness = await createHarness({
+      [failure]: 'soulcard-runtime-dev',
+    })
+    const response = await harness.dispatch('fetch', {
+      request: request(`./uncached-${failure}.png`),
+    })
+
+    assert.equal(
+      (await response).value,
+      `network:${SCOPE}uncached-${failure}.png`,
+    )
+    assert.equal(harness.fetchCalls, 1)
+  }
 })
