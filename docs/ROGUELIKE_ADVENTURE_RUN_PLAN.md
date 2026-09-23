@@ -2,17 +2,17 @@
 
 This is a post-MVP implementation plan. It does not implement or mark complete any
 gameplay milestone. It refines roadmap milestone 20 into five cumulative, playable
-milestones.
+sub-milestones.
 
 ## Progress checklist
 
 | Status | Milestone | Depends on | Playable outcome |
 | --- | --- | --- | --- |
-| [ ] | 21. Campaign Duel | 19 | Three retryable encounters with health, a persistent deck, and Hold |
-| [ ] | 22. Reward Drafts and Hold Upgrades | 21 | Build-changing rewards and the opponent-reveal Hold boon |
-| [ ] | 23. Branching Expedition | 22 | A route with combat, shops, and events |
-| [ ] | 24. Encounter Archetypes and Elite Ladder | 23 | Elites, rest nodes, and a boss campaign |
-| [ ] | 25. Seeded Procedural Campaign | 24 | A replayable generated roguelike campaign |
+| [ ] | 20.1 Campaign Duel | 19 | Three retryable encounters with health, a persistent deck, and Hold |
+| [ ] | 20.2 Reward Drafts and Hold Upgrades | 20.1 | Build-changing rewards and the opponent-reveal Hold boon |
+| [ ] | 20.3 Branching Expedition | 20.2 | A route with combat, shops, and events |
+| [ ] | 20.4 Encounter Archetypes and Elite Ladder | 20.3 | Elites, rest nodes, and a boss campaign |
+| [ ] | 20.5 Seeded Procedural Campaign | 20.4 | A replayable generated roguelike campaign |
 
 ## Shared decisions and invariants
 
@@ -48,7 +48,7 @@ milestones.
   authoritative domain concerns. Three.js and HUD presentation consume committed
   snapshots/events only. Every new stable choice must be serializable and deterministic.
 
-## 21. Campaign Duel
+## 20.1 Campaign Duel
 
 **Goal:** establish the campaign/run model while delivering a compact playable
 three-encounter expedition.
@@ -85,7 +85,7 @@ three-encounter expedition.
   replay. Browser checks confirm the canvas, semantic choices, and no relevant console
   errors.
 
-## 22. Reward Drafts and Hold Upgrades
+## 20.2 Reward Drafts and Hold Upgrades
 
 **Goal:** make wins create meaningful deterministic deckbuilding choices.
 
@@ -110,7 +110,7 @@ three-encounter expedition.
 - Tests cover information-boon reveal order, all reward categories, slot changes,
   modifier lifetime, replay, save/resume, and event fingerprints.
 
-## 23. Branching Expedition
+## 20.3 Branching Expedition
 
 **Goal:** turn the compact expedition into a route-based roguelike while retaining the
 same encounter and Hold rules.
@@ -133,7 +133,7 @@ same encounter and Hold rules.
 - Tests cover alternate paths, all node decisions, retries, exhausted shops, save/resume,
   and refusal of stale or duplicate decisions.
 
-## 24. Encounter Archetypes and Elite Ladder
+## 20.4 Encounter Archetypes and Elite Ladder
 
 **Goal:** provide strategic route risk through authored enemy identity and a full
 campaign finale.
@@ -157,7 +157,7 @@ campaign finale.
 - Tests cover each archetype, elite/boss rewards, modifier stacks and expiry, health
   recovery, retry behavior, deterministic full-campaign replay, and save/resume.
 
-## 25. Seeded Procedural Campaign
+## 20.5 Seeded Procedural Campaign
 
 **Goal:** create the full repeatable roguelike mode from deterministic generated content.
 
@@ -182,8 +182,8 @@ campaign finale.
 
 ## Delivery rules
 
-- Do not create intermediate “foundation only” milestones: each milestone above extends
-  the previous playable game.
+- Do not create intermediate “foundation only” milestones: each sub-milestone above
+  extends the previous playable game.
 - Keep the current Main, Settings, and Game top-level screen contract. Map, reward,
   shop, event, and run-summary surfaces remain Game-owned overlays or panels.
 - Preserve the existing deterministic/presentation boundary and save only after stable
