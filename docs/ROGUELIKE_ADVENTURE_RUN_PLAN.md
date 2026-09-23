@@ -55,18 +55,20 @@ complete before sub-milestone 21.1 begins.
   player input first and the complete opponent input second; index `0` of each result is
   next to reveal. A retry performs both setup shuffles again from its current RNG
   snapshot. No other setup step consumes RNG.
-- Source piles do not recycle. At encounter setup or after a settled clash, both empty
-  source piles transition to personal play by shuffling the player's complete won pile
-  and then the opponent's. Before an untied reveal, an empty player source pile can
-  still be supplied from occupied Hold under the rules below; otherwise a side with no
-  source candidate is unable, and any card supplied by the available side joins the
-  contest before terminal settlement. During a tie, Hold is unavailable and does not
-  satisfy a reveal: the available side's source card joins the contest before it wins
-  when exactly one source pile is empty. If both source piles are empty, retain the
-  contest, perform the same player-first transition to personal play, and continue the
-  tie there; normal personal-stage inability rules then produce a winner or a draw.
-  Only the ordered setup and transition shuffles consume RNG in these steps; inability
-  outcomes do not.
+- Source piles do not recycle. Each side has a persisted `source` or `personal` supply
+  mode and advances independently: when its source pile first empties, that side enters
+  personal mode and shuffles its complete won pile into its draw pile. In personal mode,
+  an empty draw pile recycles the complete won pile under the existing rules. Prepare
+  the player's supply first and the opponent's second, performing either side's required
+  transition or recycle in that order; each shuffle consumes RNG. This permits a
+  source-mode card to face a personal-mode card, so unequal deck sizes do not decide the
+  encounter merely by exhausting one source pile first. A side unable to produce a card
+  after its required transition or recycle is unable for that reveal, except that the
+  player may use occupied Hold before an untied reveal under the rules below. During a
+  tie, Hold is unavailable; prepare both sides normally, then the sole supplied card
+  joins the contest before its side wins if the other side is unable, or retain the
+  contest and end in a draw if neither side can supply. Inability outcomes consume no
+  additional RNG.
 - Hold is an authoritative one-slot player zone, not a hand or presentation effect.
   Before each untied reveal, perform any source-to-personal transition and the player's
   required personal-stage recycle, then peek at the normal player candidate without
@@ -128,8 +130,8 @@ three-encounter expedition.
   campaign outcome.
 - Introduce bounded card-instance identity and conservation across campaign zones,
   encounter zones, burn/removal zones, and Hold.
-- Split encounter setup into player and opponent source piles while preserving the
-  existing source/personal-stage semantics, tie handling, burning, recycling, and
+- Split encounter setup into player and opponent source piles with independent persisted
+  source/personal supply modes while preserving tie handling, burning, recycling, and
   terminal-draw rules as far as the new ownership model permits.
 - Replace atomic player/opponent initial reveal resolution with the persisted
   `awaitingHoldChoice` metadata state; the resolving action then supplies the selected
@@ -150,10 +152,11 @@ three-encounter expedition.
 - A player can complete, lose, save, reload, and retry a three-encounter campaign.
 - Hold functions in source and personal stages, never after a tie, and preserves card
   order/conservation when played or replaced.
-- Tests cover setup and retry shuffle order, candidate-present and Hold-only decision
-  boundaries, current-control target rejection, health depletion, migration, interrupted
-  save, source/personal recycle, burn settlement, terminal draw, and deterministic replay.
-  Browser checks confirm the canvas, semantic choices, and no relevant console errors.
+- Tests cover setup and retry shuffle order, unequal-source exhaustion with mixed supply
+  modes, candidate-present and Hold-only decision boundaries, current-control target
+  rejection, health depletion, migration, interrupted save, source/personal recycle,
+  burn settlement, terminal draw, and deterministic replay. Browser checks confirm the
+  canvas, semantic choices, and no relevant console errors.
 
 ## 21.2 Reward Drafts and Hold Upgrades
 
