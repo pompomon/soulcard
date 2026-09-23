@@ -28,6 +28,17 @@ function assertSettingsController(settingsController) {
   }
 }
 
+function assertRunController(runController) {
+  if (
+    runController === null
+    || typeof runController !== 'object'
+    || typeof runController.getSnapshot !== 'function'
+    || typeof runController.subscribe !== 'function'
+  ) {
+    throw new TypeError('runController must expose getSnapshot and subscribe')
+  }
+}
+
 function createButton(label, action) {
   const button = document.createElement('button')
   button.type = 'button'
@@ -61,18 +72,63 @@ function createSelectField({ id, label, setting, options, onChange }) {
   return { field, select }
 }
 
+function mainStatusText(snapshot) {
+  if (snapshot.discardStatus === 'discarding') {
+    return 'Discarding saved game…'
+  }
+  if (snapshot.discardStatus === 'failed') {
+    return `Discard failed${snapshot.discardReason ? ` (${snapshot.discardReason})` : ''}. Try again.`
+  }
+
+  const match = snapshot.match
+  if (match?.status === 'ended') {
+    return snapshot.saveStatus === 'failed'
+      ? 'Completed game available in this session. Saving is unavailable.'
+      : 'Completed game available. Resume Game opens its summary.'
+  }
+  if (match?.machineState === 'paused') {
+    return snapshot.saveStatus === 'failed'
+      ? 'Paused game available in this session. Saving is unavailable.'
+      : 'Paused game available.'
+  }
+  if (match !== null && match !== undefined) {
+    return snapshot.saveStatus === 'failed'
+      ? 'Game available in this session. Saving is unavailable.'
+      : 'Saved game available.'
+  }
+
+  switch (snapshot.restoreStatus) {
+    case 'loading':
+    case 'idle':
+      return 'Checking for a saved game…'
+    case 'empty':
+      return 'No saved game found.'
+    case 'recovery-required':
+      return snapshot.restoreMessage
+        ?? 'The saved game cannot be resumed. Discard it or start a new game.'
+    case 'storage-unavailable':
+      return 'Saved games are unavailable. New games remain available in this session.'
+    default:
+      return 'No saved game is available.'
+  }
+}
+
 export function createMainScreen({
   resumeAvailable = false,
+  runController,
   onStart,
   onResume,
   onSettings,
+  onDiscard,
 } = {}) {
   if (typeof resumeAvailable !== 'boolean') {
     throw new TypeError('resumeAvailable must be a boolean')
   }
+  assertRunController(runController)
   assertCallback(onStart, 'onStart')
   assertCallback(onResume, 'onResume')
   assertCallback(onSettings, 'onSettings')
+  assertCallback(onDiscard, 'onDiscard')
 
   const element = document.createElement('main')
   element.className = 'screen screen--menu'
@@ -98,7 +154,7 @@ export function createMainScreen({
   startButton.dataset.action = 'start'
 
   const handleResume = () => {
-    if (resumeAvailable) onResume()
+    if (resumeAvailable && runController.getSnapshot().match != null) onResume()
   }
   const resumeButton = createButton('Resume Game', handleResume)
   resumeButton.dataset.action = 'resume'
@@ -107,16 +163,50 @@ export function createMainScreen({
   const settingsButton = createButton('Settings', onSettings)
   settingsButton.dataset.action = 'settings'
 
-  actions.append(startButton, resumeButton, settingsButton)
-  panel.append(eyebrow, heading, actions)
+  const handleDiscard = () => {
+    const snapshot = runController.getSnapshot()
+    if (
+      snapshot.restoreStatus !== 'recovery-required'
+      || snapshot.discardStatus === 'discarding'
+    ) {
+      return
+    }
+    try {
+      Promise.resolve(onDiscard()).catch(() => {})
+    } catch {}
+  }
+  const discardButton = createButton('Discard Saved Game', handleDiscard)
+  discardButton.dataset.action = 'discard'
+  discardButton.hidden = true
+
+  const status = document.createElement('p')
+  status.className = 'main-status'
+  status.dataset.mainStatus = ''
+  status.setAttribute('role', 'status')
+  status.setAttribute('aria-live', 'polite')
+
+  actions.append(startButton, resumeButton, discardButton, settingsButton)
+  panel.append(eyebrow, heading, status, actions)
   element.append(panel)
+
+  const unsubscribe = runController.subscribe((snapshot) => {
+    const discarding = snapshot.discardStatus === 'discarding'
+    const resumable = resumeAvailable && snapshot.match !== null && snapshot.match !== undefined
+    status.textContent = mainStatusText(snapshot)
+    startButton.disabled = discarding
+    resumeButton.disabled = discarding || !resumable
+    discardButton.hidden = snapshot.restoreStatus !== 'recovery-required'
+    discardButton.disabled = discarding
+  })
 
   return {
     element,
     teardown() {
+      unsubscribe()
       startButton.removeEventListener('click', onStart)
       resumeButton.removeEventListener('click', handleResume)
       settingsButton.removeEventListener('click', onSettings)
+      discardButton.removeEventListener('click', handleDiscard)
     },
   }
 }

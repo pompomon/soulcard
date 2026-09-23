@@ -19,47 +19,191 @@ function saveStatusText({ saveStatus, saveReason }) {
   }
 }
 
-export function createPauseOverlay({ onResume } = {}) {
-  assertCallback(onResume, 'onResume')
+function overlayStatusText(snapshot, { action, error }) {
+  if (error) return error
+  if (action === 'save-main') return 'Saving before returning to the main menu…'
+  if (action === 'restart') return 'Starting a new game…'
+  if (action === 'main') return 'Returning to the main menu…'
+  return saveStatusText(snapshot)
+}
 
+function createButton(label, action, className = 'game-button') {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = className
+  button.textContent = label
+  button.addEventListener('click', action)
+  return button
+}
+
+function createOverlay({ className, labelId }) {
   const element = document.createElement('section')
-  element.className = 'pause-overlay'
-  element.dataset.pauseOverlay = ''
+  element.className = `${className} game-overlay`
   element.setAttribute('role', 'dialog')
   element.setAttribute('aria-modal', 'true')
-  element.setAttribute('aria-labelledby', 'pause-overlay-title')
+  element.setAttribute('aria-labelledby', labelId)
   element.hidden = true
 
   const panel = document.createElement('div')
-  panel.className = 'pause-overlay__panel'
+  panel.className = `${className}__panel game-overlay__panel`
+  return { element, panel }
+}
+
+export function createPauseOverlay({
+  onResume,
+  onSaveAndMain,
+  onRestart,
+} = {}) {
+  assertCallback(onResume, 'onResume')
+  assertCallback(onSaveAndMain, 'onSaveAndMain')
+  assertCallback(onRestart, 'onRestart')
+
+  const { element, panel } = createOverlay({
+    className: 'pause-overlay',
+    labelId: 'pause-overlay-title',
+  })
+  element.dataset.pauseOverlay = ''
 
   const heading = document.createElement('h2')
   heading.id = 'pause-overlay-title'
   heading.textContent = 'Game paused'
 
   const saveStatus = document.createElement('p')
-  saveStatus.className = 'pause-overlay__status'
+  saveStatus.className = 'pause-overlay__status game-overlay__status'
   saveStatus.dataset.saveStatus = ''
   saveStatus.setAttribute('role', 'status')
   saveStatus.setAttribute('aria-live', 'polite')
 
-  const resumeButton = document.createElement('button')
-  resumeButton.type = 'button'
-  resumeButton.className = 'game-button game-button--primary'
-  resumeButton.dataset.action = 'resume'
-  resumeButton.textContent = 'Resume'
-  resumeButton.addEventListener('click', onResume)
+  const actions = document.createElement('div')
+  actions.className = 'game-overlay__actions'
 
-  panel.append(heading, saveStatus, resumeButton)
+  let busy = false
+  const handleResume = () => {
+    if (!busy) onResume()
+  }
+  const handleSaveAndMain = () => {
+    if (!busy) onSaveAndMain()
+  }
+  const handleRestart = () => {
+    if (!busy) onRestart()
+  }
+
+  const resumeButton = createButton(
+    'Resume',
+    handleResume,
+    'game-button game-button--primary',
+  )
+  resumeButton.dataset.action = 'resume'
+  const saveAndMainButton = createButton('Save & Main Menu', handleSaveAndMain)
+  saveAndMainButton.dataset.action = 'save-main'
+  const restartButton = createButton('Restart Game', handleRestart)
+  restartButton.dataset.action = 'restart'
+
+  actions.append(resumeButton, saveAndMainButton, restartButton)
+  panel.append(heading, saveStatus, actions)
   element.append(panel)
 
   return {
     element,
-    update(snapshot) {
-      saveStatus.textContent = saveStatusText(snapshot)
+    update(snapshot, actionState = {}) {
+      busy = snapshot.saveStatus === 'saving' || actionState.action != null
+      saveStatus.textContent = overlayStatusText(snapshot, actionState)
+      resumeButton.disabled = busy
+      saveAndMainButton.disabled = busy
+      restartButton.disabled = busy
     },
     teardown() {
-      resumeButton.removeEventListener('click', onResume)
+      resumeButton.removeEventListener('click', handleResume)
+      saveAndMainButton.removeEventListener('click', handleSaveAndMain)
+      restartButton.removeEventListener('click', handleRestart)
+    },
+  }
+}
+
+function outcomeHeading(outcome) {
+  if (outcome?.result === 'draw') return 'Match drawn'
+  return outcome?.winner === 'player' ? 'Victory' : 'Defeat'
+}
+
+function outcomeReason(outcome) {
+  if (outcome?.reason === 'opponentUnableToReveal') {
+    return 'The opponent could not reveal another card.'
+  }
+  if (outcome?.reason === 'playerUnableToReveal') {
+    return 'The player could not reveal another card.'
+  }
+  return 'Neither side could reveal another card.'
+}
+
+export function createEndOverlay({
+  onMainMenu,
+  onRestart,
+} = {}) {
+  assertCallback(onMainMenu, 'onMainMenu')
+  assertCallback(onRestart, 'onRestart')
+
+  const { element, panel } = createOverlay({
+    className: 'end-overlay',
+    labelId: 'end-overlay-title',
+  })
+  element.dataset.endOverlay = ''
+
+  const heading = document.createElement('h2')
+  heading.id = 'end-overlay-title'
+
+  const reason = document.createElement('p')
+  reason.className = 'end-overlay__reason'
+  reason.dataset.endReason = ''
+
+  const summary = document.createElement('p')
+  summary.className = 'end-overlay__summary'
+  summary.dataset.endSummary = ''
+
+  const saveStatus = document.createElement('p')
+  saveStatus.className = 'end-overlay__status game-overlay__status'
+  saveStatus.dataset.endSaveStatus = ''
+  saveStatus.setAttribute('role', 'status')
+  saveStatus.setAttribute('aria-live', 'polite')
+
+  const actions = document.createElement('div')
+  actions.className = 'game-overlay__actions'
+
+  let busy = false
+  const handleMainMenu = () => {
+    if (!busy) onMainMenu()
+  }
+  const handleRestart = () => {
+    if (!busy) onRestart()
+  }
+  const mainButton = createButton(
+    'Main Menu',
+    handleMainMenu,
+    'game-button game-button--primary',
+  )
+  mainButton.dataset.action = 'end-main'
+  const restartButton = createButton('Restart Game', handleRestart)
+  restartButton.dataset.action = 'end-restart'
+
+  actions.append(mainButton, restartButton)
+  panel.append(heading, reason, summary, saveStatus, actions)
+  element.append(panel)
+
+  return {
+    element,
+    update(snapshot, actionState = {}) {
+      const match = snapshot.match
+      const outcome = match?.outcome
+      busy = actionState.action != null
+      heading.textContent = outcomeHeading(outcome)
+      reason.textContent = outcomeReason(outcome)
+      summary.textContent = `${match?.turn ?? 0} clashes · ${match?.zones?.burnPile?.length ?? 0} cards burned`
+      saveStatus.textContent = overlayStatusText(snapshot, actionState)
+      mainButton.disabled = busy
+      restartButton.disabled = busy
+    },
+    teardown() {
+      mainButton.removeEventListener('click', handleMainMenu)
+      restartButton.removeEventListener('click', handleRestart)
     },
   }
 }
