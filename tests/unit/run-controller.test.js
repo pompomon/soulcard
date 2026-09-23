@@ -36,8 +36,10 @@ function deferred() {
 function createRepository({
   loadResult = { status: 'empty' },
   saveResult,
+  discardResult,
 } = {}) {
   const saves = []
+  let discardCalls = 0
   let closeCalls = 0
   return {
     saves,
@@ -49,8 +51,15 @@ function createRepository({
         savedAt: `2026-09-21T10:00:0${saves.length}.000Z`,
       }
     },
+    async discard() {
+      discardCalls += 1
+      return discardResult?.(discardCalls) ?? { status: 'discarded' }
+    },
     close() {
       closeCalls += 1
+    },
+    get discardCalls() {
+      return discardCalls
     },
     get closeCalls() {
       return closeCalls
@@ -332,6 +341,8 @@ test('restore adopts ready or paused snapshots without replaying RNG', async () 
     saveStatus: 'saved',
     savedAt: '2026-09-21T10:15:00.000Z',
     saveReason: null,
+    discardStatus: 'idle',
+    discardReason: null,
   })
 
   const uninterrupted = revealOrContinue(ready)
@@ -360,6 +371,137 @@ test('invalid repository restore results degrade without an unhandled rejection'
   assert.equal(controller.currentMatch, null)
   assert.equal(controller.getSnapshot().restoreStatus, 'storage-unavailable')
   assert.equal(controller.getSnapshot().restoreReason, 'storage-error')
+})
+
+test('recovery discard reports progress and clears recovery only after deletion', async () => {
+    const deletion = deferred()
+    const repository = createRepository({
+      loadResult: {
+        status: 'recovery-required',
+        reason: 'invalid-save',
+        message: 'Discard this invalid save.',
+      },
+      discardResult: () => deletion.promise,
+    })
+    const controller = createRunController({ repository })
+    await controller.restore()
+
+    const discarding = controller.discardRecovery()
+    assert.equal(controller.getSnapshot().restoreStatus, 'recovery-required')
+    assert.equal(controller.getSnapshot().discardStatus, 'discarding')
+    await Promise.resolve()
+    assert.equal(repository.discardCalls, 1)
+
+    deletion.resolve({ status: 'discarded' })
+    assert.deepEqual(await discarding, { status: 'discarded' })
+    assert.equal(controller.getSnapshot().restoreStatus, 'empty')
+    assert.equal(controller.getSnapshot().restoreReason, null)
+    assert.equal(controller.getSnapshot().restoreMessage, null)
+    assert.equal(controller.getSnapshot().discardStatus, 'discarded')
+    assert.equal(controller.currentMatch, null)
+})
+
+test('failed recovery discard remains retryable with its recovery context intact', async () => {
+    let fail = true
+    const repository = createRepository({
+      loadResult: {
+        status: 'recovery-required',
+        reason: 'unsupported-save-version',
+        message: 'Discard this unsupported save.',
+      },
+      discardResult: () => fail
+        ? {
+            status: 'storage-unavailable',
+            operation: 'discard',
+            reason: 'transaction-aborted',
+          }
+        : { status: 'discarded' },
+    })
+    const controller = createRunController({ repository })
+    await controller.restore()
+
+    assert.equal((await controller.discardRecovery()).status, 'storage-unavailable')
+    assert.equal(controller.getSnapshot().restoreStatus, 'recovery-required')
+    assert.equal(controller.getSnapshot().restoreReason, 'unsupported-save-version')
+    assert.equal(controller.getSnapshot().restoreMessage, 'Discard this unsupported save.')
+    assert.equal(controller.getSnapshot().discardStatus, 'failed')
+    assert.equal(controller.getSnapshot().discardReason, 'transaction-aborted')
+
+    fail = false
+    assert.deepEqual(await controller.discardRecovery(), { status: 'discarded' })
+    assert.equal(repository.discardCalls, 2)
+    assert.equal(controller.getSnapshot().restoreStatus, 'empty')
+})
+
+test('a replacement queues behind discard and cannot be cleared by its stale completion', async () => {
+    const deletion = deferred()
+    const order = []
+    const repository = createRepository({
+      loadResult: {
+        status: 'recovery-required',
+        reason: 'invalid-save',
+        message: 'Discard this invalid save.',
+      },
+      discardResult: async () => {
+        order.push('discard:start')
+        await deletion.promise
+        order.push('discard:end')
+        return { status: 'discarded' }
+      },
+      saveResult: () => {
+        order.push('save')
+        return {
+          status: 'saved',
+          savedAt: '2026-09-21T10:17:00.000Z',
+        }
+      },
+    })
+    const controller = createRunController({ repository })
+    await controller.restore()
+
+    const discarding = controller.discardRecovery()
+    const replacement = createActiveMatch('replacement-after-discard')
+    controller.setMatch(replacement)
+    const saving = controller.saveStable()
+    await Promise.resolve()
+    assert.deepEqual(order, ['discard:start'])
+
+    deletion.resolve()
+    await discarding
+    await saving
+    assert.deepEqual(order, ['discard:start', 'discard:end', 'save'])
+    assert.deepEqual(controller.currentMatch, replacement)
+    assert.equal(controller.getSnapshot().restoreStatus, 'current')
+    assert.equal(controller.getSnapshot().saveStatus, 'saved')
+})
+
+test('a superseded restore cannot replace current run or restore metadata', async () => {
+    const loading = deferred()
+    const controller = createRunController({
+      repository: {
+        load: () => loading.promise,
+        save: async () => ({
+          status: 'saved',
+          savedAt: '2026-09-21T10:18:00.000Z',
+        }),
+        discard: async () => ({ status: 'discarded' }),
+      },
+    })
+    const restoring = controller.restore()
+    const replacement = createActiveMatch('restore-race-replacement')
+    controller.discardPendingRestore()
+    controller.setMatch(replacement)
+
+    loading.resolve({
+      status: 'resumable',
+      savedAt: '2026-09-21T10:19:00.000Z',
+      migratedFrom: null,
+      match: createActiveMatch('stale-restored-run'),
+    })
+    assert.equal((await restoring).status, 'resumable')
+    assert.deepEqual(controller.currentMatch, replacement)
+    assert.equal(controller.getSnapshot().restoreStatus, 'current')
+    assert.equal(controller.getSnapshot().restoreMessage, null)
 })
 
 test('queued saves cannot let an older snapshot overwrite a newer pause', async () => {

@@ -1165,6 +1165,28 @@ reviewable PR.
 - **Acceptance:** Valid-only resume, overwrite/restart confirmation, Save & Main Menu,
   status, and end overlay satisfy the three-screen model.
 - **Checks/risks:** Browser end-to-end start/pause/refresh/resume/overwrite tests.
+- **Acceptance evidence:** `src/app/run-controller.js` serializes explicit recovery
+  discard with saves, retains recovery context after failures, and prevents superseded
+  restore/discard completions from replacing a newer run. `src/app/bootstrap.js` derives
+  Resume availability only from a validated current match and shares one confirmed
+  fresh-run path across Main, Pause, and terminal summary actions, tearing down the prior
+  Game presentation before replacement. `src/ui/menus.js` reports loading, empty,
+  resumable, completed, recovery-required, and storage-unavailable states with an
+  explicit recovery discard action. `src/ui/overlays.js` and `src/ui/hud.js` keep Pause
+  and End as mutually exclusive Game-owned dialogs: Save & Main Menu leaves the player
+  paused on failure, while the terminal summary waits for both the stable save attempt
+  and final committed-event presentation. Focused unit and integration coverage locks
+  valid-only resume, discard failure/retry, stale completion ordering, pause/save/menu,
+  refresh/resume equivalence, declined/accepted overwrite and restart, terminal
+  win/draw summaries, and completed-run reopening without RNG or state replay.
+- **Validation:** The Node 24 test runner reports 268 passing unit/integration tests, and
+  the production build passes. A text-only headless Chrome 152 check at the minimum
+  320×480 viewport/DPR 3 exercised Settings, fresh start, pause, Save & Main Menu,
+  refresh, exact paused resume, declined and accepted overwrite, a complete 38-clash
+  reduced-motion match, terminal Main/Resume, and confirmed restart. It retained exactly
+  one top-level screen and one Game canvas, showed only one nested dialog at a time,
+  disabled gameplay at terminal state, reported no relevant console errors, and exited
+  the preview/browser processes cleanly. No screenshots were produced.
 
 ### 17. PWA offline/update hardening
 - **Goal/files:** Evolve `public/sw.js`, manifest, and lifecycle integration; depends

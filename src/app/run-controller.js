@@ -22,9 +22,12 @@ function assertRepository(repository) {
     || typeof repository !== 'object'
     || typeof repository.load !== 'function'
     || typeof repository.save !== 'function'
+    || (repository.discard !== undefined && typeof repository.discard !== 'function')
     || (repository.close !== undefined && typeof repository.close !== 'function')
   ) {
-    throw new TypeError('repository must implement load, save, and optional close methods')
+    throw new TypeError(
+      'repository must implement load, save, and optional discard and close methods',
+    )
   }
 }
 
@@ -87,7 +90,10 @@ export function createRunController({
   let saveStatus = initialMatch === null ? 'idle' : 'unsaved'
   let savedAt = null
   let saveReason = null
+  let discardStatus = 'idle'
+  let discardReason = null
   let restorePromise = null
+  let discardPromise = null
   let writeTail = Promise.resolve()
   let latestSaveSequence = 0
   let destroyed = false
@@ -110,6 +116,8 @@ export function createRunController({
       saveStatus,
       savedAt,
       saveReason,
+      discardStatus,
+      discardReason,
     })
   }
 
@@ -130,8 +138,14 @@ export function createRunController({
     validateMatchState(nextMatch)
     match = nextMatch
     revision += 1
+    restoreStatus = 'current'
+    restoreReason = null
+    restoreMessage = null
     saveStatus = 'unsaved'
+    savedAt = null
     saveReason = null
+    discardStatus = 'idle'
+    discardReason = null
     publish()
     return match
   }
@@ -145,6 +159,20 @@ export function createRunController({
       return result
     }
     return storageFailure('save', new TypeError('repository.save returned an invalid result'))
+  }
+
+  function normalizeDiscardResult(result) {
+    if (
+      result !== null
+      && typeof result === 'object'
+      && (result.status === 'discarded' || result.status === 'storage-unavailable')
+    ) {
+      return result
+    }
+    return storageFailure(
+      'discard',
+      new TypeError('repository.discard returned an invalid result'),
+    )
   }
 
   function queueSave(snapshot) {
@@ -225,33 +253,40 @@ export function createRunController({
           )
         }
 
+        if (restoreRevision !== revision || destroyed) {
+          return result
+        }
         restoreStatus = result.status
         restoreReason = result.reason ?? null
         restoreMessage = result.message ?? null
         if (result.status === 'resumable') {
           validateMatchState(result.match)
-          if (restoreRevision === revision) {
-            match = immutableClone(result.match)
-            revision += 1
-            saveStatus = 'saved'
-            savedAt = result.savedAt
-            saveReason = null
-          }
-        } else if (result.status === 'empty' && restoreRevision === revision) {
+          match = immutableClone(result.match)
+          revision += 1
+          saveStatus = 'saved'
+          savedAt = result.savedAt
+          saveReason = null
+        } else if (result.status === 'empty') {
           match = null
           saveStatus = 'idle'
           savedAt = null
           saveReason = null
         }
+        discardStatus = 'idle'
+        discardReason = null
         publish()
         return result
       })
       .catch((error) => {
         const failure = storageFailure('load', error)
-        restoreStatus = failure.status
-        restoreReason = failure.reason
-        restoreMessage = null
-        if (!destroyed) publish()
+        if (restoreRevision === revision && !destroyed) {
+          restoreStatus = failure.status
+          restoreReason = failure.reason
+          restoreMessage = null
+          discardStatus = 'idle'
+          discardReason = null
+          publish()
+        }
         return failure
       })
       .finally(() => {
@@ -259,6 +294,59 @@ export function createRunController({
       })
 
     return restorePromise
+  }
+
+  function discardRecovery() {
+    assertActive()
+    if (restoreStatus !== 'recovery-required') {
+      throw new Error('No recoverable saved run is available to discard')
+    }
+    if (discardPromise) return discardPromise
+
+    revision += 1
+    latestSaveSequence += 1
+    const discardRevision = revision
+    discardStatus = 'discarding'
+    discardReason = null
+    publish()
+
+    const operation = writeTail
+      .then(() => {
+        if (typeof repository.discard !== 'function') {
+          return storageFailure(
+            'discard',
+            new TypeError('repository.discard is unavailable'),
+          )
+        }
+        return repository.discard()
+      })
+      .then(normalizeDiscardResult)
+      .catch((error) => storageFailure('discard', error))
+
+    discardPromise = operation.then((result) => {
+      if (discardRevision === revision && !destroyed) {
+        if (result.status === 'discarded') {
+          match = null
+          restoreStatus = 'empty'
+          restoreReason = null
+          restoreMessage = null
+          saveStatus = 'idle'
+          savedAt = null
+          saveReason = null
+          discardStatus = 'discarded'
+          discardReason = null
+        } else {
+          discardStatus = 'failed'
+          discardReason = result.reason
+        }
+        publish()
+      }
+      return result
+    }).finally(() => {
+      discardPromise = null
+    })
+    writeTail = discardPromise.then(() => undefined)
+    return discardPromise
   }
 
   function setMatch(nextMatch) {
@@ -374,6 +462,7 @@ export function createRunController({
     subscribe,
     subscribeToSaves,
     restore,
+    discardRecovery,
     setMatch,
     discardPendingRestore,
     revealOrContinue,

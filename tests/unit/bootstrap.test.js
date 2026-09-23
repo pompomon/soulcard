@@ -386,6 +386,7 @@ test('bootstrap enables Resume for restored and pre-populated runs', async (t) =
       runController.currentMatch = Object.freeze({ runId: 'restored-run' })
       return restoreResult
     },
+    discardRecovery: async () => Object.freeze({ status: 'discarded' }),
     discardPendingRestore: () => undefined,
     setMatch: () => undefined,
     saveStable: async () => Object.freeze({ status: 'skipped' }),
@@ -428,7 +429,7 @@ test('bootstrap enables Resume for restored and pre-populated runs', async (t) =
   })
 
   assert.equal(currentApp.resumeAvailable, true)
-  assert.equal(currentRoot.children[0].children[0].children[2].children[1].disabled, false)
+  assert.equal(byAction(currentRoot, 'resume').disabled, false)
   assert.deepEqual(await currentApp.ready, { status: 'current' })
 
   await currentApp.destroy()
@@ -452,6 +453,7 @@ test('bootstrap does not refresh Resume after teardown', async (t) => {
     currentMatch: null,
     getSnapshot: () => Object.freeze({}),
     restore: () => restore,
+    discardRecovery: async () => Object.freeze({ status: 'discarded' }),
     discardPendingRestore: () => undefined,
     setMatch: () => undefined,
     saveStable: async () => Object.freeze({ status: 'skipped' }),
@@ -507,6 +509,7 @@ test('Start New wins races with pending restore results', async (t) => {
         if (!discarded && result.status === 'resumable') currentMatch = result.match
         return result
       }),
+      discardRecovery: async () => Object.freeze({ status: 'discarded' }),
       discardPendingRestore() {
         discarded = true
       },
@@ -548,6 +551,131 @@ test('Start New wins races with pending restore results', async (t) => {
 
     await app.destroy()
   }
+})
+
+test('Main exposes recovery and discards quarantined data without enabling Resume', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  let discardCalls = 0
+  const root = new FakeElement('div')
+  const app = bootstrap({
+    root,
+    runRepository: {
+      load: async () => ({
+        status: 'recovery-required',
+        reason: 'invalid-save',
+        message: 'This saved run is invalid and must be discarded.',
+      }),
+      save: async () => assert.fail('Recovery discard should not save a run'),
+      async discard() {
+        discardCalls += 1
+        return { status: 'discarded' }
+      },
+    },
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield: () => undefined,
+  })
+  await app.ready
+
+  const status = descendants(root).find(
+    (element) => Object.hasOwn(element.dataset, 'mainStatus'),
+  )
+  const resume = byAction(root, 'resume')
+  const discard = byAction(root, 'discard')
+  assert.equal(app.resumeAvailable, false)
+  assert.equal(resume.disabled, true)
+  assert.equal(discard.hidden, false)
+  assert.equal(status.textContent, 'This saved run is invalid and must be discarded.')
+
+  discard.dispatch('click')
+  await waitFor(() => app.runSnapshot.restoreStatus === 'empty')
+  assert.equal(discardCalls, 1)
+  assert.equal(app.resumeAvailable, false)
+  assert.equal(discard.hidden, true)
+  assert.equal(status.textContent, 'No saved game found.')
+  await app.destroy()
+})
+
+test('Game restart confirms replacement and tears down presentation before installing it', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const currentMatch = createMatch({
+    runId: 'restart-current',
+    seed: 1,
+    ruleset: BASELINE_RULESET,
+  })
+  const replacement = createMatch({
+    runId: 'restart-replacement',
+    seed: 2,
+    ruleset: BASELINE_RULESET,
+  })
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => ({
+        status: 'saved',
+        savedAt: '2026-09-23T01:10:00.000Z',
+      }),
+    },
+    initialMatch: currentMatch,
+  })
+  const confirmations = [false, true]
+  let confirmationCalls = 0
+  let battlefieldMounts = 0
+  let battlefieldTeardowns = 0
+  const root = new FakeElement('div')
+  const app = bootstrap({
+    root,
+    runController: controller,
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield: () => {
+      battlefieldMounts += 1
+      return () => {
+        battlefieldTeardowns += 1
+      }
+    },
+    confirmStartOver() {
+      const result = confirmations[confirmationCalls]
+      confirmationCalls += 1
+      return result
+    },
+    newMatchFactory: () => replacement,
+  })
+  byAction(root, 'resume').dispatch('click')
+  byAction(root, 'pause').dispatch('click')
+  await controller.whenIdle()
+  await waitFor(() => byAction(root, 'restart').disabled === false)
+
+  byAction(root, 'restart').dispatch('click')
+  await waitFor(() => byAction(root, 'restart').disabled === false)
+  assert.equal(app.activeScreen, 'game')
+  assert.equal(controller.currentMatch.runId, currentMatch.runId)
+  assert.equal(battlefieldTeardowns, 0)
+
+  byAction(root, 'restart').dispatch('click')
+  await waitFor(() => controller.currentMatch.runId === replacement.runId)
+  assert.equal(app.activeScreen, 'game')
+  assert.equal(confirmationCalls, 2)
+  assert.equal(battlefieldMounts, 2)
+  assert.equal(battlefieldTeardowns, 1)
+  await controller.whenIdle()
+  await app.destroy()
 })
 
 test('bootstrap tears down every owner when Game presentation teardown fails', async (t) => {

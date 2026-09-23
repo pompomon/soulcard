@@ -22,7 +22,7 @@ dependency-map sections.
 - [x] 13. Committed-event-to-animation pipeline (depends on: 5, 8, 11–12)
 - [x] 14. Pointer interactions and responsive HUD (depends on: 7, 11, 13)
 - [x] 15. AI and complete source-to-personal-stage match flow (depends on: 5, 13–14)
-- [ ] 16. Main, pause, resume, overwrite, and end-state integration
+- [x] 16. Main, pause, resume, overwrite, and end-state integration
       (depends on: 8–10, 15)
 - [ ] 17. PWA offline/update hardening (depends on: 9–10, 16)
 - [ ] 18. Performance, context loss, accessibility baseline, cross-device QA

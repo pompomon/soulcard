@@ -66,6 +66,19 @@ seed in the domain RNG snapshot, and immediately queues the stable turn-zero run
 IndexedDB persistence before play continues. Replacing a current or still-restoring
 saved run requires confirmation.
 
+## Run menus and summaries
+
+Main enables Resume only after a valid ready, paused, or completed run restores. Invalid
+or incompatible saves remain quarantined until explicitly discarded; unavailable storage
+is reported without blocking session-only play.
+
+Pause remains an overlay inside Game. Resume continues the exact snapshot, Save & Main
+Menu navigates only after a successful stable save, and Restart Game requires confirmation
+before creating a fresh entropy-seeded run. A failed Save & Main Menu attempt stays paused
+and can be retried. Completed runs show a Game-owned summary after the terminal save and
+committed-event presentation settle; returning to Main retains the completed run so Resume
+can reopen its summary.
+
 ## AI encounter flow
 
 `src/domain/ai-controller.js` is the automatic-opponent policy boundary. One player

@@ -19,6 +19,7 @@ function assertRunController(runController) {
   const methods = [
     'getSnapshot',
     'restore',
+    'discardRecovery',
     'discardPendingRestore',
     'setMatch',
     'saveStable',
@@ -61,7 +62,6 @@ export function registerServiceWorker({
 
 export function bootstrap({
   root,
-  resumeAvailable = false,
   mountBattlefield = mountResponsiveBattlefield,
   settingsRepository = createSettingsRepository(),
   matchMedia = undefined,
@@ -116,30 +116,50 @@ export function bootstrap({
     throw error
   }
   let coordinator
+  let destroyed = false
+  let unsubscribeResumeAvailability = () => {}
+
+  const requiresReplacementConfirmation = () => {
+    const snapshot = activeRunController.getSnapshot()
+    return (
+      restorePending
+      || activeRunController.currentMatch !== null
+      || snapshot.restoreStatus === 'recovery-required'
+    )
+  }
+
+  const startNewGame = () => {
+    if (requiresReplacementConfirmation() && !confirmStartOver()) {
+      return false
+    }
+
+    const match = newMatchFactory()
+    activeRunController.discardPendingRestore()
+    if (coordinator?.activeScreen === 'game') {
+      coordinator.navigate('main')
+    }
+    activeRunController.setMatch(match)
+    const save = activeRunController.saveStable()
+    coordinator.setResumeAvailable(true)
+    coordinator.navigate('game')
+    void save
+    return true
+  }
+
   try {
     coordinator = createScreenCoordinator({
       root,
-      resumeAvailable,
+      resumeAvailable: activeRunController.currentMatch !== null,
       screenFactories: {
         main: ({ navigate, resumeAvailable: canResume }) => createMainScreen({
           resumeAvailable: canResume,
-          onStart: () => {
-            if (
-              (restorePending || activeRunController.currentMatch !== null)
-              && !confirmStartOver()
-            ) {
-              return
-            }
-            const match = newMatchFactory()
-            activeRunController.discardPendingRestore()
-            activeRunController.setMatch(match)
-            const save = activeRunController.saveStable()
-            navigate('game')
-            coordinator.setResumeAvailable(true)
-            void save
+          runController: activeRunController,
+          onStart: startNewGame,
+          onResume: () => {
+            if (activeRunController.currentMatch !== null) navigate('game')
           },
-          onResume: () => navigate('game'),
           onSettings: () => navigate('settings'),
+          onDiscard: () => activeRunController.discardRecovery(),
         }),
         settings: ({ navigate }) => createSettingsScreen({
           onBack: () => navigate('main'),
@@ -151,20 +171,21 @@ export function bootstrap({
           runController: activeRunController,
           eventPlayerFactory,
           inputControllerFactory,
+          onMainMenu: () => coordinator.navigate('main'),
+          onRestart: startNewGame,
         }),
       },
     })
-    if (activeRunController.currentMatch !== null) {
-      coordinator.setResumeAvailable(true)
-    }
     coordinator.start()
+    unsubscribeResumeAvailability = activeRunController.subscribe(({ match }) => {
+      if (!destroyed) coordinator.setResumeAvailable(match !== null)
+    })
   } catch (error) {
     pageLifecycle.destroy()
     void activeRunController.destroy()
     settingsController.destroy()
     throw error
   }
-  let destroyed = false
   const ready = restorePending
     ? activeRunController.restore().then((result) => {
       if (!destroyed) {
@@ -181,7 +202,6 @@ export function bootstrap({
     ready,
     start: coordinator.start,
     navigate: coordinator.navigate,
-    setResumeAvailable: coordinator.setResumeAvailable,
     async destroy() {
       destroyed = true
       let firstError = null
@@ -194,6 +214,7 @@ export function bootstrap({
       }
 
       await attempt(() => pageLifecycle.destroy())
+      await attempt(() => unsubscribeResumeAvailability())
       await attempt(() => coordinator.destroy())
       await attempt(() => settingsController.destroy())
       await attempt(() => activeRunController.destroy())

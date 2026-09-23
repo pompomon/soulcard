@@ -1,4 +1,4 @@
-import { createPauseOverlay } from './overlays.js'
+import { createEndOverlay, createPauseOverlay } from './overlays.js'
 import { createEventPlayer } from '../presentation/event-player.js'
 import { createInputController } from '../presentation/input.js'
 
@@ -9,6 +9,12 @@ function createTextElement(tagName, className, text) {
   element.className = className
   element.textContent = text
   return element
+}
+
+function assertCallback(callback, name) {
+  if (typeof callback !== 'function') {
+    throw new TypeError(`${name} must be a function`)
+  }
 }
 
 function createMetric(label, key) {
@@ -71,7 +77,14 @@ function createSidePanel(side, label) {
 }
 
 function assertRunController(runController) {
-  const methods = ['getSnapshot', 'subscribe', 'revealOrContinue', 'pause', 'resume']
+  const methods = [
+    'getSnapshot',
+    'subscribe',
+    'revealOrContinue',
+    'pause',
+    'resume',
+    'saveStable',
+  ]
   if (
     runController !== null
     && runController !== undefined
@@ -207,6 +220,8 @@ export function createGameScreen({
   runController,
   eventPlayerFactory = createEventPlayer,
   inputControllerFactory = createInputController,
+  onMainMenu = () => {},
+  onRestart = () => false,
 } = {}) {
   if (typeof mountBattlefield !== 'function') {
     throw new TypeError('mountBattlefield must be a function')
@@ -216,6 +231,8 @@ export function createGameScreen({
     throw new TypeError('eventPlayerFactory must be a function')
   }
   assertInputControllerFactory(inputControllerFactory)
+  assertCallback(onMainMenu, 'onMainMenu')
+  assertCallback(onRestart, 'onRestart')
 
   const element = document.createElement('main')
   element.className = 'screen screen--game'
@@ -325,13 +342,111 @@ export function createGameScreen({
   overlayHost.className = 'game-overlays'
   overlayHost.dataset.overlayHost = ''
 
+  let destroyed = false
+  let overlayAction = null
+  let overlayError = null
   const handleResume = () => {
+    if (overlayAction !== null) return
+    overlayError = null
     try {
       runController?.resume()
-    } catch {}
+    } catch {
+      overlayError = 'Resume could not be completed. Try again.'
+      renderHud()
+    }
   }
-  const pauseOverlay = createPauseOverlay({ onResume: handleResume })
-  overlayHost.append(pauseOverlay.element)
+  const handleSaveAndMain = () => {
+    if (overlayAction !== null) return
+    overlayAction = 'save-main'
+    overlayError = null
+    renderHud()
+
+    let save
+    try {
+      save = runController?.saveStable()
+    } catch {
+      overlayAction = null
+      overlayError = 'Save failed. Stay paused and try again.'
+      renderHud()
+      return
+    }
+    Promise.resolve(save)
+      .then((result) => {
+        if (destroyed) return
+        if (result?.status !== 'saved') {
+          overlayAction = null
+          overlayError = `Save failed${result?.reason ? ` (${result.reason})` : ''}. Stay paused and try again.`
+          renderHud()
+          return
+        }
+        overlayAction = 'main'
+        renderHud()
+        try {
+          onMainMenu()
+        } catch {
+          overlayAction = null
+          overlayError = 'The main menu could not be opened. Try again.'
+          renderHud()
+        }
+      })
+      .catch(() => {
+        if (destroyed) return
+        overlayAction = null
+        overlayError = 'Save failed. Stay paused and try again.'
+        renderHud()
+      })
+  }
+  const handleRestart = () => {
+    if (overlayAction !== null) return
+    overlayAction = 'restart'
+    overlayError = null
+    renderHud()
+
+    let restarted
+    try {
+      restarted = onRestart()
+    } catch {
+      overlayAction = null
+      overlayError = 'A new game could not be started. Try again.'
+      renderHud()
+      return
+    }
+    Promise.resolve(restarted)
+      .then((accepted) => {
+        if (destroyed || accepted === true) return
+        overlayAction = null
+        renderHud()
+      })
+      .catch(() => {
+        if (destroyed) return
+        overlayAction = null
+        overlayError = 'A new game could not be started. Try again.'
+        renderHud()
+      })
+  }
+  const handleEndMain = () => {
+    if (overlayAction !== null) return
+    overlayAction = 'main'
+    overlayError = null
+    renderHud()
+    try {
+      onMainMenu()
+    } catch {
+      overlayAction = null
+      overlayError = 'The main menu could not be opened. Try again.'
+      renderHud()
+    }
+  }
+  const pauseOverlay = createPauseOverlay({
+    onResume: handleResume,
+    onSaveAndMain: handleSaveAndMain,
+    onRestart: handleRestart,
+  })
+  const endOverlay = createEndOverlay({
+    onMainMenu: handleEndMain,
+    onRestart: handleRestart,
+  })
+  overlayHost.append(pauseOverlay.element, endOverlay.element)
 
   element.append(battlefieldHost, hud, overlayHost)
   let requestReveal = () => {}
@@ -479,6 +594,8 @@ export function createGameScreen({
       message = 'Game setup is not connected yet.'
     } else if (match.machineState === 'paused') {
       message = 'Game paused. Resume to continue.'
+    } else if (snapshot.saveStatus === 'saving' && match.turn === 0) {
+      message = 'Saving new game…'
     } else if (snapshot.saveStatus === 'saving' && match.pendingEvent !== null) {
       message = 'Saving committed clash…'
     } else if (
@@ -512,7 +629,15 @@ export function createGameScreen({
 
   function updateControls() {
     const match = latestSnapshot?.match
-    const matchReady = match?.status === 'active' && match.machineState === 'ready'
+    const initialSavePending = (
+      match?.turn === 0
+      && latestSnapshot?.saveStatus === 'saving'
+    )
+    const matchReady = (
+      match?.status === 'active'
+      && match.machineState === 'ready'
+      && !initialSavePending
+    )
     const presentationActive = (
       queuedEventIds.size > 0
       || ACTIVE_PRESENTATION_STATUSES.has(presentationState.status)
@@ -530,11 +655,41 @@ export function createGameScreen({
     if (pauseInput === null) pauseButton.disabled = !matchReady || pauseActionPending
   }
 
+  function terminalPresentationSettled() {
+    const match = latestSnapshot?.match
+    if (match?.status !== 'ended') return false
+    if (!['saved', 'failed'].includes(latestSnapshot.saveStatus)) return false
+    const eventId = match.pendingEvent?.id
+    if (eventId === undefined) return true
+    return (
+      settledEventIds.has(eventId)
+      || (
+        presentationState.eventId === eventId
+        && ['completed', 'skipped', 'failed'].includes(presentationState.status)
+      )
+    )
+  }
+
+  function renderOverlays() {
+    const endVisible = terminalPresentationSettled()
+    const paused = latestSnapshot?.match?.machineState === 'paused'
+    pauseOverlay.element.hidden = !paused || endVisible
+    endOverlay.element.hidden = !endVisible
+    const actionState = {
+      action: overlayAction,
+      error: overlayError,
+    }
+    pauseOverlay.update(latestSnapshot, actionState)
+    endOverlay.update(latestSnapshot, actionState)
+  }
+
   function renderHud() {
+    if (destroyed) return
     renderMetrics()
     renderComparison()
     renderStatus()
     updateControls()
+    renderOverlays()
   }
 
   let eventPlayer
@@ -565,6 +720,7 @@ export function createGameScreen({
     }
   } catch (error) {
     pauseOverlay.teardown()
+    endOverlay.teardown()
     battlefield.teardown?.()
     throw error
   }
@@ -589,7 +745,10 @@ export function createGameScreen({
       presentation = eventPlayer.present(match)
     } catch {
       presentationFailure = true
-      if (eventId !== undefined) queuedEventIds.delete(eventId)
+      if (eventId !== undefined) {
+        queuedEventIds.delete(eventId)
+        settledEventIds.add(eventId)
+      }
       if (eventId === revealActionEventId) {
         revealActionPending = false
         revealActionEventId = null
@@ -607,7 +766,7 @@ export function createGameScreen({
         if (result?.status === 'failed') presentationFailure = true
         if (
           eventId !== undefined
-          && ['completed', 'skipped', 'cancelled', 'duplicate'].includes(result?.status)
+          && ['completed', 'skipped', 'failed', 'cancelled', 'duplicate'].includes(result?.status)
         ) {
           settledEventIds.add(eventId)
         }
@@ -628,6 +787,7 @@ export function createGameScreen({
       })
       .catch(() => {
         presentationFailure = true
+        if (eventId !== undefined) settledEventIds.add(eventId)
         return Object.freeze({
           status: 'failed',
           eventId: eventId ?? null,
@@ -694,6 +854,7 @@ export function createGameScreen({
     if (pauseActionPending) return
     pauseActionPending = true
     interactionFailure = null
+    overlayError = null
     renderHud()
 
     let action
@@ -732,6 +893,7 @@ export function createGameScreen({
     revealInput?.destroy?.()
     pauseInput?.destroy?.()
     pauseOverlay.teardown()
+    endOverlay.teardown()
     eventPlayer.destroy()
     battlefield.teardown?.()
     throw error
@@ -748,8 +910,6 @@ export function createGameScreen({
   const unsubscribeRun = runController?.subscribe((snapshot) => {
     latestSnapshot = snapshot
     const { match } = snapshot
-    pauseOverlay.element.hidden = match?.machineState !== 'paused'
-    pauseOverlay.update(snapshot)
     // Keep failures visible through transient unsaved/saving states until a save succeeds.
     if (isSaveFailureStatus(snapshot.saveStatus)) {
       showSaveWarning(snapshot.saveReason)
@@ -770,12 +930,14 @@ export function createGameScreen({
   return {
     element,
     teardown() {
+      destroyed = true
       requestReveal = () => {}
       unsubscribeRun?.()
       unsubscribeSaves?.()
       revealInput.destroy()
       pauseInput.destroy()
       pauseOverlay.teardown()
+      endOverlay.teardown()
       eventPlayer.destroy()
       battlefield.teardown?.()
     },
