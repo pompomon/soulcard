@@ -334,6 +334,7 @@ export function createGameScreen({
   overlayHost.append(pauseOverlay.element)
 
   element.append(battlefieldHost, hud, overlayHost)
+  let requestReveal = () => {}
 
   const applyLayout = (layout) => {
     element.dataset.layoutMode = layout.mode
@@ -361,6 +362,8 @@ export function createGameScreen({
   const battlefieldMount = mountBattlefield(battlefieldHost, {
     settingsController,
     onLayout: applyLayout,
+    onDeckActivate: (event) => requestReveal(event),
+    inputControllerFactory,
   })
   const battlefield = typeof battlefieldMount === 'function'
     ? { teardown: battlefieldMount }
@@ -373,6 +376,8 @@ export function createGameScreen({
     || (battlefield.beginEvent !== undefined && typeof battlefield.beginEvent !== 'function')
     || (battlefield.applyStep !== undefined && typeof battlefield.applyStep !== 'function')
     || (battlefield.cancelEvent !== undefined && typeof battlefield.cancelEvent !== 'function')
+    || (battlefield.setDeckInputState !== undefined
+      && typeof battlefield.setDeckInputState !== 'function')
   ) {
     throw new TypeError(
       'mountBattlefield must return a presentation handle, teardown function, or undefined',
@@ -515,6 +520,10 @@ export function createGameScreen({
     const revealBusy = revealActionPending || presentationActive
     revealInput?.setEnabled(matchReady)
     revealInput?.setBusy(revealBusy)
+    battlefield.setDeckInputState?.({
+      enabled: matchReady,
+      busy: revealBusy,
+    })
     pauseInput?.setEnabled(matchReady)
     pauseInput?.setBusy(pauseActionPending)
     if (revealInput === null) revealButton.disabled = !matchReady || revealBusy
@@ -679,6 +688,7 @@ export function createGameScreen({
         renderHud()
       })
   }
+  requestReveal = handleReveal
 
   const handlePause = () => {
     if (pauseActionPending) return
@@ -760,6 +770,7 @@ export function createGameScreen({
   return {
     element,
     teardown() {
+      requestReveal = () => {}
       unsubscribeRun?.()
       unsubscribeSaves?.()
       revealInput.destroy()

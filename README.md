@@ -47,16 +47,19 @@ remain readable.
 ## Pointer input and HUD ownership
 
 `src/presentation/input.js` owns mouse, touch, and pen pointer sequences for the
-Game screen's semantic Reveal/Continue and Pause buttons. It accepts only primary
-press-and-release sequences that finish inside the target, handles cancellation,
-suppresses the following compatibility click, and retains native click fallback for
-assistive or programmatic activation. It does not capture pointers or add battlefield
-gestures.
+Game screen's semantic Reveal/Continue and Pause buttons and the supplemental
+hit-tested active-deck shortcut. It accepts only primary press-and-release sequences
+that finish inside the target, handles cancellation, suppresses the following
+compatibility click, and retains native click fallback for assistive or programmatic
+button activation. The deck keeps a 44×44 CSS-pixel screen-space hit target even when
+its rendered card is smaller. It does not capture pointers or add drag/swipe gestures.
 
-The Game HUD invokes actions only through `run-controller`, disables Reveal/Continue
-through the corresponding save and committed-event presentation, and derives counts,
-comparison results, progress, and outcomes from stable snapshots and committed events.
-Input and presentation never settle rules or consume domain RNG.
+The Game HUD routes both the button and active source/player deck through the same
+`run-controller` Reveal action, disables both through the corresponding save and
+committed-event presentation, and derives counts, comparison results, progress, and
+outcomes from stable snapshots and committed events. The semantic button remains the
+accessible canonical control. Input and presentation never settle rules or consume
+domain RNG.
 
 Start New Game creates a baseline 52-card match from Web Crypto entropy, records the
 seed in the domain RNG snapshot, and immediately queues the stable turn-zero run for
