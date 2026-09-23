@@ -25,7 +25,7 @@ export const MINIMUM_VIEWPORT = Object.freeze({
 const MODE_SPECS = Object.freeze({
   'phone-portrait': Object.freeze({
     world: Object.freeze({ width: 7.5, height: 11 }),
-    hud: Object.freeze({ header: 72, footer: 210, side: 0 }),
+    hud: Object.freeze({ header: 72, comparison: 80, footer: 210, side: 0 }),
     visuals: Object.freeze({
       activeDeckScale: 1.55,
       revealScale: 1.55,
@@ -45,7 +45,7 @@ const MODE_SPECS = Object.freeze({
   }),
   'phone-landscape': Object.freeze({
     world: Object.freeze({ width: 12, height: 6.5 }),
-    hud: Object.freeze({ header: 56, footer: 114, side: 150 }),
+    hud: Object.freeze({ header: 44, comparison: 72, footer: 80, side: 100 }),
     visuals: Object.freeze({
       activeDeckScale: 1.4,
       revealScale: 1.4,
@@ -65,7 +65,7 @@ const MODE_SPECS = Object.freeze({
   }),
   tablet: Object.freeze({
     world: Object.freeze({ width: 10, height: 9 }),
-    hud: Object.freeze({ header: 60, footer: 108, side: 120 }),
+    hud: Object.freeze({ header: 60, comparison: 128, footer: 108, side: 120 }),
     visuals: Object.freeze({
       activeDeckScale: 1.75,
       revealScale: 1.75,
@@ -85,7 +85,7 @@ const MODE_SPECS = Object.freeze({
   }),
   desktop: Object.freeze({
     world: Object.freeze({ width: 12, height: 8 }),
-    hud: Object.freeze({ header: 76, footer: 92, side: 208 }),
+    hud: Object.freeze({ header: 76, comparison: 88, footer: 92, side: 208 }),
     visuals: Object.freeze({
       activeDeckScale: 1.75,
       revealScale: 1.75,
@@ -188,9 +188,8 @@ export function createBattlefieldLayout({
   }
   const scale = Math.min(width / logicalWidth, height / logicalHeight, 1)
   const letterboxed = scale < 1
-  const scaledControlCount = mode === 'phone-landscape' ? 2 : 1
   const footerReserve = spec.hud.footer
-    + scaledControlCount * 44 * (1 / scale - 1)
+    + 44 * (1 / scale - 1)
   const logicalSafe = Object.fromEntries(
     Object.entries(safe).map(([side, value]) => [side, value / scale]),
   )
@@ -212,15 +211,26 @@ export function createBattlefieldLayout({
     contentWidth,
     footerHeight,
   )
-  const middleY = header.y + header.height
+  const comparisonY = header.y + header.height
+  const comparison = freezeRectangle(
+    logicalSafe.left,
+    comparisonY,
+    contentWidth,
+    Math.min(spec.hud.comparison, Math.max(0, footer.y - comparisonY - 1)),
+  )
+  const middleY = comparison.y + comparison.height
   const middleHeight = Math.max(1, footer.y - middleY)
+  const panelY = mode === 'phone-landscape'
+    ? header.y + header.height
+    : middleY
+  const panelHeight = Math.max(1, footer.y - panelY)
   const sideWidth = Math.min(spec.hud.side, Math.max(0, contentWidth / 2 - 1))
-  const leftPanel = freezeRectangle(logicalSafe.left, middleY, sideWidth, middleHeight)
+  const leftPanel = freezeRectangle(logicalSafe.left, panelY, sideWidth, panelHeight)
   const rightPanel = freezeRectangle(
     logicalWidth - logicalSafe.right - sideWidth,
-    middleY,
+    panelY,
     sideWidth,
-    middleHeight,
+    panelHeight,
   )
   const battlefield = freezeRectangle(
     logicalSafe.left + sideWidth,
@@ -267,6 +277,7 @@ export function createBattlefieldLayout({
     safeArea: logicalSafe,
     hud: {
       header,
+      comparison,
       footer,
       leftPanel,
       rightPanel,

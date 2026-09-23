@@ -468,6 +468,10 @@ export function createGameScreen({
       `${layout.viewport.logicalHeight}px`,
     )
     element.style?.setProperty?.('--hud-header-reserve', `${layout.hud.header.height}px`)
+    element.style?.setProperty?.(
+      '--hud-comparison-reserve',
+      `${layout.hud.comparison.height}px`,
+    )
     element.style?.setProperty?.('--hud-footer-reserve', `${layout.hud.footer.height}px`)
     element.style?.setProperty?.('--hud-side-reserve', `${layout.hud.leftPanel.width}px`)
     for (const [side, value] of Object.entries(layout.safeArea)) {

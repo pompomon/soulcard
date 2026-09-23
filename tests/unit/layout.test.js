@@ -93,8 +93,17 @@ test('safe areas and HUD reserves leave a positive camera-fitting battlefield re
     width: 1380,
     height: 76,
   })
+  assert.deepEqual(layout.hud.comparison, {
+    x: 40,
+    y: 86,
+    width: 1380,
+    height: 88,
+  })
   assert.equal(layout.hud.footer.y + layout.hud.footer.height, 870)
-  assert.equal(layout.hud.battlefield.y, layout.hud.header.y + layout.hud.header.height)
+  assert.equal(
+    layout.hud.battlefield.y,
+    layout.hud.comparison.y + layout.hud.comparison.height,
+  )
   assert.equal(
     layout.hud.battlefield.y + layout.hud.battlefield.height,
     layout.hud.footer.y,
@@ -137,10 +146,12 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(landscape.viewport.logicalHeight, 390)
   assert.equal(landscape.viewport.minimumWidth, 480)
   assert.equal(landscape.viewport.minimumHeight, 320)
-  assert.equal(landscape.hud.footer.height, 114)
+  assert.equal(landscape.hud.comparison.height, 72)
+  assert.equal(landscape.hud.footer.height, 80)
 
   const tablet = createBattlefieldLayout({ width: 768, height: 1024 })
   assert.equal(tablet.hud.header.height, 60)
+  assert.equal(tablet.hud.comparison.height, 128)
   assert.equal(tablet.hud.footer.height, 108)
   assert.equal(tablet.hud.leftPanel.width, 120)
 
@@ -149,11 +160,37 @@ test('the minimum viewport is direct and smaller viewports use a stable letterbo
   assert.equal(smallerLandscape.viewport.logicalWidth, 480)
   assert.equal(smallerLandscape.viewport.logicalHeight, 320)
   assert.equal(smallerLandscape.viewport.scale, 5 / 6)
-  assert.ok(Math.abs(smallerLandscape.hud.footer.height - 131.6) < Number.EPSILON * 100)
+  assert.ok(Math.abs(smallerLandscape.hud.footer.height - 88.8) < Number.EPSILON * 100)
 
   assert.equal(minimum.hud.footer.height, 210)
+  assert.equal(minimum.hud.comparison.height, 80)
   assert.ok(
     Math.abs(smaller.hud.footer.height - 218.8) < Number.EPSILON * 100,
+  )
+})
+
+test('constrained landscape layouts keep side panels clear of the footer', () => {
+  const safeAreaLayout = createBattlefieldLayout({
+    width: 480,
+    height: 320,
+    safeArea: { top: 44, right: 0, bottom: 21, left: 0 },
+  })
+  assert.equal(safeAreaLayout.mode, 'phone-landscape')
+  assert.equal(safeAreaLayout.hud.comparison.height, 72)
+  assert.equal(safeAreaLayout.hud.leftPanel.width, 100)
+  assert.equal(safeAreaLayout.hud.leftPanel.height, 131)
+  assert.equal(safeAreaLayout.hud.battlefield.height, 59)
+  assert.equal(
+    safeAreaLayout.hud.leftPanel.y + safeAreaLayout.hud.leftPanel.height,
+    safeAreaLayout.hud.footer.y,
+  )
+
+  const letterboxed = createBattlefieldLayout({ width: 400, height: 280 })
+  assert.equal(letterboxed.mode, 'phone-landscape')
+  assert.ok(letterboxed.hud.leftPanel.height > letterboxed.hud.comparison.height)
+  assert.equal(
+    letterboxed.hud.leftPanel.y + letterboxed.hud.leftPanel.height,
+    letterboxed.hud.footer.y,
   )
 })
 
