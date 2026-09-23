@@ -196,7 +196,7 @@ button:disabled {
   cursor: grab;
 }
 
-.battlefield canvas[data-deck-dragging="true"] {
+.battlefield canvas[data-input-enabled="true"][data-deck-dragging="true"] {
   cursor: grabbing;
 }
 

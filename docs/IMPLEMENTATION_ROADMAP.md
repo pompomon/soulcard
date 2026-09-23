@@ -1112,27 +1112,26 @@ reviewable PR.
   gating, teardown, save/presentation ordering,
   skipped and failed presentation, terminal state, injected ownership, initial-run
   persistence, overwrite confirmation, pending-restore races, and stale completions
-  from replaced runs. Integration tests prove button and active-deck actions each
-  produce one deterministic clash, save, and presentation while renderer callbacks
-  receive detached frozen state.
-- **Validation:** All 240 unit/integration tests and the production build pass locally on
+  from replaced runs. Integration tests prove button, active-deck click, and accepted
+  deck-drop actions each produce one deterministic clash, save, and presentation while
+  renderer callbacks receive detached frozen state.
+- **Validation:** All 259 unit/integration tests and the production build pass locally on
   Node 24. A text-only headless Chrome 152 check at 320×480/DPR 3, 844×390/DPR 3,
-  768×1024/DPR 2, 1280×800/DPR 1, and 900×1000/DPR 2 verified the declared layout
-  modes, exactly one full-viewport canvas, compact comparison bounds, active source-deck
-  hits producing exactly one turn at every size, transition to the personal-stage player
-  deck, and another exact single activation there. It also confirmed
-  `touch-action: manipulation`, physical controls of at least 44×44 CSS px, deck input
-  disabled without advancing a turn while paused, successful resume, and zero relevant
-  console errors. A post-review rerun at 320×480, the minimum 480×320 landscape
-  orientation, and 900×1000 confirmed the expanded deck target, exact single activation,
-  and drag-onto-deck rejection. Earlier text-only checks cover letterboxed 280×400/DPR 2,
-  visible focus outlines, pointer cancellation and out-of-target release, fresh-start
-  persistence, and replacement confirmation. A user-provided portrait screenshot from
-  a physical Android target device confirmed touch navigation and responsive HUD
-  rendering while exposing the now-fixed missing new-match initialization. Manual
-  target-device sign-off was provided for the post-fix Reveal/Continue and Pause
-  behavior; no further device or browser details were supplied. No validation
-  screenshots were generated.
+  768×1024/DPR 2, and 1280×800/DPR 1 verified the declared layout modes, exactly one
+  full-viewport canvas, `touch-action: none`, grab/grabbing feedback, exact single-turn
+  mouse and touch drops onto the player reveal target, snap-back without advancement for
+  an invalid drop and pointer cancellation, and exact single activation from the
+  retained deck click. It reported no relevant application console errors; software
+  WebGL emitted only `ReadPixels` performance warnings.
+  Earlier text-only checks cover 900×1000/DPR 2, the minimum 480×320 landscape
+  orientation, letterboxed 280×400/DPR 2, compact comparison bounds, physical controls
+  of at least 44×44 CSS px, visible focus outlines, paused input, resume, fresh-start
+  persistence, replacement confirmation, source-to-personal transition, and
+  drag-onto-deck rejection. A user-provided portrait screenshot from a physical Android
+  target device confirmed touch navigation and responsive HUD rendering while exposing
+  the now-fixed missing new-match initialization. Manual target-device sign-off was
+  provided for the post-fix Reveal/Continue and Pause behavior; no further device or
+  browser details were supplied. No validation screenshots were generated.
 
 ### 15. AI and complete source-to-personal-stage match flow
 - **Goal/files:** Add AI controller/encounter wiring and integration tests; depends on 5,
