@@ -27,9 +27,12 @@ complete before sub-milestone 21.1 begins.
   one campaign/run zone.
 - Every instance carries immutable `campaignOwner` provenance (`player` or `opponent`)
   independent of its current encounter zone. During an encounter, the ordered player
-  campaign-deck IDs are retained as metadata, not a second card zone. Capturing into an
-  empty Hold slot removes that ID from the order; replacing Hold substitutes the
-  displaced held ID at the selected ID's former campaign-deck index.
+  campaign-deck IDs are retained as metadata, not a second card zone. Hold also records
+  the exact campaign-deck index from which its player-provenance instance was removed.
+  Capturing into an empty Hold slot removes that ID and records its index. Replacing
+  Hold substitutes the displaced held ID at the selected ID's campaign-deck index and
+  records that index with the newly held instance. Playing from Hold first reinserts
+  its ID at the recorded index, then clears Hold before supplying the card.
 - Encounter teardown first validates that every player-provenance instance occurs
   exactly once across both sides' source, draw, and won piles, `burnPile`,
   `contestedPile`, and Hold. The held instance remains in Hold; every other player
@@ -57,8 +60,9 @@ complete before sub-milestone 21.1 begins.
   Before calculating a reveal round, peek at the player's top candidate without
   removing it and enter a stable `awaitingHoldChoice` state whose persisted metadata
   identifies that instance, its source zone, and index `0`. If the player uses Hold,
-  the candidate remains at index `0` unchanged and the held instance supplies the
-  player reveal. This works in source and personal stages.
+  the candidate remains at index `0` unchanged and the held instance is reinserted into
+  the campaign order before it supplies the player reveal. This works in source and
+  personal stages.
 - Base Hold access ends before the opponent reveals. Starting in 21.2, the
   Hold-information boon reverses that reveal order for the decision only: peek at the
   opponent's index-`0` candidate without removing it and enter
@@ -75,9 +79,11 @@ complete before sub-milestone 21.1 begins.
   action completes resolution.
 - Capturing or replacing Hold is a stable, explicit action. Replacing a held instance
   atomically swaps it with the selected instance: the displaced held instance occupies
-  the selected instance's exact former index in its player-owned ordered zone, and the
-  selected instance enters Hold. The transition validates conservation. A Hold choice
-  must be saved before presentation can advance.
+  the selected instance's exact former index in its player-controlled ordered encounter
+  zone, and the selected instance enters Hold. Capture and replacement targets must
+  have `campaignOwner: player`; eligibility modifiers may narrow but never remove that
+  requirement. The transition validates conservation and the recorded campaign index.
+  A Hold choice must be saved before presentation can advance.
 - Encounter losses reduce run health and retry the same encounter with the persistent
   deck. A terminal encounter draw has the same campaign transition: it reduces health
   once, grants no reward, does not advance the encounter, and retries that encounter
@@ -107,8 +113,9 @@ three-encounter expedition.
   `awaitingHoldChoice` metadata state; the resolving action then supplies the selected
   player card, supplies the opponent card, calculates, and settles. Tied continuation
   remains automatic and never accepts Hold.
-- Deliver one Hold slot, capture only from an explicitly eligible player-owned settled
-  card, and deterministic replacement that cannot duplicate or lose a card.
+- Deliver one Hold slot, capture only from an explicitly eligible settled card with
+  `campaignOwner: player`, and deterministic replacement that cannot duplicate or lose
+  a card.
 - Implement health loss, same-encounter retry, victory advancement, and a fixed three
   encounter sequence. Add one scripted reward after each win that adds, removes, or
   replaces a player card instance and one simple modifier.
