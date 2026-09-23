@@ -96,6 +96,11 @@ async function cleanSupersededInstallCaches() {
 async function cleanObsoleteCaches() {
   const currentCaches = new Set([ACTIVE_CACHE, SHELL_CACHE, RUNTIME_CACHE])
   const keys = await caches.keys()
+  const nextWorker = self.registration.installing ?? self.registration.waiting
+  const nextShell = nextWorker
+    ? keys.filter((key) => key.startsWith(SHELL_CACHE_PREFIX) && key !== SHELL_CACHE).at(-1)
+    : null
+  if (nextShell) currentCaches.add(nextShell)
   await Promise.all(
     keys
       .filter((key) => key.startsWith(CACHE_PREFIX) && !currentCaches.has(key))

@@ -104,6 +104,8 @@ test('update notice reports availability and blocks only underlying content duri
     .find((element) => Object.hasOwn(element.dataset, 'updateStatus'))
   const button = descendants(notice.element)
     .find((element) => element.dataset.action === 'update')
+  const dismissButton = descendants(notice.element)
+    .find((element) => element.dataset.action === 'dismiss-update')
 
   assert.equal(notice.element.hidden, true)
   controller.publish({
@@ -117,6 +119,9 @@ test('update notice reports availability and blocks only underlying content duri
   assert.equal(button.disabled, false)
   button.dispatch('click')
   assert.equal(controller.activations, 1)
+  assert.equal(dismissButton.hidden, false)
+  dismissButton.dispatch('click')
+  assert.equal(notice.element.hidden, true)
 
   controller.publish({
     status: 'preparing',
@@ -126,6 +131,8 @@ test('update notice reports availability and blocks only underlying content duri
   assert.equal(content.inert, true)
   assert.equal(alreadyInert.inert, true)
   assert.equal(host.dataset.updateBlocked, 'true')
+  assert.equal(notice.element.hidden, false)
+  assert.equal(dismissButton.hidden, true)
   assert.equal(button.hidden, true)
 
   controller.publish({

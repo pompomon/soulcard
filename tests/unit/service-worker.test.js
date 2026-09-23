@@ -103,7 +103,7 @@ function createEvent(values = {}) {
   }
 }
 
-async function createHarness({ failAddAll = null, fetchImpl } = {}) {
+async function createHarness({ failAddAll = null, fetchImpl, registration = {} } = {}) {
   const source = await readFile(SERVICE_WORKER_PATH, 'utf8')
   const listeners = new Map()
   const cacheStorage = new FakeCacheStorage(SCOPE, { failAddAll })
@@ -111,7 +111,7 @@ async function createHarness({ failAddAll = null, fetchImpl } = {}) {
   let claimCalls = 0
   let fetchCalls = 0
   const self = {
-    registration: { scope: SCOPE },
+    registration: { scope: SCOPE, ...registration },
     clients: {
       async claim() {
         claimCalls += 1
@@ -239,6 +239,30 @@ test('activation removes only obsolete Soulcard caches before claiming clients',
     ],
   )
   assert.equal(harness.claimCalls, 1)
+})
+
+test('activation preserves the latest shell for a newer viable worker', async () => {
+  const harness = await createHarness({ registration: { installing: {} } })
+  for (const name of [
+    'soulcard-shell-obsolete',
+    'soulcard-shell-dev',
+    'soulcard-runtime-dev',
+    'soulcard-shell-next',
+  ]) {
+    harness.cacheStorage.caches.set(name, new FakeCache(SCOPE))
+  }
+
+  await harness.dispatch('activate')
+
+  assert.deepEqual(
+    [...harness.cacheStorage.caches.keys()].sort(),
+    [
+      'soulcard-active-dev',
+      'soulcard-runtime-dev',
+      'soulcard-shell-dev',
+      'soulcard-shell-next',
+    ],
+  )
 })
 
 test('install bounds superseded revisions while preserving active and waiting shells', async () => {

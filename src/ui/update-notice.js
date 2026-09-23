@@ -59,13 +59,25 @@ export function createUpdateNotice({ updateController, host } = {}) {
   updateButton.dataset.action = 'update'
   updateButton.textContent = 'Update now'
 
+  const dismissButton = document.createElement('button')
+  dismissButton.type = 'button'
+  dismissButton.className = 'game-button update-notice__action'
+  dismissButton.dataset.action = 'dismiss-update'
+  dismissButton.textContent = 'Dismiss'
+
+  let dismissed = false
   const handleUpdate = () => {
     if (!updateButton.disabled) {
       void updateController.requestActivation()
     }
   }
+  const handleDismiss = () => {
+    dismissed = true
+    element.hidden = true
+  }
   updateButton.addEventListener('click', handleUpdate)
-  element.append(status, updateButton)
+  dismissButton.addEventListener('click', handleDismiss)
+  element.append(status, dismissButton, updateButton)
   host.append(element)
 
   function setBlocked(blocked) {
@@ -82,8 +94,10 @@ export function createUpdateNotice({ updateController, host } = {}) {
   const unsubscribe = updateController.subscribe((snapshot) => {
     const visible = snapshot.status !== 'current'
     const blocked = BLOCKING_STATUSES.has(snapshot.status)
-    element.hidden = !visible
+    if (!visible) dismissed = false
+    element.hidden = !visible || (dismissed && !blocked)
     status.textContent = noticeText(snapshot)
+    dismissButton.hidden = blocked
     updateButton.hidden = !snapshot.canActivate && snapshot.status !== 'available'
     updateButton.disabled = blocked || !snapshot.canActivate
     setBlocked(blocked)
@@ -94,6 +108,7 @@ export function createUpdateNotice({ updateController, host } = {}) {
     teardown() {
       unsubscribe()
       updateButton.removeEventListener('click', handleUpdate)
+      dismissButton.removeEventListener('click', handleDismiss)
       setBlocked(false)
       element.remove?.()
     },
