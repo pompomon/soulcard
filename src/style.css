@@ -381,6 +381,50 @@ button:disabled {
 .game-controls .game-button {
   min-width: 0;
   flex: 1 1 0;
+  padding-inline: 0.25rem;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.auto-reveal-toggle {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 44px;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  padding: 0.15rem 0.2rem;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 0.65rem;
+  background: rgb(38 27 74 / 84%);
+  color: rgb(255 255 255 / 88%);
+  font-size: 0.75rem;
+  line-height: 1.1;
+  text-align: center;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overflow-wrap: anywhere;
+}
+
+.auto-reveal-toggle__input {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: #75eef5;
+}
+
+.auto-reveal-toggle__input:focus-visible {
+  outline: 3px solid #75eef5;
+  outline-offset: 3px;
+}
+
+.auto-reveal-toggle:has(.auto-reveal-toggle__input:disabled) {
+  opacity: 0.55;
 }
 
 .game-button {
@@ -588,7 +632,7 @@ button:disabled {
 }
 
 .screen--game[data-layout-mode="tablet"] .game-controls {
-  flex-direction: column;
+  flex-flow: row wrap;
   align-items: stretch;
 }
 
@@ -631,6 +675,12 @@ button:disabled {
   padding: 4px;
 }
 
+.screen--game[data-layout-mode="tablet"] .game-controls .game-button,
+.screen--game[data-layout-mode="tablet"] .game-controls .auto-reveal-toggle {
+  min-width: 44px;
+  flex: 1 1 calc(50% - 2px);
+}
+
 .screen--game[data-layout-mode="tablet"] .game-status,
 .screen--game[data-layout-mode="tablet"] .game-save-warning {
   font-size: 0.7rem;
@@ -642,11 +692,26 @@ button:disabled {
   white-space: nowrap;
 }
 
+.screen--game[data-layout-mode="phone-landscape"] .auto-reveal-toggle {
+  flex-direction: row;
+  gap: 0.35rem;
+  padding-inline: 0.2rem;
+  font-size: 0.7rem;
+}
+
 .screen--game[data-layout-mode="phone-portrait"] .game-controls .game-button,
 .screen--game[data-layout-mode="tablet"] .game-controls .game-button {
+  padding: 0.2rem 0.15rem;
+  font-size: 0.75rem;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.screen--game[data-layout-mode="phone-portrait"] .auto-reveal-toggle,
+.screen--game[data-layout-mode="tablet"] .auto-reveal-toggle {
   padding-inline: 0.25rem;
-  font-size: 14px;
-  white-space: nowrap;
+  font-size: 0.7rem;
 }
 
 .screen--game[data-layout-mode="phone-portrait"] .comparison-area {
@@ -690,7 +755,8 @@ button:disabled {
   min-height: 44px;
 }
 
-.screen--game[data-letterboxed="true"] .game-hud .game-button {
+.screen--game[data-letterboxed="true"] .game-hud .game-button,
+.screen--game[data-letterboxed="true"] .game-hud .auto-reveal-toggle {
   min-width: var(--hud-control-min-size, 44px);
   min-height: var(--hud-control-min-size, 44px);
 }

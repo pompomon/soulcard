@@ -1,8 +1,15 @@
 import { createEndOverlay, createPauseOverlay } from './overlays.js'
+import { UPDATE_BLOCKED_EVENT } from './update-notice.js'
+import { createAutoRevealCoordinator } from '../app/auto-reveal-coordinator.js'
 import { createEventPlayer } from '../presentation/event-player.js'
 import { createInputController } from '../presentation/input.js'
 
 const ACTIVE_PRESENTATION_STATUSES = new Set(['queued', 'playing', 'paused'])
+const NO_AUTO_REVEAL_COORDINATOR = Object.freeze({
+  continueAfterPresentation: () => Promise.resolve(null),
+  stop() {},
+  destroy() {},
+})
 
 function createTextElement(tagName, className, text) {
   const element = document.createElement(tagName)
@@ -218,6 +225,9 @@ export function createGameScreen({
   mountBattlefield,
   settingsController,
   runController,
+  autoRevealCoordinator = runController
+    ? createAutoRevealCoordinator({ runController })
+    : NO_AUTO_REVEAL_COORDINATOR,
   eventPlayerFactory = createEventPlayer,
   inputControllerFactory = createInputController,
   onMainMenu = () => {},
@@ -227,6 +237,15 @@ export function createGameScreen({
     throw new TypeError('mountBattlefield must be a function')
   }
   assertRunController(runController)
+  if (
+    autoRevealCoordinator === null
+    || typeof autoRevealCoordinator !== 'object'
+    || typeof autoRevealCoordinator.continueAfterPresentation !== 'function'
+    || typeof autoRevealCoordinator.stop !== 'function'
+    || typeof autoRevealCoordinator.destroy !== 'function'
+  ) {
+    throw new TypeError('autoRevealCoordinator must implement the auto-reveal interface')
+  }
   if (typeof eventPlayerFactory !== 'function') {
     throw new TypeError('eventPlayerFactory must be a function')
   }
@@ -330,12 +349,22 @@ export function createGameScreen({
   revealButton.dataset.action = 'reveal'
   revealButton.disabled = true
 
+  const autoRevealLabel = document.createElement('label')
+  autoRevealLabel.className = 'auto-reveal-toggle'
+  const autoRevealCheckbox = document.createElement('input')
+  autoRevealCheckbox.className = 'auto-reveal-toggle__input'
+  autoRevealCheckbox.type = 'checkbox'
+  autoRevealCheckbox.dataset.action = 'auto-reveal'
+  autoRevealCheckbox.checked = false
+  const autoRevealText = createTextElement('span', 'auto-reveal-toggle__label', 'Auto-reveal')
+  autoRevealLabel.append(autoRevealCheckbox, autoRevealText)
+
   const pauseButton = createTextElement('button', 'game-button', 'Pause')
   pauseButton.type = 'button'
   pauseButton.dataset.action = 'pause'
   pauseButton.disabled = true
 
-  controls.append(revealButton, pauseButton)
+  controls.append(revealButton, autoRevealLabel, pauseButton)
   hud.append(header, opponentPanel, comparison, playerPanel, pileMetrics, feedback, controls)
 
   const overlayHost = document.createElement('div')
@@ -527,6 +556,7 @@ export function createGameScreen({
   let interactionFailure = null
   let revealActionPending = false
   let revealActionEventId = null
+  let autoRevealChainActive = false
   let pauseActionPending = false
   let revealInput = null
   let pauseInput = null
@@ -534,6 +564,11 @@ export function createGameScreen({
   const settledEventIds = new Set()
   const presentationJobs = new Map()
   let saveWarningFailure = null
+  const handleUpdateBlocked = () => {
+    autoRevealChainActive = false
+    autoRevealCoordinator.stop()
+  }
+  element.addEventListener(UPDATE_BLOCKED_EVENT, handleUpdateBlocked)
 
   const renderSaveWarning = () => {
     if (saveWarningFailure !== null) {
@@ -655,6 +690,10 @@ export function createGameScreen({
     })
     pauseInput?.setEnabled(matchReady)
     pauseInput?.setBusy(pauseActionPending)
+    autoRevealCheckbox.disabled = (
+      match?.status !== 'active'
+      || match.machineState === 'paused'
+    )
     if (revealInput === null) revealButton.disabled = !matchReady || revealBusy
     if (pauseInput === null) pauseButton.disabled = !matchReady || pauseActionPending
   }
@@ -729,7 +768,7 @@ export function createGameScreen({
     throw error
   }
 
-  const present = (match) => {
+  const present = (match, { saveSucceeded = false } = {}) => {
     const eventId = match.pendingEvent?.id
     if (eventId !== undefined && presentationJobs.has(eventId)) {
       return presentationJobs.get(eventId)
@@ -749,6 +788,7 @@ export function createGameScreen({
       presentation = eventPlayer.present(match)
     } catch {
       presentationFailure = true
+      if (eventId !== undefined) autoRevealChainActive = false
       if (eventId !== undefined) {
         queuedEventIds.delete(eventId)
         settledEventIds.add(eventId)
@@ -765,8 +805,10 @@ export function createGameScreen({
       }))
     }
 
+    let settledResult = null
     const finalized = Promise.resolve(presentation)
       .then((result) => {
+        settledResult = result
         if (result?.status === 'failed') presentationFailure = true
         if (
           eventId !== undefined
@@ -792,11 +834,12 @@ export function createGameScreen({
       .catch(() => {
         presentationFailure = true
         if (eventId !== undefined) settledEventIds.add(eventId)
-        return Object.freeze({
+        settledResult = Object.freeze({
           status: 'failed',
           eventId: eventId ?? null,
           reason: 'presentation-error',
         })
+        return settledResult
       })
       .finally(() => {
         if (eventId !== undefined) {
@@ -807,14 +850,76 @@ export function createGameScreen({
           revealActionPending = false
           revealActionEventId = null
         }
-        renderHud()
+        if (eventId === undefined) {
+          renderHud()
+          return
+        }
+
+        const active = autoRevealChainActive && !destroyed
+        const enabled = autoRevealCheckbox.checked
+        const blocked = hud.inert === true
+        const continuationExpected = (
+          active
+          && enabled
+          && saveSucceeded
+          && !blocked
+          && ['completed', 'skipped'].includes(settledResult?.status)
+        )
+        if (continuationExpected) {
+          revealActionPending = true
+          interactionFailure = null
+          renderHud()
+        } else {
+          autoRevealChainActive = false
+          renderHud()
+        }
+        const continuation = autoRevealCoordinator.continueAfterPresentation({
+          active,
+          enabled,
+          saveSucceeded,
+          presentationStatus: settledResult?.status,
+          runId: match.runId,
+          eventId,
+          blocked,
+        })
+        Promise.resolve(continuation)
+          .then((result) => {
+            if (destroyed) return
+            if (result?.match?.pendingEvent !== null && result?.match?.pendingEvent !== undefined) {
+              revealActionPending = true
+              revealActionEventId = result.match.pendingEvent.id
+              renderHud()
+              return present(result.match, {
+                saveSucceeded: result?.save?.status === 'saved',
+              })
+            }
+            revealActionPending = false
+            revealActionEventId = null
+            autoRevealChainActive = false
+            renderHud()
+            return undefined
+          })
+          .catch(() => {
+            if (destroyed) return
+            revealActionPending = false
+            revealActionEventId = null
+            autoRevealChainActive = false
+            interactionFailure = 'Reveal could not be completed. Try again.'
+            renderHud()
+          })
       })
     if (eventId !== undefined) presentationJobs.set(eventId, finalized)
     return finalized
   }
 
-  const handleReveal = () => {
+  function handleReveal() {
+    if (hud.inert === true) {
+      autoRevealChainActive = false
+      autoRevealCoordinator.stop()
+      return
+    }
     if (revealActionPending) return
+    autoRevealChainActive = autoRevealCheckbox.checked
     revealActionPending = true
     interactionFailure = null
     presentationFailure = false
@@ -828,6 +933,7 @@ export function createGameScreen({
     } catch {
       revealActionPending = false
       revealActionEventId = null
+      autoRevealChainActive = false
       interactionFailure = 'Reveal could not be completed. Try again.'
       renderHud()
       return
@@ -838,24 +944,37 @@ export function createGameScreen({
         const committedMatch = result?.match
         if (committedMatch?.pendingEvent !== null && committedMatch?.pendingEvent !== undefined) {
           revealActionEventId ??= committedMatch.pendingEvent.id
-          return present(committedMatch)
+          return present(committedMatch, {
+            saveSucceeded: result?.save?.status === 'saved',
+          })
         }
         revealActionPending = false
         revealActionEventId = null
+        autoRevealChainActive = false
         renderHud()
         return undefined
       })
       .catch(() => {
         revealActionPending = false
         revealActionEventId = null
+        autoRevealChainActive = false
         interactionFailure = 'Reveal could not be completed. Try again.'
         renderHud()
       })
   }
+  const handleAutoRevealChange = () => {
+    if (!autoRevealCheckbox.checked) {
+      autoRevealChainActive = false
+      autoRevealCoordinator.stop()
+    }
+  }
+  autoRevealCheckbox.addEventListener('change', handleAutoRevealChange)
   requestReveal = handleReveal
 
   const handlePause = () => {
     if (pauseActionPending) return
+    autoRevealChainActive = false
+    autoRevealCoordinator.stop()
     pauseActionPending = true
     interactionFailure = null
     overlayError = null
@@ -909,7 +1028,9 @@ export function createGameScreen({
     if (isSaveFailureStatus(result?.status)) {
       showSaveWarning(result.reason)
     }
-    if (match.pendingEvent !== null) present(match)
+    if (match.pendingEvent !== null) {
+      present(match, { saveSucceeded: result?.status === 'saved' })
+    }
   })
   const unsubscribeRun = runController?.subscribe((snapshot) => {
     latestSnapshot = snapshot
@@ -927,7 +1048,7 @@ export function createGameScreen({
 
     const saveSettled = snapshot.saveStatus === 'saved' || snapshot.saveStatus === 'failed'
     if (match !== null && match !== undefined && (match.pendingEvent === null || saveSettled)) {
-      present(match)
+      present(match, { saveSucceeded: snapshot.saveStatus === 'saved' })
     }
   })
 
@@ -935,9 +1056,12 @@ export function createGameScreen({
     element,
     teardown() {
       destroyed = true
+      autoRevealCoordinator.destroy()
       requestReveal = () => {}
       unsubscribeRun?.()
       unsubscribeSaves?.()
+      element.removeEventListener(UPDATE_BLOCKED_EVENT, handleUpdateBlocked)
+      autoRevealCheckbox.removeEventListener('change', handleAutoRevealChange)
       revealInput.destroy()
       pauseInput.destroy()
       pauseOverlay.teardown()

@@ -17,6 +17,8 @@ class FakeElement {
     this.listeners = new Map()
     this.className = ''
     this.textContent = ''
+    this.type = ''
+    this.checked = false
     this.hidden = false
     this.disabled = false
     this.style = { setProperty() {} }
@@ -251,6 +253,88 @@ test('HUD drives and presents one complete automatic-opponent match', async (t) 
   assert.match(status.textContent, /Player won the match/)
   assert.equal(reveal.disabled, true)
   assert.equal(pause.disabled, true)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('one manual Reveal with Auto-reveal completes one canonical saved presentation per clash', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const runId = 'ai-hud-auto-complete'
+  const expected = canonicalReplay(runId, 0)
+  const saves = []
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      async save(match) {
+        saves.push(match)
+        return {
+          status: 'saved',
+          savedAt: '2026-09-23T12:06:00.000Z',
+        }
+      },
+    },
+    initialMatch: createBaselineMatch(runId, 0),
+  })
+  const presented = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: ({ onStateChange }) => ({
+      present(match) {
+        const event = match.pendingEvent
+        if (event === null) {
+          return Promise.resolve({ status: 'synchronized', eventId: null, reason: null })
+        }
+        presented.push(event)
+        onStateChange({
+          status: 'completed',
+          eventId: event.id,
+          stepIndex: null,
+          stepCount: event.reveals.length,
+          stepKind: null,
+          reason: null,
+        })
+        return Promise.resolve({
+          status: 'completed',
+          eventId: event.id,
+          reason: null,
+        })
+      },
+      setPaused() {},
+      destroy() {},
+    }),
+  })
+  const autoReveal = byAction(screen, 'auto-reveal')
+  autoReveal.checked = true
+  autoReveal.dispatch('change')
+  byAction(screen, 'reveal').dispatch('click')
+
+  await waitFor(() => (
+    controller.currentMatch.status === 'ended'
+    && saves.length === expected.length
+    && presented.length === expected.length
+  ), expected.length * 20)
+  await controller.whenIdle()
+
+  assert.deepEqual(controller.currentMatch, expected.at(-1).match)
+  assert.deepEqual(saves, expected.map(({ match }) => match))
+  assert.deepEqual(presented, expected.map(({ event }) => event))
+  assert.equal(byAction(screen, 'reveal').disabled, true)
+  assert.equal(byAction(screen, 'pause').disabled, true)
+  assert.equal(autoReveal.disabled, true)
+
+  const settledCounts = [saves.length, presented.length]
+  await Promise.resolve()
+  await Promise.resolve()
+  assert.deepEqual([saves.length, presented.length], settledCounts)
 
   screen.teardown()
   await controller.destroy()
