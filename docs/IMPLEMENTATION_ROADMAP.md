@@ -35,7 +35,7 @@ The baseline review establishes:
 
 The current service worker calls `skipWaiting()` and `clients.claim()`, so an installed
 update activates immediately. That is documented current behavior, not the safe-update
-behavior promised by the MVP. Milestone 17 replaces it with update availability and
+behavior promised by the MVP. Milestone 18 replaces it with update availability and
 stable-save-boundary deferral.
 
 ### ADR-001: Product and delivery shape
@@ -734,7 +734,7 @@ worker in production, and deploys through GitHub Pages. Its immediate
 `skipWaiting()`/`clients.claim()` activation is intentionally not the final update
 policy.
 
-Milestone 17 extends that baseline to precache all required local app-shell assets and
+Milestone 18 extends that baseline to precache all required local app-shell assets and
 keep runtime caching bounded. Generated card textures are recreated locally; IndexedDB
 saves remain independent of Cache Storage. The application must report an available
 update and defer activation/reload while a resolution is uncommitted, first reaching
@@ -1055,7 +1055,7 @@ reviewable PR.
   and their canvas references, leaving zero resident cache or GPU textures. The final
   production smoke check retained one Three.js canvas under `#app` with no relevant
   console errors. Broader cross-device, frame-pacing, and context-loss sign-off remains
-  in the milestone 18 device matrix; no screenshots were produced.
+  in the milestone 19 device matrix; no screenshots were produced.
 
 ### 13. Committed-event-to-animation pipeline
 - **Goal/files:** Add event player and renderer adapters; depends on 5, 8, 11–12.
