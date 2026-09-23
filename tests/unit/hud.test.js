@@ -222,6 +222,133 @@ test('Game leaves pause disabled without a run controller and still tears down p
   assert.equal(teardowns, 1)
 })
 
+test('Save & Main Menu retries failed persistence without leaving pause', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  let saveCalls = 0
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      async save() {
+        saveCalls += 1
+        if (saveCalls === 2) {
+          return {
+            status: 'storage-unavailable',
+            operation: 'save',
+            reason: 'quota-exceeded',
+          }
+        }
+        return {
+          status: 'saved',
+          savedAt: `2026-09-23T01:00:0${saveCalls}.000Z`,
+        }
+      },
+    },
+    initialMatch: createMatch({
+      runId: 'hud-save-main',
+      seed: 12345,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  let mainMenuCalls = 0
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    onMainMenu() {
+      mainMenuCalls += 1
+    },
+  })
+  const pause = byAction(screen, 'pause')
+  const saveAndMain = byAction(screen, 'save-main')
+  const overlay = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'pauseOverlay'),
+  )
+  const saveStatus = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'saveStatus'),
+  )
+
+  pause.dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.equal(controller.currentMatch.machineState, 'paused')
+  assert.equal(overlay.hidden, false)
+
+  saveAndMain.dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.equal(mainMenuCalls, 0)
+  assert.equal(controller.currentMatch.machineState, 'paused')
+  assert.equal(overlay.hidden, false)
+  assert.match(saveStatus.textContent, /quota-exceeded/)
+  assert.match(saveStatus.textContent, /Stay paused/)
+
+  saveAndMain.dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.equal(mainMenuCalls, 1)
+  assert.equal(saveCalls, 3)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Pause restart remains open when replacement is declined', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => ({
+        status: 'saved',
+        savedAt: '2026-09-23T01:01:00.000Z',
+      }),
+    },
+    initialMatch: createMatch({
+      runId: 'hud-restart-declined',
+      seed: 7,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  let restarts = 0
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    onRestart() {
+      restarts += 1
+      return false
+    },
+  })
+
+  byAction(screen, 'pause').dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+  const overlay = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'pauseOverlay'),
+  )
+  const restart = byAction(screen, 'restart')
+  restart.dispatch('click')
+  await flushMicrotasks()
+
+  assert.equal(restarts, 1)
+  assert.equal(controller.currentMatch.machineState, 'paused')
+  assert.equal(overlay.hidden, false)
+  assert.equal(restart.disabled, false)
+  screen.teardown()
+  await controller.destroy()
+})
+
 test('Game resolves one pointer reveal, locks input through save and presentation, and updates HUD', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
@@ -550,6 +677,7 @@ test('Game queues a restored paused event and tears down player before battlefie
     revealOrContinue() {},
     pause() {},
     resume() {},
+    saveStable: async () => ({ status: 'saved' }),
   }
   const screen = createGameScreen({
     runController,
@@ -694,6 +822,150 @@ test('Game exposes terminal outcome details and disables primary actions', (t) =
   assert.equal(byAction(screen, 'reveal').disabled, true)
   assert.equal(byAction(screen, 'pause').disabled, true)
   screen.teardown()
+})
+
+test('End overlay waits for terminal save and presentation before showing its summary', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  let terminal = createMatch({
+    runId: 'hud-terminal-overlay',
+    seed: 0,
+    ruleset: BASELINE_RULESET,
+  })
+  while (terminal.status === 'active') {
+    terminal = revealOrContinue(terminal).match
+  }
+  const write = deferred()
+  const animation = deferred()
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => write.promise,
+    },
+    initialMatch: terminal,
+  })
+  let mainMenuCalls = 0
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: () => ({
+      present: () => animation.promise,
+      setPaused() {},
+      destroy() {},
+    }),
+    onMainMenu() {
+      mainMenuCalls += 1
+    },
+  })
+  const pauseOverlay = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'pauseOverlay'),
+  )
+  const endOverlay = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'endOverlay'),
+  )
+  const summary = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'endSummary'),
+  )
+
+  const saving = controller.saveStable()
+  assert.equal(endOverlay.hidden, true)
+  write.resolve({
+    status: 'saved',
+    savedAt: '2026-09-23T01:02:00.000Z',
+  })
+  await saving
+  await flushMicrotasks()
+  assert.equal(endOverlay.hidden, true)
+
+  animation.resolve({
+    status: 'completed',
+    eventId: terminal.pendingEvent.id,
+    reason: null,
+  })
+  await flushMicrotasks()
+  assert.equal(endOverlay.hidden, false)
+  assert.equal(pauseOverlay.hidden, true)
+  assert.equal(endOverlay.attributes.role, 'dialog')
+  assert.equal(endOverlay.attributes['aria-modal'], 'true')
+  assert.match(summary.textContent, new RegExp(`^${terminal.turn} clashes`))
+  assert.match(summary.textContent, new RegExp(`${terminal.zones.burnPile.length} cards burned$`))
+
+  byAction(screen, 'end-main').dispatch('click')
+  assert.equal(mainMenuCalls, 1)
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('restored terminal wins and draws reopen their completed summaries', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  for (const [seed, expectedHeading] of [[0, 'Victory'], [32, 'Match drawn']]) {
+    let terminal = createMatch({
+      runId: `hud-restored-terminal-${seed}`,
+      seed,
+      ruleset: BASELINE_RULESET,
+    })
+    while (terminal.status === 'active') {
+      terminal = revealOrContinue(terminal).match
+    }
+    const controller = createRunController({
+      repository: {
+        load: async () => ({
+          status: 'resumable',
+          savedAt: '2026-09-23T01:03:00.000Z',
+          migratedFrom: null,
+          match: terminal,
+        }),
+        save: async () => assert.fail('Restored summary should not require another save'),
+      },
+    })
+    await controller.restore()
+    const before = JSON.parse(JSON.stringify(controller.currentMatch))
+    const screen = createGameScreen({
+      runController: controller,
+      mountBattlefield: () => undefined,
+      eventPlayerFactory: () => ({
+        present(match) {
+          return Promise.resolve({
+            status: 'completed',
+            eventId: match.pendingEvent.id,
+            reason: null,
+          })
+        },
+        setPaused() {},
+        destroy() {},
+      }),
+    })
+    await flushMicrotasks()
+    const endOverlay = descendants(screen.element).find(
+      (element) => Object.hasOwn(element.dataset, 'endOverlay'),
+    )
+    const heading = descendants(endOverlay).find(
+      (element) => element.id === 'end-overlay-title',
+    )
+    const reason = descendants(endOverlay).find(
+      (element) => Object.hasOwn(element.dataset, 'endReason'),
+    )
+
+    assert.equal(endOverlay.hidden, false)
+    assert.equal(heading.textContent, expectedHeading)
+    assert.ok(reason.textContent.length > 0)
+    assert.deepEqual(controller.currentMatch, before)
+    screen.teardown()
+    await controller.destroy()
+  }
 })
 
 test('Game queues every committed event after its save attempt settles', async (t) => {
