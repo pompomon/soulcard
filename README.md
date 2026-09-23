@@ -100,7 +100,8 @@ install. Shell files are immutable within a revision. A separate runtime cache a
 only successful same-origin image, font, and audio requests and evicts its oldest entries
 above 32; generated card textures are recreated locally and never enter Cache Storage.
 The worker preserves the active, installing, and latest waiting shells while removing
-superseded deferred revisions, then removes every obsolete Soulcard cache on activation.
+superseded deferred revisions, including during upgrades from pre-marker workers, then
+removes every obsolete Soulcard cache on activation.
 Active runs remain exclusively in IndexedDB, so clearing application caches does not delete
 a saved game.
 

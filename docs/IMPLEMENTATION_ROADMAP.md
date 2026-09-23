@@ -1213,7 +1213,7 @@ reviewable PR.
   SVG, 192/512 PNG, maskable, and Apple touch assets, and all update/install surfaces
   honor safe areas. Cache Storage contains application assets only; active runs remain
   in IndexedDB.
-- **Validation:** The Node 24 test runner reports 290 passing unit/integration tests,
+- **Validation:** The Node 24 test runner reports 291 passing unit/integration tests,
   including service-worker policy, build injection, manifest assets, update lifecycle,
   update notice, superseded cache bounds, replacement-worker selection, pending-write and
   recovery-discard ordering, empty/paused/ended runs, save retry, and exact pending-event

@@ -56,25 +56,27 @@ async function cleanSupersededInstallCaches() {
   const activeMarker = [...keys]
     .reverse()
     .find((key) => key.startsWith(ACTIVE_CACHE_PREFIX))
-  if (!activeMarker) return
-
-  const activeRevision = activeMarker.slice(ACTIVE_CACHE_PREFIX.length)
-  const activeShell = `${SHELL_CACHE_PREFIX}${activeRevision}`
-  const activeRuntime = `${RUNTIME_CACHE_PREFIX}${activeRevision}`
-  const otherShells = keys.filter((key) => (
+  const previousShells = keys.filter((key) => (
     key.startsWith(SHELL_CACHE_PREFIX)
-    && key !== activeShell
     && key !== SHELL_CACHE
   ))
+  const activeRevision = activeMarker
+    ? activeMarker.slice(ACTIVE_CACHE_PREFIX.length)
+    : previousShells.at(0)?.slice(SHELL_CACHE_PREFIX.length)
+  if (!activeRevision) return
+
+  const activeShell = `${SHELL_CACHE_PREFIX}${activeRevision}`
+  const activeRuntime = `${RUNTIME_CACHE_PREFIX}${activeRevision}`
+  const otherShells = previousShells.filter((key) => key !== activeShell)
   const currentWaitingShell = otherShells.at(-1)
   const preservedCaches = new Set([
-    activeMarker,
     activeShell,
     activeRuntime,
     SHELL_CACHE,
     RUNTIME_CACHE,
     currentWaitingShell,
   ])
+  if (activeMarker) preservedCaches.add(activeMarker)
 
   await Promise.all(
     keys
