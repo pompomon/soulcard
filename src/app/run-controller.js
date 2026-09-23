@@ -1,9 +1,13 @@
 import {
   pauseMatch,
   resumeMatch,
+  revealOrContinue as resolveClash,
   validateMatchState,
 } from '../domain/match-machine.js'
-import { createAiController } from '../domain/ai-controller.js'
+import {
+  createAiController,
+  REVEAL_OR_CONTINUE_ACTION,
+} from '../domain/ai-controller.js'
 
 const RESTORE_STATUSES = new Set([
   'empty',
@@ -28,31 +32,16 @@ function assertAiController(aiController) {
   if (
     aiController === null
     || typeof aiController !== 'object'
-    || typeof aiController.advanceEncounter !== 'function'
+    || typeof aiController.chooseEncounterAction !== 'function'
   ) {
-    throw new TypeError('aiController must expose advanceEncounter')
+    throw new TypeError('aiController must expose chooseEncounterAction')
   }
 }
 
-function validateEncounterTransition(currentMatch, transition) {
-  if (
-    transition === null
-    || typeof transition !== 'object'
-    || Array.isArray(transition)
-    || !Object.hasOwn(transition, 'match')
-    || !Object.hasOwn(transition, 'event')
-  ) {
-    throw new TypeError('aiController must return a match and event')
+function validateEncounterAction(action) {
+  if (action !== REVEAL_OR_CONTINUE_ACTION) {
+    throw new Error('aiController returned an unsupported encounter action')
   }
-  validateMatchState(transition.match)
-  if (
-    transition.match.runId !== currentMatch.runId
-    || transition.match.turn !== currentMatch.turn + 1
-    || transition.event !== transition.match.pendingEvent
-  ) {
-    throw new Error('aiController must commit exactly one matching clash')
-  }
-  return transition
 }
 
 function storageFailure(operation, error) {
@@ -283,10 +272,9 @@ export function createRunController({
     if (match.machineState === 'paused') {
       throw new Error('A paused match cannot reveal or continue')
     }
-    const transition = validateEncounterTransition(
-      match,
-      aiController.advanceEncounter(match),
-    )
+    const currentMatch = match
+    validateEncounterAction(aiController.chooseEncounterAction(currentMatch))
+    const transition = resolveClash(currentMatch)
     markMatch(transition.match)
     const save = queueSave(transition.match)
     return save.then((saveResult) => Object.freeze({

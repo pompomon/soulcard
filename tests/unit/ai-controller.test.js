@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createAiController } from '../../src/domain/ai-controller.js'
+import {
+  createAiController,
+  REVEAL_OR_CONTINUE_ACTION,
+} from '../../src/domain/ai-controller.js'
 import {
   createMatch,
   pauseMatch,
@@ -12,18 +15,26 @@ function createBaselineMatch(runId, seed) {
   return createMatch({ runId, seed, ruleset: BASELINE_RULESET })
 }
 
+function chooseAndResolve(controller, match) {
+  assert.equal(
+    controller.chooseEncounterAction(match),
+    REVEAL_OR_CONTINUE_ACTION,
+  )
+  return revealOrContinue(match)
+}
+
 function runToEnd(controller, runId, seed) {
   let match = createBaselineMatch(runId, seed)
   const events = []
   while (match.status === 'active') {
-    const transition = controller.advanceEncounter(match)
+    const transition = chooseAndResolve(controller, match)
     match = transition.match
     events.push(transition.event)
   }
   return { match, events }
 }
 
-test('AI advances exactly one deterministic immutable clash without hidden randomness', (t) => {
+test('AI chooses one deterministic encounter action without hidden randomness', (t) => {
   const previousRandom = Math.random
   Math.random = () => assert.fail('AI advancement must not use Math.random')
   t.after(() => {
@@ -32,20 +43,12 @@ test('AI advances exactly one deterministic immutable clash without hidden rando
 
   const input = createBaselineMatch('ai-deterministic', 12345)
   const inputCopy = JSON.parse(JSON.stringify(input))
-  let resolveCalls = 0
-  const controller = createAiController({
-    resolveClash(match) {
-      resolveCalls += 1
-      return revealOrContinue(match)
-    },
-  })
-  const actual = controller.advanceEncounter(input)
-  const expected = revealOrContinue(input)
+  const controller = createAiController()
+  const actual = chooseAndResolve(controller, input)
 
-  assert.equal(resolveCalls, 1)
-  assert.deepEqual(actual, expected)
   assert.equal(actual.match.turn, input.turn + 1)
   assert.equal(actual.event, actual.match.pendingEvent)
+  assert.equal(Object.isFrozen(controller), true)
   assert.equal(Object.isFrozen(actual.match), true)
   assert.equal(Object.isFrozen(actual.event), true)
   assert.deepEqual(input, inputCopy)
@@ -63,7 +66,7 @@ test('AI carries a final source tie through the personal-stage encounter', () =>
   let transition
 
   while (match.stage === 'source') {
-    transition = controller.advanceEncounter(match)
+    transition = chooseAndResolve(controller, match)
     match = transition.match
   }
 
@@ -100,32 +103,23 @@ test('AI reaches deterministic player, opponent, and draw terminal outcomes', ()
   }
 })
 
-test('AI rejects invalid states, dependencies, and malformed advancements', () => {
+test('AI rejects malformed, paused, and ended inputs before choosing an action', () => {
+  const controller = createAiController()
   assert.throws(
-    () => createAiController({ resolveClash: null }),
-    /resolveClash must be a function/,
+    () => controller.chooseEncounterAction({}),
+    /match must contain only/,
   )
 
   const ready = createBaselineMatch('ai-invalid', 1)
   const paused = pauseMatch(ready)
   assert.throws(
-    () => createAiController().advanceEncounter(paused),
+    () => controller.chooseEncounterAction(paused),
     /paused match cannot reveal/,
   )
 
-  const { match: ended } = runToEnd(createAiController(), 'ai-ended', 0)
+  const { match: ended } = runToEnd(controller, 'ai-ended', 0)
   assert.throws(
-    () => createAiController().advanceEncounter(ended),
+    () => controller.chooseEncounterAction(ended),
     /ended match cannot reveal/,
-  )
-  assert.throws(
-    () => createAiController({ resolveClash: () => ({}) }).advanceEncounter(ready),
-    /return only match and event/,
-  )
-  assert.throws(
-    () => createAiController({
-      resolveClash: () => ({ match: ready, event: ready.pendingEvent }),
-    }).advanceEncounter(ready),
-    /exactly one matching clash/,
   )
 })

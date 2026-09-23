@@ -66,14 +66,15 @@ saved run requires confirmation.
 ## AI encounter flow
 
 `src/domain/ai-controller.js` is the automatic-opponent policy boundary. One player
-Reveal/Continue activation advances exactly one complete deterministic clash through the
-match machine, including ties, the one-time source-to-personal transition, personal-pile
-recycling, or a terminal inability. The AI controller does not use timers, browser state,
-presentation callbacks, `Math.random`, or any RNG beyond the serialized domain RNG.
+Reveal/Continue activation selects one encounter action. The AI controller does not
+produce match snapshots or use timers, browser state, presentation callbacks,
+`Math.random`, or domain RNG.
 
-`run-controller` validates the injected AI controller and its committed match/event pair,
-then queues the stable save before the HUD presents that event. The empty persisted
-`futureModifiers` field remains reserved; no modifier behavior is implemented.
+`run-controller` validates the injected AI action, applies it to the current snapshot
+through the match machine, and queues the resulting stable save before the HUD presents
+that event. Ties, the one-time source-to-personal transition, personal-pile recycling,
+and terminal inability therefore remain authoritative domain transitions. The empty
+persisted `futureModifiers` field remains reserved; no modifier behavior is implemented.
 
 ## Tests
 

@@ -5,13 +5,14 @@ import {
   pauseMatch,
   revealOrContinue,
 } from '../../src/domain/match-machine.js'
+import { REVEAL_OR_CONTINUE_ACTION } from '../../src/domain/ai-controller.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { createRunController } from '../../src/app/run-controller.js'
 
-function createActiveMatch(runId = 'controller-run') {
+function createActiveMatch(runId = 'controller-run', seed = 12345) {
   return createMatch({
     runId,
-    seed: 12345,
+    seed,
     ruleset: BASELINE_RULESET,
   })
 }
@@ -99,7 +100,7 @@ test('committed clashes and explicit pauses autosave stable snapshots', async ()
   assert.equal(repository.closeCalls, 1)
 })
 
-test('run controller delegates exactly one clash to the injected AI before saving', async () => {
+test('run controller applies one injected AI action through the match machine before saving', async () => {
   const initialMatch = createActiveMatch('injected-ai')
   const expected = revealOrContinue(initialMatch)
   const repository = createRepository()
@@ -108,9 +109,9 @@ test('run controller delegates exactly one clash to the injected AI before savin
     repository,
     initialMatch,
     aiController: {
-      advanceEncounter(match) {
+      chooseEncounterAction(match) {
         calls.push(match)
-        return expected
+        return REVEAL_OR_CONTINUE_ACTION
       },
     },
   })
@@ -119,9 +120,11 @@ test('run controller delegates exactly one clash to the injected AI before savin
 
   assert.deepEqual(calls, [initialMatch])
   assert.deepEqual(result.match, expected.match)
-  assert.equal(result.event, expected.event)
+  assert.deepEqual(result.event, expected.event)
+  assert.equal(result.event, result.match.pendingEvent)
   assert.deepEqual(repository.saves, [expected.match])
-  assert.equal(controller.currentMatch, expected.match)
+  assert.equal(repository.saves[0], result.match)
+  assert.equal(controller.currentMatch, result.match)
 })
 
 test('run controller rejects paused and ended matches before invoking injected AI', () => {
@@ -136,9 +139,9 @@ test('run controller rejects paused and ended matches before invoking injected A
       repository,
       initialMatch: match,
       aiController: {
-        advanceEncounter() {
+        chooseEncounterAction() {
           calls += 1
-          return revealOrContinue(createActiveMatch())
+          return REVEAL_OR_CONTINUE_ACTION
         },
       },
     })
@@ -151,30 +154,38 @@ test('run controller rejects paused and ended matches before invoking injected A
   assert.deepEqual(repository.saves, [])
 })
 
-test('invalid AI dependencies and failures leave the current run unchanged and unsaved', () => {
+test('invalid AI dependencies, actions, and failures leave the current run unchanged and unsaved', async () => {
   const repository = createRepository()
   assert.throws(
     () => createRunController({ repository, aiController: null }),
-    /aiController must expose advanceEncounter/,
+    /aiController must expose chooseEncounterAction/,
   )
   assert.throws(
     () => createRunController({ repository, aiController: {} }),
-    /aiController must expose advanceEncounter/,
+    /aiController must expose chooseEncounterAction/,
   )
 
-  for (const advanceEncounter of [
+  const initialMatch = createActiveMatch('atomic-ai-failure')
+  const foreignInput = createActiveMatch(initialMatch.runId, 54321)
+  const foreignTransition = revealOrContinue(foreignInput)
+  assert.equal(foreignTransition.match.runId, initialMatch.runId)
+  assert.equal(foreignTransition.match.turn, initialMatch.turn + 1)
+  assert.equal(foreignTransition.event, foreignTransition.match.pendingEvent)
+  assert.notDeepEqual(foreignTransition.match, revealOrContinue(initialMatch).match)
+
+  for (const chooseEncounterAction of [
     () => {
       throw new Error('AI failed')
     },
-    (match) => ({ match, event: match.pendingEvent }),
+    () => foreignTransition,
   ]) {
-    const initialMatch = createActiveMatch('atomic-ai-failure')
     const controller = createRunController({
       repository,
       initialMatch,
-      aiController: { advanceEncounter },
+      aiController: { chooseEncounterAction },
     })
     assert.throws(() => controller.revealOrContinue())
+    await controller.whenIdle()
     assert.equal(controller.currentMatch, initialMatch)
     assert.equal(controller.getSnapshot().saveStatus, 'unsaved')
   }

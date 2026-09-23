@@ -1119,21 +1119,22 @@ reviewable PR.
 - **Checks/risks:** Seeded full-match tests and manual complete match; reserve modifier
   extension points without implementing them.
 - **Acceptance evidence:** `src/domain/ai-controller.js` is the deterministic encounter
-  policy boundary. Each `advanceEncounter` call delegates exactly one complete clash to
-  the match machine, validates the resulting stable match/event pair, and adds no timer,
+  policy boundary. Each `chooseEncounterAction` call validates a ready snapshot and
+  selects one fixed Reveal/Continue action without producing state or adding a timer,
   browser dependency, presentation authority, or randomness. `src/app/run-controller.js`
-  injects that controller, validates its interface and transition, publishes only the
-  committed stable snapshot, and queues its save before presentation. Failures leave the
-  prior run current and unsaved. The existing versioned empty `futureModifiers` field
-  remains the reserved modifier extension point; this milestone does not change rules,
-  save, or event versions. Unit tests cover deterministic equivalence, one advancement,
-  input immutability, automatic player/opponent reveal order, final-source ties that
-  continue from both personal draw piles, terminal wins/draws, invalid dependencies,
-  atomic failures, and execution with `Math.random` disabled. Full-match integration
-  tests lock seeds 0, 5, and 32 for player-win, opponent-win, and draw outcomes, compare
-  every stable snapshot/event/RNG state with canonical replay, assert one save per clash,
-  and drive the HUD through the source-to-personal transition and terminal control
-  lockout with one presentation per player activation.
+  injects that controller, validates its action, and applies it to the same current
+  snapshot through the match machine before publishing and saving the committed result.
+  Invalid actions and failures leave the prior run current and unsaved. The existing
+  versioned empty `futureModifiers` field remains the reserved modifier extension point;
+  this milestone does not change rules, save, or event versions. Unit tests cover action
+  selection, input immutability, automatic player/opponent reveal order, final-source
+  ties that continue from both personal draw piles, terminal wins/draws, inactive inputs,
+  invalid dependencies/actions, foreign-branch substitution, atomic failures, and
+  execution with `Math.random` disabled. Full-match integration tests lock seeds 0, 5,
+  and 32 for player-win, opponent-win, and draw outcomes, compare every stable
+  snapshot/event/RNG state with canonical replay, assert one save per clash, and drive
+  the HUD through the source-to-personal transition and terminal control lockout with
+  one presentation per player activation.
 - **Validation:** All 242 unit/integration tests and the production build pass on Node 24.
   A text-only headless Chromium 152 reduced-motion run completed a live 40-clash match,
   observed Source and Personal HUD stages, showed a paired automatic-opponent reveal after

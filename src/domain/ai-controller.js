@@ -1,42 +1,18 @@
-import {
-  revealOrContinue,
-  validateMatchState,
-} from './match-machine.js'
+import { validateMatchState } from './match-machine.js'
 
-function validateEncounterTransition(input, transition) {
-  if (
-    transition === null
-    || typeof transition !== 'object'
-    || Array.isArray(transition)
-    || Reflect.ownKeys(transition).length !== 2
-    || !Object.hasOwn(transition, 'match')
-    || !Object.hasOwn(transition, 'event')
-  ) {
-    throw new TypeError('AI advancement must return only match and event')
-  }
+export const REVEAL_OR_CONTINUE_ACTION = 'revealOrContinue'
 
-  validateMatchState(transition.match)
-  if (
-    transition.match.runId !== input.runId
-    || transition.match.turn !== input.turn + 1
-    || transition.event !== transition.match.pendingEvent
-  ) {
-    throw new Error('AI advancement must commit exactly one matching clash')
-  }
-  return transition
-}
-
-export function createAiController({
-  resolveClash = revealOrContinue,
-} = {}) {
-  if (typeof resolveClash !== 'function') {
-    throw new TypeError('resolveClash must be a function')
-  }
-
+export function createAiController() {
   return Object.freeze({
-    advanceEncounter(match) {
+    chooseEncounterAction(match) {
       validateMatchState(match)
-      return validateEncounterTransition(match, resolveClash(match))
+      if (match.machineState === 'ended') {
+        throw new Error('An ended match cannot reveal or continue')
+      }
+      if (match.machineState === 'paused') {
+        throw new Error('A paused match cannot reveal or continue')
+      }
+      return REVEAL_OR_CONTINUE_ACTION
     },
   })
 }
