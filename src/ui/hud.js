@@ -767,7 +767,11 @@ export function createGameScreen({
     const paused = latestSnapshot?.match?.machineState === 'paused'
     pauseOverlay.element.hidden = !paused || endVisible
     endOverlay.element.hidden = !endVisible
-    hud.inert = paused || endVisible
+    hud.inert = (
+      paused
+      || endVisible
+      || element.dataset.updateBlocked === 'true'
+    )
     const actionState = {
       action: overlayAction,
       error: overlayError,

@@ -974,12 +974,19 @@ test('update preparation disarms Auto-reveal through the mounted notice event', 
     }),
   })
   const presentations = []
+  let publishContext
   const screen = createGameScreen({
     runController: controller,
-    mountBattlefield: () => undefined,
+    mountBattlefield: (host, options) => {
+      publishContext = options.onContextStatus
+    },
     eventPlayerFactory: createControlledEventPlayerFactory(presentations),
   })
   const autoReveal = byAction(screen, 'auto-reveal')
+  const reveal = byAction(screen, 'reveal')
+  const hud = descendants(screen.element).find(
+    (element) => element.className === 'game-hud',
+  )
   let updateSubscriber
   const notice = createUpdateNotice({
     host: screen.element,
@@ -996,17 +1003,27 @@ test('update preparation disarms Auto-reveal through the mounted notice event', 
 
   autoReveal.checked = true
   autoReveal.dispatch('change')
-  byAction(screen, 'reveal').dispatch('click')
+  reveal.dispatch('click')
   await waitFor(() => presentations.length === 1)
   updateSubscriber({ status: 'preparing', reason: null, canActivate: false })
+  assert.equal(hud.inert, true)
+  publishContext({ status: 'lost', recoveryCount: 0, reason: null })
+  assert.equal(hud.inert, true)
+  publishContext({ status: 'ready', recoveryCount: 1, reason: null })
+  assert.equal(hud.inert, true)
   presentations[0].completion.resolve({ status: 'completed' })
-  await waitFor(() => byAction(screen, 'reveal').disabled === false)
+  await waitFor(() => reveal.disabled === false)
   await flushMicrotasks()
 
   assert.equal(controller.currentMatch.turn, 1)
   assert.equal(presentations.length, 1)
+  assert.equal(hud.inert, true)
+  reveal.dispatch('click')
+  await flushMicrotasks()
+  assert.equal(controller.currentMatch.turn, 1)
 
   notice.teardown()
+  assert.equal(hud.inert, false)
   screen.teardown()
   await controller.destroy()
 })
