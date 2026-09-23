@@ -24,6 +24,22 @@ complete before sub-milestone 21.1 begins.
   card instances. A reward may add a new instance, duplicate an existing card as a new
   instance, replace an instance, or remove one. Every instance must belong to exactly
   one campaign/run zone.
+- Every instance carries immutable `campaignOwner` provenance (`player` or `opponent`)
+  independent of its current encounter zone. During an encounter, the ordered player
+  campaign-deck IDs are retained as metadata, not a second card zone. Capturing into an
+  empty Hold slot removes that ID from the order; replacing Hold substitutes the
+  displaced held ID at the selected ID's former campaign-deck index.
+- Encounter teardown first validates that every player-provenance instance occurs
+  exactly once across both sides' source, draw, and won piles, `burnPile`,
+  `contestedPile`, and Hold. The held instance remains in Hold; every other player
+  instance is recovered to the campaign-deck zone in the retained campaign-deck order,
+  regardless of which side controlled or burned it at termination. Every
+  opponent-provenance instance is removed with the encounter from whichever terminal
+  zone contains it. Teardown runs only after the terminal state commits at a stable
+  boundary, so `inPlay` is empty and an unsettled terminal contest remains represented
+  by `contestedPile`. This same teardown runs before a retry or encounter advance.
+  Hold persists into that next encounter, and its instance is excluded from the player
+  source pile because it is absent from the retained campaign-deck order.
 - An encounter uses player and opponent source piles rather than the current shared
   alternating `sourceDeck`. This is necessary for source-stage Hold use while retaining
   player campaign ownership. The player source pile is constructed from the persistent
@@ -37,22 +53,35 @@ complete before sub-milestone 21.1 begins.
   winner or a draw. Only the ordered transition shuffles consume RNG; inability outcomes
   do not.
 - Hold is an authoritative one-slot player zone, not a hand or presentation effect.
-  Before calculating a reveal round, reveal the player's top candidate and present a
-  stable choice to play it or replace it with the held instance. If the player uses
-  Hold, restore the candidate to index 0 unchanged, then move the held instance into
-  the player reveal. This works in source and personal stages.
+  Before calculating a reveal round, peek at the player's top candidate without
+  removing it and enter a stable `awaitingHoldChoice` state whose persisted metadata
+  identifies that instance, its source zone, and index `0`. If the player uses Hold,
+  the candidate remains at index `0` unchanged and the held instance supplies the
+  player reveal. This works in source and personal stages.
 - Base Hold access ends before the opponent reveals. The Hold-information boon reverses
-  that reveal order for the decision only: reveal the opponent card, then let the
-  player choose held or candidate. A tie never opens a Hold decision; its continuation
-  resolves automatically.
+  that reveal order for the decision only: peek at the opponent's index-`0` candidate
+  without removing it and enter `awaitingInformedHoldChoice`, persisting both candidate
+  references, then let the player choose held or candidate. The choice action
+  revalidates the referenced top cards, removes only the cards actually supplied in
+  player-first order, clears the decision metadata, and resolves the reveal. A tie
+  never opens a Hold decision; its continuation resolves automatically.
+- Hold decision states keep `inPlay` empty and consume no RNG. Their save fingerprint
+  binds the decision state and candidate metadata to the exact ordered zones, rules,
+  and RNG snapshot. Reload presents the same candidates without drawing RNG or
+  emitting an event; mismatched metadata quarantines the invalid save rather than
+  recomputing the choice. A committed clash event is emitted only after the choice
+  action completes resolution.
 - Capturing or replacing Hold is a stable, explicit action. Replacing a held instance
   atomically swaps it with the selected instance: the displaced held instance occupies
   the selected instance's exact former index in its player-owned ordered zone, and the
   selected instance enters Hold. The transition validates conservation. A Hold choice
   must be saved before presentation can advance.
 - Encounter losses reduce run health and retry the same encounter with the persistent
-  deck. At zero health the campaign ends. Wins advance the run. Buffs declare whether
-  they expire with the encounter or persist for the campaign.
+  deck. A terminal encounter draw has the same campaign transition: it reduces health
+  once, grants no reward, does not advance the encounter, and retries that encounter
+  after teardown. At zero health either transition ends the campaign in defeat instead
+  of retrying. Wins advance the run. Buffs declare whether they expire with the
+  encounter or persist for the campaign.
 - Rules, run state, RNG, save migrations, event fingerprints, and ownership remain
   authoritative domain concerns. Three.js and HUD presentation consume committed
   snapshots/events only. Every new stable choice must be serializable and deterministic.
@@ -72,9 +101,10 @@ three-encounter expedition.
 - Split encounter setup into player and opponent source piles while preserving the
   existing source/personal-stage semantics, tie handling, burning, recycling, and
   terminal-draw rules as far as the new ownership model permits.
-- Replace atomic player/opponent initial reveal resolution with persisted stable choice
-  states: player candidate revealed; optionally Hold selected; opponent revealed; then
-  calculate and settle. Tied continuation remains automatic and never accepts Hold.
+- Replace atomic player/opponent initial reveal resolution with the persisted
+  `awaitingHoldChoice` and `awaitingInformedHoldChoice` metadata states; the resolving
+  action then supplies the selected player card, supplies the opponent card, calculates,
+  and settles. Tied continuation remains automatic and never accepts Hold.
 - Deliver one Hold slot, capture only from an explicitly eligible player-owned settled
   card, and deterministic replacement that cannot duplicate or lose a card.
 - Implement health loss, same-encounter retry, victory advancement, and a fixed three
@@ -105,8 +135,9 @@ three-encounter expedition.
 - Add an explicit modifier catalogue with permanent campaign and encounter-only
   lifetimes. Initial effects may alter comparison values, burning, recycling, Hold
   capture eligibility, or replacement behavior; Hold remains exactly one slot.
-- Add the opponent-reveal Hold boon: the opponent card is committed before the Hold
-  choice, after which the player chooses the held card or their revealed candidate.
+- Add the opponent-reveal Hold boon: the opponent candidate is committed as persisted
+  peek metadata before the Hold choice, after which the player chooses the held card or
+  their revealed candidate.
 - Add reward and modifier inspection to the HUD/overlays and save every selected reward
   before presentation.
 
