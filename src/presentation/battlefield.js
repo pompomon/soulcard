@@ -768,6 +768,20 @@ export function mountBattlefield(host, {
     }
   }
 
+  function rebaseTween(visual) {
+    const tween = visual.tween
+    if (tween === null) return null
+    tween.from = {
+      x: visual.mesh.position.x,
+      y: visual.mesh.position.y,
+      z: visual.mesh.position.z,
+    }
+    if (tween.scale !== null) tween.scale.from = visual.mesh.scale.x
+    tween.durationMs = Math.max(0, tween.durationMs - tween.elapsedMs)
+    tween.elapsedMs = 0
+    return tween
+  }
+
   function transientOffset(step) {
     return Object.freeze({
       x: ((step.round % 4) - 1.5) * 0.13,
@@ -832,10 +846,9 @@ export function mountBattlefield(host, {
   function rescaleTweens(previousSpeed, nextSpeed) {
     if (Object.is(previousSpeed, nextSpeed)) return
     for (const visual of tweens) {
-      const tween = visual.tween
+      const tween = rebaseTween(visual)
       if (tween === null) continue
-      const remaining = Math.max(0, tween.durationMs - tween.elapsedMs)
-      tween.durationMs = tween.elapsedMs + remaining * previousSpeed / nextSpeed
+      tween.durationMs *= previousSpeed / nextSpeed
     }
   }
 
@@ -974,9 +987,10 @@ export function mountBattlefield(host, {
       if (visual.tween === null) {
         placeTransient(visual)
       } else {
-        visual.tween.to = zoneWorldPosition(visual.zoneId, visual.offset)
-        if (visual.tween.scale !== null) {
-          visual.tween.scale.to = currentLayout.visuals.secondaryPileScale
+        const tween = rebaseTween(visual)
+        tween.to = zoneWorldPosition(visual.zoneId, visual.offset)
+        if (tween.scale !== null) {
+          tween.scale.to = currentLayout.visuals.secondaryPileScale
         }
       }
     }

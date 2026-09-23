@@ -635,6 +635,9 @@ test('tied player win scales only its decisive card across speed and resize chan
   assert.equal(decisiveMesh.scale.x, scaleBeforeResize)
 
   renderer.animationLoop(250)
+  assert.equal(decisiveMesh.scale.x, scaleBeforeResize)
+  renderer.animationLoop(251)
+  assert.ok(Math.abs(decisiveMesh.scale.x - scaleBeforeResize) < 0.01)
   renderer.animationLoop(325)
   assert.equal(decisiveMesh.scale.x, handle.layout.visuals.secondaryPileScale)
   assert.equal(decisiveMesh.position.x, handle.layout.zones.playerWonPile.x)
