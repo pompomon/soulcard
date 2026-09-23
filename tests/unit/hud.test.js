@@ -982,20 +982,21 @@ test('End overlay settles terminal presentation after graphics recovery fails', 
   })
   let mainMenuCalls = 0
   let publishContext
+  let presentationCalls = 0
+  let cancellationReason = null
   const screen = createGameScreen({
     runController: controller,
     mountBattlefield: (host, options) => {
       publishContext = options.onContextStatus
     },
     eventPlayerFactory: () => ({
-      present: () => animation.promise,
+      present() {
+        presentationCalls += 1
+        return animation.promise
+      },
       setPaused() {},
       cancel(reason) {
-        animation.resolve({
-          status: 'cancelled',
-          eventId: terminal.pendingEvent.id,
-          reason,
-        })
+        cancellationReason = reason
       },
       destroy() {},
     }),
@@ -1012,23 +1013,22 @@ test('End overlay settles terminal presentation after graphics recovery fails', 
   const summary = descendants(screen.element).find(
     (element) => Object.hasOwn(element.dataset, 'endSummary'),
   )
-
   const saving = controller.saveStable()
   assert.equal(endOverlay.hidden, true)
+  assert.equal(endOverlay.hidden, true)
+  publishContext({
+    status: 'failed',
+    recoveryCount: 0,
+    reason: 'replacement unavailable',
+  })
+  assert.equal(cancellationReason, 'graphics-recovery-failed')
   write.resolve({
     status: 'saved',
     savedAt: '2026-09-23T01:02:00.000Z',
   })
   await saving
   await flushMicrotasks()
-  assert.equal(endOverlay.hidden, true)
-
-  publishContext({
-    status: 'failed',
-    recoveryCount: 0,
-    reason: 'replacement unavailable',
-  })
-  await flushMicrotasks()
+  assert.equal(presentationCalls, 0)
   assert.equal(endOverlay.hidden, false)
   assert.equal(pauseOverlay.hidden, true)
   assert.equal(endOverlay.attributes.role, 'dialog')

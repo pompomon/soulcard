@@ -798,24 +798,32 @@ export function createGameScreen({
     renderHud()
 
     let presentation
-    try {
-      presentation = eventPlayer.present(match)
-    } catch {
-      presentationFailure = true
-      if (eventId !== undefined) {
-        queuedEventIds.delete(eventId)
-        settledEventIds.add(eventId)
-      }
-      if (eventId === revealActionEventId) {
-        revealActionPending = false
-        revealActionEventId = null
-      }
-      renderHud()
-      return Promise.resolve(Object.freeze({
-        status: 'failed',
+    if (rendererContextState.status === 'failed') {
+      presentation = Promise.resolve(Object.freeze({
+        status: 'cancelled',
         eventId: eventId ?? null,
-        reason: 'presentation-error',
+        reason: 'graphics-recovery-failed',
       }))
+    } else {
+      try {
+        presentation = eventPlayer.present(match)
+      } catch {
+        presentationFailure = true
+        if (eventId !== undefined) {
+          queuedEventIds.delete(eventId)
+          settledEventIds.add(eventId)
+        }
+        if (eventId === revealActionEventId) {
+          revealActionPending = false
+          revealActionEventId = null
+        }
+        renderHud()
+        return Promise.resolve(Object.freeze({
+          status: 'failed',
+          eventId: eventId ?? null,
+          reason: 'presentation-error',
+        }))
+      }
     }
 
     const finalized = Promise.resolve(presentation)
