@@ -192,6 +192,40 @@ test('invalid AI dependencies, actions, and failures leave the current run uncha
   assert.deepEqual(repository.saves, [])
 })
 
+test('AI action selection cannot overwrite a synchronously changed or destroyed run', async () => {
+  for (const mutation of ['setMatch', 'pause', 'destroy']) {
+    const initialMatch = createActiveMatch(`reentrant-ai-${mutation}`)
+    const replacement = createActiveMatch(`replacement-${mutation}`)
+    const repository = createRepository()
+    let controller
+    const aiController = {
+      chooseEncounterAction() {
+        if (mutation === 'setMatch') controller.setMatch(replacement)
+        else controller[mutation]()
+        return REVEAL_OR_CONTINUE_ACTION
+      },
+    }
+    controller = createRunController({ repository, initialMatch, aiController })
+
+    assert.throws(
+      () => controller.revealOrContinue(),
+      /Run changed while choosing an encounter action/,
+    )
+    await controller.whenIdle()
+
+    if (mutation === 'setMatch') {
+      assert.equal(controller.currentMatch, replacement)
+      assert.deepEqual(repository.saves, [])
+    } else if (mutation === 'pause') {
+      assert.equal(controller.currentMatch.machineState, 'paused')
+      assert.deepEqual(repository.saves, [controller.currentMatch])
+    } else {
+      assert.equal(controller.currentMatch, initialMatch)
+      assert.deepEqual(repository.saves, [])
+    }
+  }
+})
+
 test('restore adopts ready or paused snapshots without replaying RNG', async () => {
   const ready = revealOrContinue(createActiveMatch('restored-run')).match
   const paused = pauseMatch(ready)

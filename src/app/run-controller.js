@@ -273,7 +273,11 @@ export function createRunController({
       throw new Error('A paused match cannot reveal or continue')
     }
     const currentMatch = match
+    const currentRevision = revision
     validateEncounterAction(aiController.chooseEncounterAction(currentMatch))
+    if (destroyed || revision !== currentRevision) {
+      throw new Error('Run changed while choosing an encounter action')
+    }
     const transition = resolveClash(currentMatch)
     markMatch(transition.match)
     const save = queueSave(transition.match)
