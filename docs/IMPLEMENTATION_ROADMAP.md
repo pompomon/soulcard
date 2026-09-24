@@ -1307,21 +1307,22 @@ reviewable PR.
   continuation equivalence. `tests/browser/milestone-19-profile.html` records seeded
   frame, draw-call, renderer/cache, texture-generation, context-recovery, remount, and
   supported-heap observations outside the production bundle. Measured hypotheses,
-  raw summaries, methods, and explicit unavailable/unsupported matrix rows are recorded
-  in [`MILESTONE_19_QA.md`](./MILESTONE_19_QA.md); no unmeasured optimization or release
+  raw summaries, methods, and explicit scope exclusions are recorded in
+  [`MILESTONE_19_QA.md`](./MILESTONE_19_QA.md); no unmeasured optimization or release
   threshold was added.
-- **Validation:** All 321 unit/integration tests and the production build pass on Node
-  24.20.0. A text-only headless Chromium 152 check at the production `/soulcard/`
-  relative path retained one presentational canvas, disabled Reveal but not Pause during
-  real `WEBGL_lose_context` interruption, replaced the canvas and restored input/state,
-  met computed 44×44 target and visible focus requirements across the established four
-  layouts, launched/resumed offline, reported zero installability errors, and entered
-  standalone display mode with no relevant console errors. Seed 0 exercised a tie and
-  source-to-personal transition; seed 93 ended in the retained terminal draw. Firefox
-  155 was available but its headless host reported exhausted WebGL driver options;
-  Safari and required physical iOS, Android, tablet, pen, and representative
-  low/mid/high devices were unavailable. Milestone 19 therefore remains open; no
-  screenshots were produced.
+- **Validation:** All 332 unit/integration tests and the production build pass on Node
+  24.21.0. Text-only headless Chrome 152 checks at the production `/soulcard/` relative
+  path exercised 320×480 portrait and 844×390 landscape at DPR 3. Both retained one
+  full-viewport presentational canvas, enabled primary controls with at least 44 px
+  target heights, and exposed a 3 px solid visible focus indicator. A real
+  `WEBGL_lose_context` interruption disabled Reveal but not Pause, then replaced the
+  canvas and restored input/state. The controlled app launched and resumed offline,
+  reported zero manifest/installability errors, and entered standalone display mode
+  without relevant console or runtime errors. The profiler retained bounded resources;
+  seed 0 exercised a tie and source-to-personal transition, and seed 93 ended in the
+  retained terminal draw. Milestone 19 is complete for the declared Chrome
+  mobile-resolution scope; no physical-device, cross-browser, hardware-tier, or
+  longitudinal heap claims are made, and no screenshots were produced.
 
 ### 20. MVP release gate and definition of done
 - **Goal/files:** Add release checklist/reproducibility report; depends on 1–19.
