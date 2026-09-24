@@ -60,7 +60,7 @@ function contextStatusText(contextState) {
     return 'Graphics context lost. Presentation is paused while graphics recover.'
   }
   if (contextState.status === 'restoring') {
-    return 'Restoring graphics from the saved game state…'
+    return 'Restoring graphics from the current game state…'
   }
   if (contextState.status === 'failed') {
     return `Graphics recovery failed${contextState.reason ? ` (${contextState.reason})` : ''}. Pause and save remain available; reload to retry.`

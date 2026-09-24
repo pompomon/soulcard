@@ -283,13 +283,24 @@ test('Game combines match pause with graphics recovery and keeps safe controls a
     globalThis.document = previousDocument
   })
 
+  let saveCalls = 0
   const controller = createRunController({
     repository: {
       load: async () => ({ status: 'empty' }),
-      save: async () => ({
-        status: 'saved',
-        savedAt: '2026-09-23T12:00:00.000Z',
-      }),
+      async save() {
+        saveCalls += 1
+        if (saveCalls === 2) {
+          return {
+            status: 'storage-unavailable',
+            operation: 'save',
+            reason: 'quota-exceeded',
+          }
+        }
+        return {
+          status: 'saved',
+          savedAt: '2026-09-23T12:00:00.000Z',
+        }
+      },
     },
     initialMatch: createMatch({
       runId: 'hud-context-recovery',
@@ -332,6 +343,7 @@ test('Game combines match pause with graphics recovery and keeps safe controls a
   const reveal = byAction(screen, 'reveal')
   const pause = byAction(screen, 'pause')
   const resume = byAction(screen, 'resume')
+  const saveAndMain = byAction(screen, 'save-main')
   const status = descendants(screen.element).find(
     (element) => Object.hasOwn(element.dataset, 'statusHost'),
   )
@@ -364,7 +376,10 @@ test('Game combines match pause with graphics recovery and keeps safe controls a
   assert.match(pauseOverlayStatus.textContent, /Graphics context lost/)
 
   publishContext({ status: 'restoring', recoveryCount: 0, reason: null })
-  assert.match(pauseOverlayStatus.textContent, /Restoring graphics/)
+  assert.equal(
+    pauseOverlayStatus.textContent,
+    'Restoring graphics from the current game state…',
+  )
   publishContext({
     status: 'failed',
     recoveryCount: 0,
@@ -373,10 +388,20 @@ test('Game combines match pause with graphics recovery and keeps safe controls a
   assert.match(pauseOverlayStatus.textContent, /replacement unavailable/)
   assert.equal(cancellations.at(-1), 'graphics-recovery-failed')
 
+  saveAndMain.dispatch('click')
+  assert.equal(
+    pauseOverlayStatus.textContent,
+    'Saving before returning to the main menu…',
+  )
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.match(pauseOverlayStatus.textContent, /quota-exceeded/)
+  assert.doesNotMatch(pauseOverlayStatus.textContent, /replacement unavailable/)
+
   publishContext({ status: 'ready', recoveryCount: 1, reason: null })
   assert.equal(pauses.at(-1), true)
   assert.match(status.textContent, /Game paused/)
-  assert.match(pauseOverlayStatus.textContent, /Game saved/)
+  assert.match(pauseOverlayStatus.textContent, /quota-exceeded/)
   resume.dispatch('click')
   await flushMicrotasks()
   assert.equal(controller.currentMatch.machineState, 'ready')
