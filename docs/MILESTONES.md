@@ -26,7 +26,7 @@ dependency-map sections.
       (depends on: 8–10, 15)
 - [x] 17. Gameplay settings and 2-over-Ace rules version (depends on: 4–6, 8–10, 16)
 - [x] 18. PWA offline/update hardening (depends on: 9–10, 16–17)
-- [x] 19. Performance, context loss, accessibility baseline, cross-device QA
+- [x] 19. Performance, context loss, accessibility baseline, Chrome mobile-resolution QA
       (depends on: 11–18)
 - [ ] 20. MVP release gate and definition of done (depends on: 1–19)
 - [ ] 21. Post-MVP expansion (post-MVP, after 20; adventure-run work uses internal
