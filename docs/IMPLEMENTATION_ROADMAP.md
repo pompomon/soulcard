@@ -1330,6 +1330,23 @@ reviewable PR.
   equivalence, offline/update, context loss, and the required Chrome mobile-resolution
   matrix are signed off.
 - **Checks/risks:** Release candidate build on Pages path; rollback is cache/schema-aware.
+- **Acceptance evidence:** [`MILESTONE_20_RELEASE.md`](./MILESTONE_20_RELEASE.md)
+  records the frozen implementation revision, environment and CI provenance, exact
+  baseline and burn-disabled simulation results, acceptance-to-test traceability, the
+  Chrome release matrix, and a compatibility-aware rollback procedure. Save schema 3,
+  game rules 2, readable event versions 2–4, IndexedDB version 1, settings namespace v1,
+  and content-revisioned caches are explicitly covered.
+- **Validation:** A clean Node 24 install reports 332 passing unit/integration tests and
+  a successful 41-module production build. The canonical seeds 0–999 report is
+  byte-identical to its fixture, and an independent burn-disabled 0–999 double run is
+  deterministic, fully completed, and records zero burns. Text-only headless Chrome 152
+  checks at the production `/soulcard/` path pass at 320×480 and 844×390, DPR 3, with
+  one presentational canvas, 44 px controls, visible focus, safe-area and motion
+  emulation, exact offline resume, corrupt-save recovery, real WebGL restoration,
+  installability/standalone behavior, and a stable-save-gated two-revision update.
+  Seeds 0 and 93 repeat the tie/transition and retained-draw profile paths with bounded
+  resources. No screenshots were produced, and the MVP scope exclusions remain in
+  force.
 
 ### 21. Post-MVP expansion
 - **Goal/files:** First-class full keyboard support (navigation, gameplay, shortcuts,
