@@ -274,6 +274,159 @@ test('Game leaves pause disabled without a run controller and still tears down p
   assert.equal(teardowns, 1)
 })
 
+test('Game combines match pause with graphics recovery and keeps safe controls available', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  let saveCalls = 0
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      async save() {
+        saveCalls += 1
+        if (saveCalls === 2) {
+          return {
+            status: 'storage-unavailable',
+            operation: 'save',
+            reason: 'quota-exceeded',
+          }
+        }
+        return {
+          status: 'saved',
+          savedAt: '2026-09-23T12:00:00.000Z',
+        }
+      },
+    },
+    initialMatch: createMatch({
+      runId: 'hud-context-recovery',
+      seed: 0,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  let publishContext
+  const pauses = []
+  const cancellations = []
+  const deckStates = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: (host, options) => {
+      publishContext = options.onContextStatus
+      return {
+        setDeckInputState(state) {
+          deckStates.push(state)
+        },
+        teardown() {},
+      }
+    },
+    eventPlayerFactory: () => ({
+      present(match) {
+        return Promise.resolve({
+          status: match.pendingEvent === null ? 'synchronized' : 'completed',
+          eventId: match.pendingEvent?.id ?? null,
+          reason: null,
+        })
+      },
+      setPaused(value) {
+        pauses.push(value)
+      },
+      cancel(reason) {
+        cancellations.push(reason)
+      },
+      destroy() {},
+    }),
+  })
+  const reveal = byAction(screen, 'reveal')
+  const pause = byAction(screen, 'pause')
+  const resume = byAction(screen, 'resume')
+  const saveAndMain = byAction(screen, 'save-main')
+  const status = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'statusHost'),
+  )
+  const hud = descendants(screen.element).find(
+    (element) => element.className === 'game-hud',
+  )
+  const pauseOverlayStatus = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'saveStatus'),
+  )
+
+  assert.equal(typeof publishContext, 'function')
+  assert.equal(status.attributes.role, 'status')
+  assert.equal(status.attributes['aria-live'], 'polite')
+  assert.equal(status.attributes['aria-atomic'], 'true')
+  assert.equal(reveal.disabled, false)
+  assert.equal(pause.disabled, false)
+
+  publishContext({ status: 'lost', recoveryCount: 0, reason: null })
+  assert.equal(pauses.at(-1), true)
+  assert.equal(reveal.disabled, true)
+  assert.equal(pause.disabled, false)
+  assert.deepEqual(deckStates.at(-1), { enabled: false, busy: true })
+  assert.match(status.textContent, /Graphics context lost/)
+
+  pause.dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.equal(controller.currentMatch.machineState, 'paused')
+  assert.equal(hud.inert, true)
+  assert.match(pauseOverlayStatus.textContent, /Graphics context lost/)
+
+  publishContext({ status: 'restoring', recoveryCount: 0, reason: null })
+  assert.equal(
+    pauseOverlayStatus.textContent,
+    'Restoring graphics from the current game state…',
+  )
+  publishContext({
+    status: 'failed',
+    recoveryCount: 0,
+    reason: 'replacement unavailable',
+  })
+  assert.match(pauseOverlayStatus.textContent, /replacement unavailable/)
+  assert.equal(cancellations.at(-1), 'graphics-recovery-failed')
+
+  saveAndMain.dispatch('click')
+  assert.equal(
+    pauseOverlayStatus.textContent,
+    'Saving before returning to the main menu…',
+  )
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.match(pauseOverlayStatus.textContent, /quota-exceeded/)
+  assert.doesNotMatch(pauseOverlayStatus.textContent, /replacement unavailable/)
+
+  publishContext({ status: 'ready', recoveryCount: 1, reason: null })
+  assert.equal(pauses.at(-1), true)
+  assert.match(status.textContent, /Game paused/)
+  assert.match(pauseOverlayStatus.textContent, /quota-exceeded/)
+  resume.dispatch('click')
+  await flushMicrotasks()
+  assert.equal(controller.currentMatch.machineState, 'ready')
+  assert.equal(pauses.at(-1), false)
+  assert.equal(hud.inert, false)
+  assert.equal(reveal.disabled, false)
+
+  publishContext({ status: 'lost', recoveryCount: 1, reason: null })
+  publishContext({ status: 'restoring', recoveryCount: 1, reason: null })
+  assert.match(status.textContent, /Restoring graphics/)
+  publishContext({
+    status: 'failed',
+    recoveryCount: 1,
+    reason: 'replacement unavailable',
+  })
+  assert.equal(pauses.at(-1), true)
+  assert.equal(reveal.disabled, true)
+  assert.equal(pause.disabled, false)
+  assert.match(status.textContent, /replacement unavailable/)
+  assert.equal(cancellations.length, 2)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
 test('Save & Main Menu retries failed persistence without leaving pause', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
@@ -656,6 +809,66 @@ test('Auto-reveal continues after a reduced-motion presentation skip', async (t)
   await controller.destroy()
 })
 
+test('Auto-reveal stops when presentation settles during graphics recovery', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => ({
+        status: 'saved',
+        savedAt: '2026-09-23T12:01:30.000Z',
+      }),
+    },
+    initialMatch: createMatch({
+      runId: 'hud-auto-context-recovery',
+      seed: 12345,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const presentations = []
+  let publishContext
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: (host, options) => {
+      publishContext = options.onContextStatus
+    },
+    eventPlayerFactory: createControlledEventPlayerFactory(presentations),
+  })
+  const autoReveal = byAction(screen, 'auto-reveal')
+  const reveal = byAction(screen, 'reveal')
+
+  autoReveal.checked = true
+  autoReveal.dispatch('change')
+  reveal.dispatch('click')
+  await waitFor(() => presentations.length === 1)
+  assert.equal(controller.currentMatch.turn, 1)
+
+  publishContext({ status: 'lost', recoveryCount: 0, reason: null })
+  presentations[0].completion.resolve({
+    status: 'skipped',
+    reason: 'reduced-motion',
+  })
+  await flushMicrotasks()
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(presentations.length, 1)
+  assert.equal(reveal.disabled, true)
+
+  publishContext({ status: 'ready', recoveryCount: 1, reason: null })
+  await waitFor(() => reveal.disabled === false)
+  assert.equal(controller.currentMatch.turn, 1)
+  assert.equal(presentations.length, 1)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
 test('Auto-reveal stops after failed or cancelled presentation', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
@@ -786,12 +999,19 @@ test('update preparation disarms Auto-reveal through the mounted notice event', 
     }),
   })
   const presentations = []
+  let publishContext
   const screen = createGameScreen({
     runController: controller,
-    mountBattlefield: () => undefined,
+    mountBattlefield: (host, options) => {
+      publishContext = options.onContextStatus
+    },
     eventPlayerFactory: createControlledEventPlayerFactory(presentations),
   })
   const autoReveal = byAction(screen, 'auto-reveal')
+  const reveal = byAction(screen, 'reveal')
+  const hud = descendants(screen.element).find(
+    (element) => element.className === 'game-hud',
+  )
   let updateSubscriber
   const notice = createUpdateNotice({
     host: screen.element,
@@ -808,17 +1028,27 @@ test('update preparation disarms Auto-reveal through the mounted notice event', 
 
   autoReveal.checked = true
   autoReveal.dispatch('change')
-  byAction(screen, 'reveal').dispatch('click')
+  reveal.dispatch('click')
   await waitFor(() => presentations.length === 1)
   updateSubscriber({ status: 'preparing', reason: null, canActivate: false })
+  assert.equal(hud.inert, true)
+  publishContext({ status: 'lost', recoveryCount: 0, reason: null })
+  assert.equal(hud.inert, true)
+  publishContext({ status: 'ready', recoveryCount: 1, reason: null })
+  assert.equal(hud.inert, true)
   presentations[0].completion.resolve({ status: 'completed' })
-  await waitFor(() => byAction(screen, 'reveal').disabled === false)
+  await waitFor(() => reveal.disabled === false)
   await flushMicrotasks()
 
   assert.equal(controller.currentMatch.turn, 1)
   assert.equal(presentations.length, 1)
+  assert.equal(hud.inert, true)
+  reveal.dispatch('click')
+  await flushMicrotasks()
+  assert.equal(controller.currentMatch.turn, 1)
 
   notice.teardown()
+  assert.equal(hud.inert, false)
   screen.teardown()
   await controller.destroy()
 })
@@ -1428,7 +1658,7 @@ test('Game exposes terminal outcome details and disables primary actions', (t) =
   screen.teardown()
 })
 
-test('End overlay waits for terminal save and presentation before showing its summary', async (t) => {
+test('End overlay settles terminal presentation after graphics recovery fails', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
     createElement: (tagName) => new FakeElement(tagName),
@@ -1455,12 +1685,23 @@ test('End overlay waits for terminal save and presentation before showing its su
     initialMatch: terminal,
   })
   let mainMenuCalls = 0
+  let publishContext
+  let presentationCalls = 0
+  let cancellationReason = null
   const screen = createGameScreen({
     runController: controller,
-    mountBattlefield: () => undefined,
+    mountBattlefield: (host, options) => {
+      publishContext = options.onContextStatus
+    },
     eventPlayerFactory: () => ({
-      present: () => animation.promise,
+      present() {
+        presentationCalls += 1
+        return animation.promise
+      },
       setPaused() {},
+      cancel(reason) {
+        cancellationReason = reason
+      },
       destroy() {},
     }),
     onMainMenu() {
@@ -1476,23 +1717,22 @@ test('End overlay waits for terminal save and presentation before showing its su
   const summary = descendants(screen.element).find(
     (element) => Object.hasOwn(element.dataset, 'endSummary'),
   )
-
   const saving = controller.saveStable()
   assert.equal(endOverlay.hidden, true)
+  assert.equal(endOverlay.hidden, true)
+  publishContext({
+    status: 'failed',
+    recoveryCount: 0,
+    reason: 'replacement unavailable',
+  })
+  assert.equal(cancellationReason, 'graphics-recovery-failed')
   write.resolve({
     status: 'saved',
     savedAt: '2026-09-23T01:02:00.000Z',
   })
   await saving
   await flushMicrotasks()
-  assert.equal(endOverlay.hidden, true)
-
-  animation.resolve({
-    status: 'completed',
-    eventId: terminal.pendingEvent.id,
-    reason: null,
-  })
-  await flushMicrotasks()
+  assert.equal(presentationCalls, 0)
   assert.equal(endOverlay.hidden, false)
   assert.equal(pauseOverlay.hidden, true)
   assert.equal(endOverlay.attributes.role, 'dialog')

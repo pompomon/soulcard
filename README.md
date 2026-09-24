@@ -44,6 +44,16 @@ Presentation never advances the match machine, evaluates burn rules, or consumes
 Current events record each reveal's source/personal pile origin; version 2 saved events
 remain readable.
 
+## WebGL context recovery
+
+The battlefield prevents the browser's default `webglcontextlost` handling, pauses
+presentation and canvas input, and reports the interruption through the Game status
+region. On `webglcontextrestored`, it replaces the renderer and texture cache, then
+recreates visuals from the retained stable match snapshot and committed event before
+resuming. Recovery never advances the match machine, writes a save, changes ordered
+zones, or consumes RNG. A failed replacement leaves Reveal/Continue disabled while
+Pause and save/menu recovery remain available.
+
 ## Pointer input and HUD ownership
 
 `src/presentation/input.js` owns mouse, touch, and pen pointer sequences for the
@@ -62,6 +72,12 @@ and committed-event presentation, and derives counts, comparison results, progre
 and outcomes from stable snapshots and committed events. The semantic button remains
 the accessible canonical control. Input and presentation never settle rules or consume
 domain RNG.
+
+All MVP primary actions remain named native buttons or selects, dynamic status text is
+exposed through polite atomic status regions, and controls retain visible focus
+treatment and 44×44 CSS-pixel targets. The Three.js canvas is presentational; the
+semantic Reveal/Continue button is the canonical accessible action. Full keyboard
+gameplay, shortcuts, focus trapping, and focus-flow instructions remain post-MVP.
 
 Auto-reveal is an opt-in checkbox beside Reveal/Continue. It defaults off for each Game
 screen mount and is not persisted. After the player manually reveals with it enabled,
@@ -146,6 +162,13 @@ Branch pushes (except the generated `gh-pages` branch) and pull requests run tes
 and a production build, independently of the Copilot agent session. CI also supports
 manual runs via Actions → CI → Run workflow once the workflow is on the default
 branch. Deployment runs tests before building. There is no configured lint command.
+
+The dependency-free milestone 19 browser profiler is available while the development
+server is running at
+`/tests/browser/milestone-19-profile.html`. It emits a JSON report in the page and to
+the console for frame intervals, renderer/resource bounds, texture generation, seeded
+full matches, remounts, heap support, and repeated context recovery. It is not a
+production entry point or service-worker asset.
 
 ## Seeded simulations
 

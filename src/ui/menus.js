@@ -185,6 +185,7 @@ export function createMainScreen({
   status.dataset.mainStatus = ''
   status.setAttribute('role', 'status')
   status.setAttribute('aria-live', 'polite')
+  status.setAttribute('aria-atomic', 'true')
 
   actions.append(startButton, resumeButton, discardButton, settingsButton)
   panel.append(eyebrow, heading, status, actions)
@@ -350,6 +351,7 @@ export function createSettingsScreen({ onBack, settingsController } = {}) {
   storageStatus.dataset.settingsStatus = ''
   storageStatus.setAttribute('role', 'status')
   storageStatus.setAttribute('aria-live', 'polite')
+  storageStatus.setAttribute('aria-atomic', 'true')
   storageStatus.textContent = 'Storage is unavailable. Changes apply to this session only.'
 
   const backButton = createButton('Back to Main Menu', onBack)

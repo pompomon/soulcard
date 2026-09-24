@@ -97,6 +97,8 @@ test('Main reports restore, recovery, session-only, and resumable states', (t) =
   const discard = byAction(screen, 'discard')
 
   assert.equal(status.attributes.role, 'status')
+  assert.equal(status.attributes['aria-live'], 'polite')
+  assert.equal(status.attributes['aria-atomic'], 'true')
   assert.match(status.textContent, /Checking/)
   assert.equal(resume.disabled, true)
   assert.equal(discard.hidden, true)

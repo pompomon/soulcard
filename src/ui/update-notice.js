@@ -53,6 +53,7 @@ export function createUpdateNotice({ updateController, host } = {}) {
   status.dataset.updateStatus = ''
   status.setAttribute('role', 'status')
   status.setAttribute('aria-live', 'polite')
+  status.setAttribute('aria-atomic', 'true')
 
   const updateButton = document.createElement('button')
   updateButton.type = 'button'

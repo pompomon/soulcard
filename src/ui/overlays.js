@@ -19,11 +19,12 @@ function saveStatusText({ saveStatus, saveReason }) {
   }
 }
 
-function overlayStatusText(snapshot, { action, error }) {
+function overlayStatusText(snapshot, { action, error, announcement }) {
   if (error) return error
   if (action === 'save-main') return 'Saving before returning to the main menu…'
   if (action === 'restart') return 'Starting a new game…'
   if (action === 'main') return 'Returning to the main menu…'
+  if (announcement) return announcement
   return saveStatusText(snapshot)
 }
 
@@ -73,6 +74,7 @@ export function createPauseOverlay({
   saveStatus.dataset.saveStatus = ''
   saveStatus.setAttribute('role', 'status')
   saveStatus.setAttribute('aria-live', 'polite')
+  saveStatus.setAttribute('aria-atomic', 'true')
 
   const actions = document.createElement('div')
   actions.className = 'game-overlay__actions'
@@ -164,6 +166,7 @@ export function createEndOverlay({
   saveStatus.dataset.endSaveStatus = ''
   saveStatus.setAttribute('role', 'status')
   saveStatus.setAttribute('aria-live', 'polite')
+  saveStatus.setAttribute('aria-atomic', 'true')
 
   const actions = document.createElement('div')
   actions.className = 'game-overlay__actions'
