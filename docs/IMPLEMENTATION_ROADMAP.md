@@ -723,9 +723,11 @@ Use an atlas/cache or equivalent keyed cache with lazy generation, bounded memor
 eviction, high-DPI texture dimensions, documented color space, filtering, anisotropy,
 and regeneration after disposal/context restoration. Validate, rather than promise,
 targets such as: responsive input at the minimum viewport, no unbounded texture count
-during a full match, bounded render scale by preset, and smooth enough animation on a
-representative low/mid/high device matrix. Profile memory, draw calls, frame pacing,
-texture generation, and context-loss recovery before setting release thresholds.
+during a full match, bounded render scale by preset, and smooth enough animation in
+current Chrome at the declared phone portrait and landscape resolutions. Profile memory,
+draw calls, frame pacing, texture generation, and context-loss recovery before setting
+release thresholds; do not extrapolate emulated results to physical hardware or other
+browsers.
 
 ## PWA and updates
 
@@ -1287,7 +1289,8 @@ reviewable PR.
 - **Goal/files:** Add profiling/QA fixtures and context handlers; depends on 11–18.
 - **Acceptance:** Disposal/context restore from state, accessible status region/semantic
   controls, targets/focus baseline, and measured hypotheses are documented.
-- **Checks/risks:** Device/browser matrix below; do not claim full keyboard support.
+- **Checks/risks:** Chrome mobile-resolution matrix below; do not claim physical-device,
+  cross-browser, hardware-tier, or full keyboard support.
 - **Acceptance evidence:** `src/presentation/battlefield.js` prevents default WebGL
   context loss, suspends rendering and pointer/deck input, cancels active drags,
   publishes lost/restoring/ready/failed state, and reconstructs a fresh renderer,
@@ -1304,26 +1307,28 @@ reviewable PR.
   continuation equivalence. `tests/browser/milestone-19-profile.html` records seeded
   frame, draw-call, renderer/cache, texture-generation, context-recovery, remount, and
   supported-heap observations outside the production bundle. Measured hypotheses,
-  raw summaries, methods, and explicit unavailable/unsupported matrix rows are recorded
-  in [`MILESTONE_19_QA.md`](./MILESTONE_19_QA.md); no unmeasured optimization or release
+  raw summaries, methods, and explicit scope exclusions are recorded in
+  [`MILESTONE_19_QA.md`](./MILESTONE_19_QA.md); no unmeasured optimization or release
   threshold was added.
-- **Validation:** All 321 unit/integration tests and the production build pass on Node
-  24.20.0. A text-only headless Chromium 152 check at the production `/soulcard/`
-  relative path retained one presentational canvas, disabled Reveal but not Pause during
-  real `WEBGL_lose_context` interruption, replaced the canvas and restored input/state,
-  met computed 44×44 target and visible focus requirements across the established four
-  layouts, launched/resumed offline, reported zero installability errors, and entered
-  standalone display mode with no relevant console errors. Seed 0 exercised a tie and
-  source-to-personal transition; seed 93 ended in the retained terminal draw. Firefox
-  155 was available but its headless host reported exhausted WebGL driver options;
-  Safari and required physical iOS, Android, tablet, pen, and representative
-  low/mid/high devices were unavailable. Milestone 19 therefore remains open; no
-  screenshots were produced.
+- **Validation:** All 332 unit/integration tests and the production build pass on Node
+  24.21.0. Text-only headless Chrome 152 checks at the production `/soulcard/` relative
+  path exercised 320×480 portrait and 844×390 landscape at DPR 3. Both retained one
+  full-viewport presentational canvas, enabled primary controls with at least 44 px
+  target heights, and exposed a 3 px solid visible focus indicator. A real
+  `WEBGL_lose_context` interruption disabled Reveal but not Pause, then replaced the
+  canvas and restored input/state. The controlled app launched and resumed offline,
+  reported zero manifest/installability errors, and entered standalone display mode
+  without relevant console or runtime errors. The profiler retained bounded resources;
+  seed 0 exercised a tie and source-to-personal transition, and seed 93 ended in the
+  retained terminal draw. Milestone 19 is complete for the declared Chrome
+  mobile-resolution scope; no physical-device, cross-browser, hardware-tier, or
+  longitudinal heap claims are made, and no screenshots were produced.
 
 ### 20. MVP release gate and definition of done
 - **Goal/files:** Add release checklist/reproducibility report; depends on 1–19.
 - **Acceptance:** All automated suites pass; default and disabled burn tests, save
-  equivalence, offline/update, context loss, and required manual matrix are signed off.
+  equivalence, offline/update, context loss, and the required Chrome mobile-resolution
+  matrix are signed off.
 - **Checks/risks:** Release candidate build on Pages path; rollback is cache/schema-aware.
 
 ### 21. Post-MVP expansion
@@ -1336,7 +1341,7 @@ reviewable PR.
   saves or zone invariants.
 - **Checks/risks:** Accessibility and privacy reviews precede release.
 
-## Test pyramid and device matrix
+## Test pyramid and Chrome mobile matrix
 
 Favor many fast unit tests for RNG, cards/zones, rules, invariants, migrations, and
 theme registry; fewer integration tests for match-to-event-to-save equivalence and
@@ -1344,11 +1349,13 @@ screen coordination; and focused browser tests for IndexedDB, lifecycle, service
 worker, pointer events, resize, and updates. Run seed/property tests over a bounded
 representative seed set in CI and retain failing seeds as fixtures.
 
-Manual release checks cover current Chromium, Firefox, and Safari where available;
-phone portrait/landscape (including iOS Safari and Android Chrome), tablet, desktop
-mouse, touch, and pen; normal/reduced motion; online/offline/install/standalone;
-fresh run, tie, source-stage transition, pause/background/refresh/resume, corrupt save,
-update waiting at a stable boundary, and WebGL context restoration.
+Release checks use current Chrome with phone portrait and landscape viewport emulation.
+They cover normal/reduced motion; online/offline/install/standalone; fresh run, tie,
+source-stage transition, pause/background/refresh/resume, corrupt save, update waiting at
+a stable boundary, and WebGL context restoration. Physical-device, remote-lab,
+cross-browser, tablet/desktop, and representative hardware-tier sign-off are outside the
+MVP acceptance scope; mouse, touch, and pen contracts remain covered by focused automated
+input tests.
 
 ## MVP definition of done
 
