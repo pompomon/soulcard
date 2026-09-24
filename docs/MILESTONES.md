@@ -28,7 +28,7 @@ dependency-map sections.
 - [x] 18. PWA offline/update hardening (depends on: 9–10, 16–17)
 - [x] 19. Performance, context loss, accessibility baseline, Chrome mobile-resolution QA
       (depends on: 11–18)
-- [ ] 20. MVP release gate and definition of done (depends on: 1–19)
+- [x] 20. MVP release gate and definition of done (depends on: 1–19)
 - [ ] 21. Post-MVP expansion (post-MVP, after 20; adventure-run work uses internal
       21.1–21.5 sub-milestones, not additional roadmap milestones:
       `ROGUELIKE_ADVENTURE_RUN_PLAN.md`)
