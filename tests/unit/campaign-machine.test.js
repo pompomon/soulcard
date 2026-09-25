@@ -314,6 +314,28 @@ test('Hold-only decisions accept Hold and reject a missing normal candidate', ()
     from: 'player.drawPile',
     candidate: null,
   })
+
+  const unpreparedSource = clone(prepared)
+  unpreparedSource.encounter.supplyMode.player = 'source'
+  unpreparedSource.holdChoice.from = 'player.sourcePile'
+  refingerprint(unpreparedSource)
+  assert.throws(
+    () => validateCampaignState(unpreparedSource),
+    /requires completed player supply preparation/,
+  )
+
+  const unrecycled = clone(prepared)
+  unrecycled.encounter.zones.opponent.wonPile.splice(
+    unrecycled.encounter.zones.opponent.wonPile.indexOf(otherPlayers[0]),
+    1,
+  )
+  unrecycled.encounter.zones.player.wonPile.push(otherPlayers[0])
+  refingerprint(unrecycled)
+  assert.throws(
+    () => validateCampaignState(unrecycled),
+    /requires completed player supply preparation/,
+  )
+
   assert.throws(() => chooseCampaignReveal(prepared, 'normal'), /unavailable/)
   const resolved = chooseCampaignReveal(prepared, 'hold')
   assert.equal(resolved.event.reveals[0].instanceId, held)
@@ -843,6 +865,14 @@ test('final encounter deals two damage and the third win completes the campaign'
     result: 'victory',
     reason: 'campaignCompleted',
   })
+
+  const zeroHealthVictory = clone(victory)
+  zeroHealthVictory.health = 0
+  refingerprint(zeroHealthVictory)
+  assert.throws(
+    () => validateCampaignState(zeroHealthVictory),
+    /victory must follow the final encounter win with positive health/,
+  )
 })
 
 test('same seed and campaign choices replay exactly', () => {

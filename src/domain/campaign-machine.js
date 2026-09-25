@@ -481,10 +481,22 @@ function assertHoldChoice(run) {
   }
   assertPlainObject(run.holdChoice, 'campaign.holdChoice')
   assertExactKeys(run.holdChoice, ['from', 'candidate'], 'campaign.holdChoice')
-  const expectedPile = run.encounter.supplyMode.player === 'source'
+  const playerMode = run.encounter.supplyMode.player
+  const zones = run.encounter.zones
+  if (
+    (playerMode === 'source' && zones.playerSourcePile.length === 0)
+    || (
+      playerMode === 'personal'
+      && zones.player.drawPile.length === 0
+      && zones.player.wonPile.length > 0
+    )
+  ) {
+    throw new Error('A Hold choice requires completed player supply preparation')
+  }
+  const expectedPile = playerMode === 'source'
     ? run.encounter.zones.playerSourcePile
     : run.encounter.zones.player.drawPile
-  const expectedFrom = run.encounter.supplyMode.player === 'source'
+  const expectedFrom = playerMode === 'source'
     ? 'player.sourcePile'
     : 'player.drawPile'
   if (run.holdChoice.from !== expectedFrom) {
@@ -654,8 +666,9 @@ function assertCampaignOutcome(run) {
       run.outcome.reason !== 'campaignCompleted'
       || run.encounterIndex !== CAMPAIGN_ENCOUNTERS.length - 1
       || run.encounter.outcome?.winner !== 'player'
+      || run.health <= 0
     ) {
-      throw new Error('Campaign victory must follow the final encounter win')
+      throw new Error('Campaign victory must follow the final encounter win with positive health')
     }
   } else if (run.outcome.result === 'defeat') {
     if (run.outcome.reason !== 'healthDepleted' || run.health !== 0) {

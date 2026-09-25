@@ -64,6 +64,17 @@ test('campaign events distinguish duplicate canonical cards by instance identity
       'opponent-3-1-002',
     ],
   )
+
+  const firstHold = structuredClone(event)
+  firstHold.reveals[0].from = 'player.hold'
+  assert.equal(validateCampaignEvent(firstHold), firstHold)
+
+  const lateHold = structuredClone(event)
+  lateHold.reveals[2].from = 'player.hold'
+  assert.throws(
+    () => validateCampaignEvent(lateHold),
+    /Hold can supply only the first player reveal/,
+  )
 })
 
 test('campaign event validation rejects duplicate instances and mismatched origins', () => {

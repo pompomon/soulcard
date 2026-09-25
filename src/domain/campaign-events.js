@@ -119,6 +119,9 @@ function assertReveals(reveals) {
     ) {
       throw new TypeError(`${name}.from must match its supplied side`)
     }
+    if (reveal.from === 'player.hold' && index !== 0) {
+      throw new Error('Hold can supply only the first player reveal')
+    }
     if (seen.has(reveal.instanceId)) {
       throw new Error(`Instance ${reveal.instanceId} occurs more than once in reveals`)
     }
