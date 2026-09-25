@@ -18,7 +18,7 @@ import {
 } from '../../src/domain/campaign-content.js'
 import { CAMPAIGN_EVENT_VERSION } from '../../src/domain/campaign-events.js'
 import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
-import { createRng, shuffle } from '../../src/domain/rng.js'
+import { createRng, restoreRng, shuffle } from '../../src/domain/rng.js'
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value))
@@ -259,6 +259,53 @@ test('independent supply modes permit mixed source and personal reveals', () => 
   assert.equal(resolved.match.encounter.supplyMode.opponent, 'personal')
 })
 
+test('personal recycles use player-first shuffle order across the Hold boundary', () => {
+  const run = mutableReady(createCampaignRun({
+    runId: 'campaign-personal-recycle',
+    seed: 13,
+    ruleset: BASELINE_RULESET,
+  }))
+  const playerWon = run.cards
+    .filter(({ campaignOwner }) => campaignOwner === 'player')
+    .map(({ instanceId }) => instanceId)
+  const opponentWon = run.cards
+    .filter(({ campaignOwner }) => campaignOwner === 'opponent')
+    .map(({ instanceId }) => instanceId)
+  run.encounter.zones = emptyZones()
+  run.encounter.zones.player.wonPile.push(...playerWon)
+  run.encounter.zones.opponent.wonPile.push(...opponentWon)
+  run.encounter.supplyMode = { player: 'personal', opponent: 'personal' }
+  fingerprint(run)
+
+  const control = restoreRng(run.rng)
+  const expectedPlayer = shuffle(playerWon, control)
+  const playerSnapshot = control.snapshot()
+  const expectedOpponent = shuffle(opponentWon, control)
+  const finalSnapshot = control.snapshot()
+
+  const prepared = prepareCampaignReveal(run).match
+  assert.deepEqual(prepared.encounter.zones.player.drawPile, expectedPlayer)
+  assert.deepEqual(prepared.encounter.zones.player.wonPile, [])
+  assert.deepEqual(prepared.encounter.zones.opponent.wonPile, opponentWon)
+  assert.deepEqual(prepared.holdChoice, {
+    from: 'player.drawPile',
+    candidate: expectedPlayer[0],
+  })
+  assert.deepEqual(prepared.rng, playerSnapshot)
+
+  const resolved = chooseCampaignReveal(prepared, 'normal')
+  assert.deepEqual(
+    resolved.event.reveals.slice(0, 2).map(({ instanceId, from }) => ({ instanceId, from })),
+    [
+      { instanceId: expectedPlayer[0], from: 'player.drawPile' },
+      { instanceId: expectedOpponent[0], from: 'opponent.drawPile' },
+    ],
+  )
+  assert.deepEqual(resolved.match.encounter.zones.player.drawPile, expectedPlayer.slice(1))
+  assert.deepEqual(resolved.match.encounter.zones.opponent.drawPile, expectedOpponent.slice(1))
+  assert.deepEqual(resolved.match.rng, finalSnapshot)
+})
+
 test('campaign validation rejects contradictory supply modes', () => {
   const initial = createCampaignRun({
     runId: 'campaign-invalid-supply-mode',
@@ -416,7 +463,7 @@ test('burn settlement uses provenance-neutral control while retaining immutable 
   )
 })
 
-test('terminal draws retain tied contests, remove health once, and retry deterministically', () => {
+test('terminal draws retain tied contests and retry with player-first shuffle order', () => {
   const run = mutableReady(createCampaignRun({
     runId: 'campaign-draw',
     seed: 11,
@@ -444,11 +491,20 @@ test('terminal draws retain tied contests, remove health once, and retry determi
   assert.equal(drawn.health, 2)
   assert.equal(drawn.machineState, 'awaitingRetry')
 
+  const control = restoreRng(drawn.rng)
+  const expectedPlayer = shuffle(drawn.deckLayout, control)
+  const expectedOpponent = shuffle(
+    CAMPAIGN_ENCOUNTERS[0].opponentCardIds.map((_, index) => (
+      `opponent-1-2-${String(index + 1).padStart(3, '0')}`
+    )),
+    control,
+  )
   const retried = retryCampaignEncounter(drawn)
   assert.equal(retried.health, 2)
   assert.equal(retried.encounterAttempt, 2)
-  assert.equal(retried.encounter.zones.playerSourcePile.length, 26)
-  assert.equal(retried.encounter.zones.opponentSourcePile.length, 26)
+  assert.deepEqual(retried.encounter.zones.playerSourcePile, expectedPlayer)
+  assert.deepEqual(retried.encounter.zones.opponentSourcePile, expectedOpponent)
+  assert.deepEqual(retried.rng, control.snapshot())
 })
 
 test('scripted rewards add two new player Aces then restore health up to five', () => {
