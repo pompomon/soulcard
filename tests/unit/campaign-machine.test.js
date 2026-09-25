@@ -259,52 +259,62 @@ test('independent supply modes permit mixed source and personal reveals', () => 
   assert.equal(resolved.match.encounter.supplyMode.opponent, 'personal')
 })
 
-test('personal recycles use player-first shuffle order across the Hold boundary', () => {
-  const run = mutableReady(createCampaignRun({
-    runId: 'campaign-personal-recycle',
-    seed: 13,
-    ruleset: BASELINE_RULESET,
-  }))
-  const playerWon = run.cards
-    .filter(({ campaignOwner }) => campaignOwner === 'player')
-    .map(({ instanceId }) => instanceId)
-  const opponentWon = run.cards
-    .filter(({ campaignOwner }) => campaignOwner === 'opponent')
-    .map(({ instanceId }) => instanceId)
-  run.encounter.zones = emptyZones()
-  run.encounter.zones.player.wonPile.push(...playerWon)
-  run.encounter.zones.opponent.wonPile.push(...opponentWon)
-  run.encounter.supplyMode = { player: 'personal', opponent: 'personal' }
-  fingerprint(run)
+for (const supplyMode of ['source', 'personal']) {
+  test(`${supplyMode} supply preparation uses player-first shuffle order`, () => {
+    const run = mutableReady(createCampaignRun({
+      runId: `campaign-${supplyMode}-preparation`,
+      seed: 13,
+      ruleset: BASELINE_RULESET,
+    }))
+    const playerWon = run.cards
+      .filter(({ campaignOwner }) => campaignOwner === 'player')
+      .map(({ instanceId }) => instanceId)
+    const opponentWon = run.cards
+      .filter(({ campaignOwner }) => campaignOwner === 'opponent')
+      .map(({ instanceId }) => instanceId)
+    run.encounter.zones = emptyZones()
+    run.encounter.zones.player.wonPile.push(...playerWon)
+    run.encounter.zones.opponent.wonPile.push(...opponentWon)
+    run.encounter.supplyMode = { player: supplyMode, opponent: supplyMode }
+    fingerprint(run)
 
-  const control = restoreRng(run.rng)
-  const expectedPlayer = shuffle(playerWon, control)
-  const playerSnapshot = control.snapshot()
-  const expectedOpponent = shuffle(opponentWon, control)
-  const finalSnapshot = control.snapshot()
+    const control = restoreRng(run.rng)
+    const expectedPlayer = shuffle(playerWon, control)
+    const playerSnapshot = control.snapshot()
+    const expectedOpponent = shuffle(opponentWon, control)
+    const finalSnapshot = control.snapshot()
 
-  const prepared = prepareCampaignReveal(run).match
-  assert.deepEqual(prepared.encounter.zones.player.drawPile, expectedPlayer)
-  assert.deepEqual(prepared.encounter.zones.player.wonPile, [])
-  assert.deepEqual(prepared.encounter.zones.opponent.wonPile, opponentWon)
-  assert.deepEqual(prepared.holdChoice, {
-    from: 'player.drawPile',
-    candidate: expectedPlayer[0],
+    const prepared = prepareCampaignReveal(run).match
+    assert.deepEqual(prepared.encounter.zones.player.drawPile, expectedPlayer)
+    assert.deepEqual(prepared.encounter.zones.player.wonPile, [])
+    assert.deepEqual(prepared.encounter.zones.opponent.wonPile, opponentWon)
+    assert.deepEqual(prepared.encounter.supplyMode, {
+      player: 'personal',
+      opponent: supplyMode,
+    })
+    assert.deepEqual(prepared.holdChoice, {
+      from: 'player.drawPile',
+      candidate: expectedPlayer[0],
+    })
+    assert.deepEqual(prepared.rng, playerSnapshot)
+
+    const resolved = chooseCampaignReveal(prepared, 'normal')
+    assert.deepEqual(
+      resolved.event.reveals.slice(0, 2).map(({ instanceId, from }) => ({ instanceId, from })),
+      [
+        { instanceId: expectedPlayer[0], from: 'player.drawPile' },
+        { instanceId: expectedOpponent[0], from: 'opponent.drawPile' },
+      ],
+    )
+    assert.deepEqual(
+      resolved.match.encounter.supplyMode,
+      { player: 'personal', opponent: 'personal' },
+    )
+    assert.deepEqual(resolved.match.encounter.zones.player.drawPile, expectedPlayer.slice(1))
+    assert.deepEqual(resolved.match.encounter.zones.opponent.drawPile, expectedOpponent.slice(1))
+    assert.deepEqual(resolved.match.rng, finalSnapshot)
   })
-  assert.deepEqual(prepared.rng, playerSnapshot)
-
-  const resolved = chooseCampaignReveal(prepared, 'normal')
-  assert.deepEqual(
-    resolved.event.reveals.slice(0, 2).map(({ instanceId, from }) => ({ instanceId, from })),
-    [
-      { instanceId: expectedPlayer[0], from: 'player.drawPile' },
-      { instanceId: expectedOpponent[0], from: 'opponent.drawPile' },
-    ],
-  )
-  assert.deepEqual(resolved.match.encounter.zones.player.drawPile, expectedPlayer.slice(1))
-  assert.deepEqual(resolved.match.encounter.zones.opponent.drawPile, expectedOpponent.slice(1))
-  assert.deepEqual(resolved.match.rng, finalSnapshot)
-})
+}
 
 test('campaign validation rejects contradictory supply modes', () => {
   const initial = createCampaignRun({
@@ -443,6 +453,21 @@ test('Hold capture rejects source, opponent-controlled, and opponent-provenance 
     () => captureCampaignHold(run, run.encounter.zones.opponentSourcePile[0]),
     /current player control/,
   )
+
+  const crossedControl = mutableReady(run)
+  const opponentControlledPlayer = crossedControl.encounter.zones.playerSourcePile.shift()
+  const playerControlledOpponent = crossedControl.encounter.zones.opponentSourcePile.shift()
+  crossedControl.encounter.zones.opponent.wonPile.push(opponentControlledPlayer)
+  crossedControl.encounter.zones.player.wonPile.push(playerControlledOpponent)
+  fingerprint(crossedControl)
+  assert.throws(
+    () => captureCampaignHold(crossedControl, opponentControlledPlayer),
+    /current player control/,
+  )
+  assert.throws(
+    () => captureCampaignHold(crossedControl, playerControlledOpponent),
+    /player-provenance/,
+  )
 })
 
 test('burn settlement uses provenance-neutral control while retaining immutable owners', () => {
@@ -464,14 +489,33 @@ test('burn settlement uses provenance-neutral control while retaining immutable 
 })
 
 test('terminal draws retain tied contests and retry with player-first shuffle order', () => {
-  const run = mutableReady(createCampaignRun({
+  let run = mutableReady(createCampaignRun({
     runId: 'campaign-draw',
     seed: 11,
     ruleset: BASELINE_RULESET,
   }))
-  const player = run.cards.find(({ cardId, campaignOwner }) => (
-    cardId === 'c-2D' && campaignOwner === 'player'
-  )).instanceId
+  const playerIds = run.cards
+    .filter(({ campaignOwner }) => campaignOwner === 'player')
+    .map(({ instanceId }) => instanceId)
+  const opponentIds = run.cards
+    .filter(({ campaignOwner }) => campaignOwner === 'opponent')
+    .map(({ instanceId }) => instanceId)
+  run.encounter.zones = emptyZones()
+  run.encounter.zones.player.wonPile.push(...playerIds)
+  run.encounter.zones.opponent.wonPile.push(...opponentIds)
+  run.encounter.supplyMode = { player: 'personal', opponent: 'personal' }
+  fingerprint(run)
+
+  const displaced = playerIds[0]
+  const held = playerIds[2]
+  run = captureCampaignHold(captureCampaignHold(run, displaced), held)
+  assert.deepEqual(
+    run.deckLayout.slice(0, 3),
+    [HOLD_POSITION, playerIds[1], displaced],
+  )
+
+  run = mutableReady(run)
+  const player = displaced
   const opponent = run.cards.find(({ cardId, campaignOwner }) => (
     cardId === 'c-2S' && campaignOwner === 'opponent'
   )).instanceId
@@ -480,7 +524,7 @@ test('terminal draws retain tied contests and retry with player-first shuffle or
   run.encounter.zones.playerSourcePile.push(player)
   run.encounter.zones.opponentSourcePile.push(opponent)
   run.encounter.zones.burnPile.push(
-    ...allIds.filter((instanceId) => ![player, opponent].includes(instanceId)),
+    ...allIds.filter((instanceId) => ![player, opponent, held].includes(instanceId)),
   )
   run.encounter.supplyMode = { player: 'source', opponent: 'source' }
   fingerprint(run)
@@ -488,20 +532,27 @@ test('terminal draws retain tied contests and retry with player-first shuffle or
   const drawn = resolvePrepared(run).match
   assert.equal(drawn.pendingEvent.type, 'clashDrawn')
   assert.equal(drawn.encounter.zones.contestedPile.length, 2)
+  assert.equal(drawn.hold, held)
   assert.equal(drawn.health, 2)
   assert.equal(drawn.machineState, 'awaitingRetry')
 
   const control = restoreRng(drawn.rng)
-  const expectedPlayer = shuffle(drawn.deckLayout, control)
+  const expectedPlayer = shuffle(
+    drawn.deckLayout.filter((entry) => entry !== HOLD_POSITION),
+    control,
+  )
   const expectedOpponent = shuffle(
-    CAMPAIGN_ENCOUNTERS[0].opponentCardIds.map((_, index) => (
-      `opponent-1-2-${String(index + 1).padStart(3, '0')}`
+    CAMPAIGN_ENCOUNTERS[drawn.encounterIndex].opponentCardIds.map((_, index) => (
+      `opponent-${drawn.encounterIndex + 1}-${drawn.encounterAttempt + 1}-${String(index + 1).padStart(3, '0')}`
     )),
     control,
   )
   const retried = retryCampaignEncounter(drawn)
   assert.equal(retried.health, 2)
   assert.equal(retried.encounterAttempt, 2)
+  assert.equal(retried.hold, held)
+  assert.deepEqual(retried.deckLayout, drawn.deckLayout)
+  assert.ok(!retried.encounter.zones.playerSourcePile.includes(held))
   assert.deepEqual(retried.encounter.zones.playerSourcePile, expectedPlayer)
   assert.deepEqual(retried.encounter.zones.opponentSourcePile, expectedOpponent)
   assert.deepEqual(retried.rng, control.snapshot())
