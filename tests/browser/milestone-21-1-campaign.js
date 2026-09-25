@@ -66,7 +66,7 @@ function createUpdateController() {
 
 async function run() {
   const settingsRepository = createSettingsRepository({ storage: null })
-  settingsRepository.setReducedMotionOverride(true)
+  settingsRepository.setReducedMotionOverride(false)
   let saveCount = 0
   const runController = createRunController({
     repository: {
@@ -114,6 +114,7 @@ async function run() {
   assert(document.querySelectorAll('#app canvas').length === 1, 'Game must retain one canvas')
 
   const reveal = query('#app [data-action="reveal"]', 'Reveal action')
+  const presentationStatus = query('#app [data-status-host]', 'presentation status')
   assertButton(reveal, 'Reveal / Continue')
   await waitFor(() => reveal.disabled === false, 'enabled source reveal')
   reveal.click()
@@ -138,10 +139,12 @@ async function run() {
     () => (
       app.runSnapshot.match?.turn === 1
       && app.runSnapshot.saveStatus === 'saved'
+      && presentationStatus.dataset.presentationState === 'completed'
       && reveal.disabled === false
     ),
     'first Campaign presentation',
   )
+  const sourcePresentationState = presentationStatus.dataset.presentationState
   assert(
     app.runSnapshot.match.pendingEvent.reveals[0].instanceId === firstCandidate
       && app.runSnapshot.match.pendingEvent.reveals[0].from === 'player.sourcePile',
@@ -187,10 +190,12 @@ async function run() {
     () => (
       app.runSnapshot.match?.turn === 2
       && app.runSnapshot.saveStatus === 'saved'
+      && presentationStatus.dataset.presentationState === 'completed'
       && reveal.disabled === false
     ),
     'held-card Campaign presentation',
   )
+  const holdPresentationState = presentationStatus.dataset.presentationState
   const heldReveal = app.runSnapshot.match.pendingEvent.reveals[0]
   assert(heldReveal.instanceId === heldInstanceId, 'Hold must reveal the captured instance')
   assert(heldReveal.from === 'player.hold', 'Hold reveal must retain its origin')
@@ -211,6 +216,10 @@ async function run() {
     semanticChoices: [
       normalChoice.textContent.trim(),
       heldChoice.textContent.trim(),
+    ],
+    presentationStates: [
+      sourcePresentationState,
+      holdPresentationState,
     ],
     consoleErrors,
   })
