@@ -118,6 +118,7 @@ export function createMainScreen({
   resumeAvailable = false,
   runController,
   onStart,
+  onCampaign = () => {},
   onResume,
   onSettings,
   onDiscard,
@@ -127,6 +128,7 @@ export function createMainScreen({
   }
   assertRunController(runController)
   assertCallback(onStart, 'onStart')
+  assertCallback(onCampaign, 'onCampaign')
   assertCallback(onResume, 'onResume')
   assertCallback(onSettings, 'onSettings')
   assertCallback(onDiscard, 'onDiscard')
@@ -153,6 +155,8 @@ export function createMainScreen({
 
   const startButton = createButton('Start New Game', onStart)
   startButton.dataset.action = 'start'
+  const campaignButton = createButton('Campaign', onCampaign)
+  campaignButton.dataset.action = 'campaign'
 
   const handleResume = () => {
     if (resumeAvailable && runController.getSnapshot().match != null) onResume()
@@ -187,7 +191,7 @@ export function createMainScreen({
   status.setAttribute('aria-live', 'polite')
   status.setAttribute('aria-atomic', 'true')
 
-  actions.append(startButton, resumeButton, discardButton, settingsButton)
+  actions.append(startButton, campaignButton, resumeButton, discardButton, settingsButton)
   panel.append(eyebrow, heading, status, actions)
   element.append(panel)
 
@@ -196,6 +200,7 @@ export function createMainScreen({
     const resumable = resumeAvailable && snapshot.match !== null && snapshot.match !== undefined
     status.textContent = mainStatusText(snapshot)
     startButton.disabled = discarding
+    campaignButton.disabled = discarding
     resumeButton.disabled = discarding || !resumable
     discardButton.hidden = snapshot.restoreStatus !== 'recovery-required'
     discardButton.disabled = discarding
@@ -206,6 +211,7 @@ export function createMainScreen({
     teardown() {
       unsubscribe()
       startButton.removeEventListener('click', onStart)
+      campaignButton.removeEventListener('click', onCampaign)
       resumeButton.removeEventListener('click', handleResume)
       settingsButton.removeEventListener('click', onSettings)
       discardButton.removeEventListener('click', handleDiscard)

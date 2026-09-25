@@ -1,9 +1,17 @@
+import { revealOrContinue as resolveClash } from '../domain/match-machine.js'
 import {
-  pauseMatch,
-  resumeMatch,
-  revealOrContinue as resolveClash,
-  validateMatchState,
-} from '../domain/match-machine.js'
+  captureCampaignHold,
+  chooseCampaignReveal,
+  claimCampaignReward,
+  prepareCampaignReveal,
+  retryCampaignEncounter,
+} from '../domain/campaign-machine.js'
+import {
+  isCampaignState,
+  pauseRun,
+  resumeRun,
+  validateRunState,
+} from '../domain/run-state.js'
 import {
   createAiController,
   REVEAL_OR_CONTINUE_ACTION,
@@ -79,7 +87,7 @@ export function createRunController({
     throw new TypeError('onSubscriberError must be a function')
   }
   if (initialMatch !== null) {
-    validateMatchState(initialMatch)
+    validateRunState(initialMatch)
   }
 
   let match = initialMatch === null ? null : immutableClone(initialMatch)
@@ -135,7 +143,7 @@ export function createRunController({
   }
 
   function markMatch(nextMatch) {
-    validateMatchState(nextMatch)
+    validateRunState(nextMatch)
     match = nextMatch
     revision += 1
     restoreStatus = 'current'
@@ -224,7 +232,7 @@ export function createRunController({
         reason: 'no-active-run',
       }))
     }
-    validateMatchState(match)
+    validateRunState(match)
     return queueSave(match)
   }
 
@@ -260,7 +268,7 @@ export function createRunController({
         restoreReason = result.reason ?? null
         restoreMessage = result.message ?? null
         if (result.status === 'resumable') {
-          validateMatchState(result.match)
+          validateRunState(result.match)
           match = immutableClone(result.match)
           revision += 1
           saveStatus = 'saved'
@@ -351,7 +359,7 @@ export function createRunController({
 
   function setMatch(nextMatch) {
     assertActive()
-    validateMatchState(nextMatch)
+    validateRunState(nextMatch)
     return markMatch(immutableClone(nextMatch))
   }
 
@@ -362,8 +370,11 @@ export function createRunController({
     }
   }
 
-  function revealOrContinue() {
+  function revealOrContinue({ autoChooseNormal = false } = {}) {
     assertActive()
+    if (typeof autoChooseNormal !== 'boolean') {
+      throw new TypeError('autoChooseNormal must be a boolean')
+    }
     if (match === null) {
       throw new Error('No active match is available')
     }
@@ -374,6 +385,38 @@ export function createRunController({
       throw new Error('A paused match cannot reveal or continue')
     }
     const currentMatch = match
+    if (isCampaignState(currentMatch)) {
+      const transition = prepareCampaignReveal(currentMatch)
+      markMatch(transition.match)
+      const preparedRevision = revision
+      const preparedSave = queueSave(transition.match)
+      return preparedSave.then((saveResult) => {
+        if (
+          !autoChooseNormal
+          || transition.event !== null
+          || transition.match.machineState !== 'awaitingHoldChoice'
+          || saveResult.status !== 'saved'
+        ) {
+          return Object.freeze({
+            match: transition.match,
+            event: transition.event,
+            save: saveResult,
+          })
+        }
+        if (destroyed || revision !== preparedRevision || match !== transition.match) {
+          throw new Error('Run changed while saving its Hold decision')
+        }
+        const choice = transition.match.holdChoice.candidate === null ? 'hold' : 'normal'
+        const resolved = chooseCampaignReveal(transition.match, choice)
+        markMatch(resolved.match)
+        return queueSave(resolved.match).then((resolvedSave) => Object.freeze({
+          match: resolved.match,
+          event: resolved.event,
+          save: resolvedSave,
+        }))
+      })
+    }
+
     const currentRevision = revision
     validateEncounterAction(aiController.chooseEncounterAction(immutableClone(currentMatch)))
     if (destroyed || revision !== currentRevision) {
@@ -389,12 +432,72 @@ export function createRunController({
     }))
   }
 
+  function chooseHoldChoice(choice) {
+    assertActive()
+    if (match === null || !isCampaignState(match)) {
+      throw new Error('No active campaign is available')
+    }
+    if (saveStatus !== 'saved') {
+      throw new Error('The Campaign Hold decision must be saved before it can be resolved')
+    }
+    const transition = chooseCampaignReveal(match, choice)
+    markMatch(transition.match)
+    const save = queueSave(transition.match)
+    return save.then((saveResult) => Object.freeze({
+      match: transition.match,
+      event: transition.event,
+      save: saveResult,
+    }))
+  }
+
+  function captureHold(instanceId) {
+    assertActive()
+    if (match === null || !isCampaignState(match)) {
+      throw new Error('No active campaign is available')
+    }
+    const nextMatch = captureCampaignHold(match, instanceId)
+    markMatch(nextMatch)
+    const save = queueSave(nextMatch)
+    return save.then((saveResult) => Object.freeze({
+      match: nextMatch,
+      save: saveResult,
+    }))
+  }
+
+  function retryEncounter() {
+    assertActive()
+    if (match === null || !isCampaignState(match)) {
+      throw new Error('No active campaign is available')
+    }
+    const nextMatch = retryCampaignEncounter(match)
+    markMatch(nextMatch)
+    const save = queueSave(nextMatch)
+    return save.then((saveResult) => Object.freeze({
+      match: nextMatch,
+      save: saveResult,
+    }))
+  }
+
+  function claimReward() {
+    assertActive()
+    if (match === null || !isCampaignState(match)) {
+      throw new Error('No active campaign is available')
+    }
+    const nextMatch = claimCampaignReward(match)
+    markMatch(nextMatch)
+    const save = queueSave(nextMatch)
+    return save.then((saveResult) => Object.freeze({
+      match: nextMatch,
+      save: saveResult,
+    }))
+  }
+
   function pause() {
     assertActive()
     if (match === null) {
       throw new Error('No active match is available')
     }
-    const paused = pauseMatch(match)
+    const paused = pauseRun(match)
     markMatch(paused)
     const save = queueSave(paused)
     return save.then((saveResult) => Object.freeze({
@@ -408,7 +511,7 @@ export function createRunController({
     if (match === null) {
       throw new Error('No active match is available')
     }
-    return markMatch(resumeMatch(match))
+    return markMatch(resumeRun(match))
   }
 
   function subscribe(listener) {
@@ -466,6 +569,10 @@ export function createRunController({
     setMatch,
     discardPendingRestore,
     revealOrContinue,
+    chooseHoldChoice,
+    captureHold,
+    retryEncounter,
+    claimReward,
     pause,
     resume,
     saveStable,

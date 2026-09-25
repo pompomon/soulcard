@@ -69,6 +69,7 @@ test('Main reports restore, recovery, session-only, and resumable states', (t) =
   }
   let listener
   let discarded = 0
+  let campaigns = 0
   const runController = {
     getSnapshot: () => snapshot,
     subscribe(nextListener) {
@@ -83,6 +84,9 @@ test('Main reports restore, recovery, session-only, and resumable states', (t) =
     resumeAvailable: true,
     runController,
     onStart() {},
+    onCampaign() {
+      campaigns += 1
+    },
     onResume() {},
     onSettings() {},
     onDiscard() {
@@ -94,6 +98,7 @@ test('Main reports restore, recovery, session-only, and resumable states', (t) =
   )
   const start = byAction(screen, 'start')
   const resume = byAction(screen, 'resume')
+  const campaign = byAction(screen, 'campaign')
   const discard = byAction(screen, 'discard')
 
   assert.equal(status.attributes.role, 'status')
@@ -102,6 +107,8 @@ test('Main reports restore, recovery, session-only, and resumable states', (t) =
   assert.match(status.textContent, /Checking/)
   assert.equal(resume.disabled, true)
   assert.equal(discard.hidden, true)
+  campaign.dispatch('click')
+  assert.equal(campaigns, 1)
 
   snapshot = {
     ...snapshot,
@@ -131,6 +138,7 @@ test('Main reports restore, recovery, session-only, and resumable states', (t) =
   }
   listener(snapshot)
   assert.equal(start.disabled, true)
+  assert.equal(campaign.disabled, true)
   assert.equal(discard.disabled, true)
   discard.dispatch('click')
   assert.equal(discarded, 1)

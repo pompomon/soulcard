@@ -1,11 +1,17 @@
+import {
+  CAMPAIGN_GAME_RULES_VERSION,
+  validateCampaignState,
+} from '../domain/campaign-machine.js'
 import { validateMatchState } from '../domain/match-machine.js'
+import { isCampaignState, validateRunState } from '../domain/run-state.js'
 
-export const SAVE_SCHEMA_VERSION = 3
+export const SAVE_SCHEMA_VERSION = 4
 export const GAME_RULES_VERSION = 2
 
 const SAVE_KEYS = Object.freeze([
   'saveSchemaVersion',
   'gameRulesVersion',
+  'runType',
   'savedAt',
   'runId',
   'rng',
@@ -13,8 +19,7 @@ const SAVE_KEYS = Object.freeze([
   'match',
   'pendingEvent',
 ])
-
-const MATCH_KEYS = Object.freeze([
+const CLASSIC_MATCH_KEYS = Object.freeze([
   'stage',
   'machineState',
   'turn',
@@ -27,6 +32,25 @@ const MATCH_KEYS = Object.freeze([
   'inPlay',
   'burnPile',
   'futureModifiers',
+])
+const CAMPAIGN_MATCH_KEYS = Object.freeze([
+  'campaignVersion',
+  'machineState',
+  'turn',
+  'status',
+  'outcome',
+  'health',
+  'maxHealth',
+  'encounterIndex',
+  'encounterAttempt',
+  'cards',
+  'deckLayout',
+  'hold',
+  'activeModifiers',
+  'encounter',
+  'holdChoice',
+  'pendingReward',
+  'stateFingerprint',
 ])
 
 export class UnsupportedSaveVersionError extends Error {
@@ -77,10 +101,10 @@ function assertDenseArray(value, name) {
   if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) {
     throw new TypeError(`${name} must be a dense array`)
   }
-  const propertyNames = Object.getOwnPropertyNames(value)
+  const names = Object.getOwnPropertyNames(value)
   if (
-    propertyNames.length !== value.length + 1
-    || propertyNames.at(-1) !== 'length'
+    names.length !== value.length + 1
+    || names.at(-1) !== 'length'
     || Object.getOwnPropertySymbols(value).length !== 0
   ) {
     throw new TypeError(`${name} must be a dense array`)
@@ -107,9 +131,7 @@ function assertCanonicalTimestamp(savedAt) {
 }
 
 function cloneData(value) {
-  if (Array.isArray(value)) {
-    return value.map(cloneData)
-  }
+  if (Array.isArray(value)) return value.map(cloneData)
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value).map(([key, child]) => [key, cloneData(child)]),
@@ -120,26 +142,33 @@ function cloneData(value) {
 
 function deepFreeze(value) {
   if (value !== null && typeof value === 'object') {
-    for (const child of Object.values(value)) {
-      deepFreeze(child)
-    }
+    for (const child of Object.values(value)) deepFreeze(child)
     Object.freeze(value)
   }
   return value
 }
 
-function assertMatchStructure(match) {
+function assertClassicMatchStructure(match) {
   assertPlainObject(match, 'save.match')
-  assertExactKeys(match, MATCH_KEYS, 'save.match')
-  for (const pile of ['sourceDeck', 'contestedPile', 'inPlay', 'burnPile', 'futureModifiers']) {
+  assertExactKeys(match, CLASSIC_MATCH_KEYS, 'save.match')
+  for (const pile of [
+    'sourceDeck',
+    'contestedPile',
+    'inPlay',
+    'burnPile',
+    'futureModifiers',
+  ]) {
     assertDenseArray(match[pile], `save.match.${pile}`)
   }
   for (const pile of ['contestedPile', 'inPlay']) {
-    for (let index = 0; index < match[pile].length; index += 1) {
+    match[pile].forEach((record, index) => {
       const name = `save.match.${pile}[${index}]`
-      assertPlainObject(match[pile][index], name)
-      assertExactKeys(match[pile][index], ['cardId', 'suppliedBy'], name)
-    }
+      assertPlainObject(record, name)
+      assertExactKeys(record, ['cardId', 'suppliedBy'], name)
+    })
+  }
+  if (match.futureModifiers.length !== 0) {
+    throw new TypeError('save.match.futureModifiers must remain empty')
   }
   for (const side of ['player', 'opponent']) {
     assertPlainObject(match[side], `save.match.${side}`)
@@ -147,12 +176,9 @@ function assertMatchStructure(match) {
     assertDenseArray(match[side].drawPile, `save.match.${side}.drawPile`)
     assertDenseArray(match[side].wonPile, `save.match.${side}.wonPile`)
   }
-  if (match.futureModifiers.length !== 0) {
-    throw new TypeError('save.match.futureModifiers must be empty for the current rules version')
-  }
 }
 
-function matchFromSave(save) {
+function classicFromSave(save) {
   return {
     runId: save.runId,
     ruleset: save.ruleset,
@@ -174,30 +200,83 @@ function matchFromSave(save) {
   }
 }
 
+function campaignFromSave(save) {
+  return {
+    mode: 'campaign',
+    runId: save.runId,
+    ruleset: save.ruleset,
+    rng: save.rng,
+    pendingEvent: save.pendingEvent,
+    ...save.match,
+  }
+}
+
+function stateFromSave(save) {
+  return save.runType === 'campaign'
+    ? campaignFromSave(save)
+    : classicFromSave(save)
+}
+
+function matchForSave(run) {
+  if (!isCampaignState(run)) {
+    return {
+      stage: run.stage,
+      machineState: run.machineState,
+      turn: run.turn,
+      status: run.status,
+      outcome: run.outcome,
+      sourceDeck: run.zones.sourceDeck,
+      player: run.zones.player,
+      opponent: run.zones.opponent,
+      contestedPile: run.zones.contestedPile,
+      inPlay: run.zones.inPlay,
+      burnPile: run.zones.burnPile,
+      futureModifiers: [],
+    }
+  }
+  return Object.fromEntries(
+    CAMPAIGN_MATCH_KEYS.map((key) => [key, run[key]]),
+  )
+}
+
 export function validateRunSaveVersion(save, expectedVersion) {
-  if (![2, SAVE_SCHEMA_VERSION].includes(expectedVersion)) {
-    throw new RangeError('expectedVersion must be a supported save schema version')
+  if (expectedVersion !== SAVE_SCHEMA_VERSION) {
+    throw new RangeError(`expectedVersion must be ${SAVE_SCHEMA_VERSION}`)
   }
   assertPlainObject(save, 'save')
-  assertExactKeys(save, SAVE_KEYS, 'save')
-  if (!Number.isSafeInteger(save.saveSchemaVersion)) {
+  const versionDescriptor = Object.getOwnPropertyDescriptor(save, 'saveSchemaVersion')
+  if (!versionDescriptor?.enumerable || !Object.hasOwn(versionDescriptor, 'value')) {
+    throw new TypeError('save.saveSchemaVersion must be JSON-compatible data')
+  }
+  const saveSchemaVersion = versionDescriptor.value
+  if (!Number.isSafeInteger(saveSchemaVersion)) {
     throw new TypeError('saveSchemaVersion must be a safe integer')
   }
-  if (save.saveSchemaVersion !== expectedVersion) {
-    throw new UnsupportedSaveVersionError(save.saveSchemaVersion)
+  if (saveSchemaVersion !== expectedVersion) {
+    throw new UnsupportedSaveVersionError(saveSchemaVersion)
   }
+  assertExactKeys(save, SAVE_KEYS, 'save')
+  if (!['classic', 'campaign'].includes(save.runType)) {
+    throw new TypeError('runType must be classic or campaign')
+  }
+  const expectedRulesVersion = save.runType === 'campaign'
+    ? CAMPAIGN_GAME_RULES_VERSION
+    : GAME_RULES_VERSION
   if (!Number.isSafeInteger(save.gameRulesVersion)) {
     throw new TypeError('gameRulesVersion must be a safe integer')
   }
-  if (save.gameRulesVersion !== GAME_RULES_VERSION) {
+  if (save.gameRulesVersion !== expectedRulesVersion) {
     throw new UnsupportedGameRulesVersionError(save.gameRulesVersion)
   }
   assertCanonicalTimestamp(save.savedAt)
-  assertMatchStructure(save.match)
-  if (expectedVersion === 2 && save.match.machineState === 'paused') {
-    throw new TypeError('Save schema version 2 does not support paused matches')
+  if (save.runType === 'campaign') {
+    assertPlainObject(save.match, 'save.match')
+    assertExactKeys(save.match, CAMPAIGN_MATCH_KEYS, 'save.match')
+    validateCampaignState(campaignFromSave(save))
+  } else {
+    assertClassicMatchStructure(save.match)
+    validateMatchState(classicFromSave(save))
   }
-  validateMatchState(matchFromSave(save))
   return save
 }
 
@@ -205,34 +284,22 @@ export function validateRunSave(save) {
   return validateRunSaveVersion(save, SAVE_SCHEMA_VERSION)
 }
 
-export function createRunSave(match, options) {
+export function createRunSave(run, options) {
   assertPlainObject(options, 'options')
   assertExactKeys(options, ['savedAt'], 'options')
-  validateMatchState(match)
+  validateRunState(run)
   assertCanonicalTimestamp(options.savedAt)
-
+  const campaign = isCampaignState(run)
   const save = {
     saveSchemaVersion: SAVE_SCHEMA_VERSION,
-    gameRulesVersion: GAME_RULES_VERSION,
+    gameRulesVersion: campaign ? CAMPAIGN_GAME_RULES_VERSION : GAME_RULES_VERSION,
+    runType: campaign ? 'campaign' : 'classic',
     savedAt: options.savedAt,
-    runId: match.runId,
-    rng: match.rng,
-    ruleset: match.ruleset,
-    match: {
-      stage: match.stage,
-      machineState: match.machineState,
-      turn: match.turn,
-      status: match.status,
-      outcome: match.outcome,
-      sourceDeck: match.zones.sourceDeck,
-      player: match.zones.player,
-      opponent: match.zones.opponent,
-      contestedPile: match.zones.contestedPile,
-      inPlay: match.zones.inPlay,
-      burnPile: match.zones.burnPile,
-      futureModifiers: [],
-    },
-    pendingEvent: match.pendingEvent,
+    runId: run.runId,
+    rng: run.rng,
+    ruleset: run.ruleset,
+    match: matchForSave(run),
+    pendingEvent: run.pendingEvent,
   }
   const detached = cloneData(save)
   validateRunSave(detached)
@@ -241,7 +308,7 @@ export function createRunSave(match, options) {
 
 export function restoreRunSave(save) {
   validateRunSave(save)
-  const match = cloneData(matchFromSave(save))
-  validateMatchState(match)
-  return deepFreeze(match)
+  const run = cloneData(stateFromSave(save))
+  validateRunState(run)
+  return deepFreeze(run)
 }

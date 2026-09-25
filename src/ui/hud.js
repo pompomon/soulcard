@@ -1,8 +1,17 @@
-import { createEndOverlay, createPauseOverlay } from './overlays.js'
+import {
+  createCampaignOverlay,
+  createEndOverlay,
+  createPauseOverlay,
+} from './overlays.js'
 import { UPDATE_BLOCKED_EVENT } from './update-notice.js'
 import { createAutoRevealCoordinator } from '../app/auto-reveal-coordinator.js'
 import { createEventPlayer } from '../presentation/event-player.js'
 import { createInputController } from '../presentation/input.js'
+import { getCard } from '../domain/cards.js'
+import {
+  getEligibleHoldTargets,
+  isCampaignState,
+} from '../domain/campaign-machine.js'
 
 const ACTIVE_PRESENTATION_STATUSES = new Set(['queued', 'playing', 'paused'])
 const RENDER_CONTEXT_STATUSES = new Set(['ready', 'lost', 'restoring', 'failed'])
@@ -89,6 +98,7 @@ function createSidePanel(side, label) {
   const metrics = document.createElement('dl')
   metrics.className = 'hud-metrics'
   metrics.append(
+    createMetric('Source pile', `${side}-source-count`),
     createMetric('Draw pile', `${side}-draw-count`),
     createMetric('Won pile', `${side}-won-count`),
   )
@@ -177,6 +187,19 @@ function comparisonText(match) {
     countText(ties, 'tie'),
     `${burned} burned`,
   ].join(' · ')
+
+  if (isCampaignState(match) && match.encounter.outcome?.result === 'win') {
+    return {
+      result: `${sideText(match.encounter.outcome.winner)} won the encounter`,
+      details: `Final clash: ${details}`,
+    }
+  }
+  if (isCampaignState(match) && match.encounter.outcome?.result === 'draw') {
+    return {
+      result: 'The encounter ended in a draw',
+      details: `Final clash: ${details}`,
+    }
+  }
 
   if (match.outcome?.result === 'win') {
     return {
@@ -291,6 +314,8 @@ export function createGameScreen({
   matchMetrics.append(
     createMetric('Stage', 'stage'),
     createMetric('Source deck', 'source-count'),
+    createMetric('Health', 'campaign-health'),
+    createMetric('Encounter', 'campaign-encounter'),
   )
   header.append(heading, matchMetrics)
 
@@ -380,7 +405,15 @@ export function createGameScreen({
   pauseButton.dataset.action = 'pause'
   pauseButton.disabled = true
 
-  controls.append(revealButton, autoRevealLabel, pauseButton)
+  const holdButton = createTextElement('button', 'game-button', 'Hold')
+  holdButton.type = 'button'
+  holdButton.dataset.action = 'hold'
+  holdButton.disabled = true
+  holdButton.hidden = true
+
+  controls.append(revealButton, autoRevealLabel)
+  if (isCampaignState(runController?.getSnapshot()?.match)) controls.append(holdButton)
+  controls.append(pauseButton)
   hud.append(header, opponentPanel, comparison, playerPanel, pileMetrics, feedback, controls)
 
   const overlayHost = document.createElement('div')
@@ -390,6 +423,7 @@ export function createGameScreen({
   let destroyed = false
   let overlayAction = null
   let overlayError = null
+  let holdManagerOpen = false
   const handleResume = () => {
     if (overlayAction !== null) return
     overlayError = null
@@ -482,6 +516,143 @@ export function createGameScreen({
       renderHud()
     }
   }
+  const handleCampaignChoice = (choice) => {
+    if (
+      overlayAction !== null
+      || latestSnapshot?.saveStatus !== 'saved'
+      || latestSnapshot?.match?.machineState !== 'awaitingHoldChoice'
+    ) {
+      return
+    }
+    overlayAction = `campaign-${choice}`
+    overlayError = null
+    revealActionPending = true
+    renderHud()
+    let action
+    try {
+      action = runController?.chooseHoldChoice(choice)
+    } catch {
+      overlayAction = null
+      revealActionPending = false
+      overlayError = 'The reveal choice could not be completed. Try again.'
+      renderHud()
+      return
+    }
+    Promise.resolve(action)
+      .then((result) => {
+        if (destroyed) return undefined
+        overlayAction = null
+        if (result?.event !== null && result?.event !== undefined) {
+          revealActionEventId = result.event.id
+          return present(result.match, {
+            saveSucceeded: result?.save?.status === 'saved',
+          })
+        }
+        revealActionPending = false
+        renderHud()
+        return undefined
+      })
+      .catch(() => {
+        if (destroyed) return
+        overlayAction = null
+        revealActionPending = false
+        overlayError = 'The reveal choice could not be completed. Try again.'
+        renderHud()
+      })
+  }
+  const handleCampaignSaveRetry = () => {
+    if (
+      overlayAction !== null
+      || latestSnapshot?.saveStatus !== 'failed'
+      || latestSnapshot?.match?.machineState !== 'awaitingHoldChoice'
+    ) {
+      return
+    }
+    overlayAction = 'campaign-save'
+    overlayError = null
+    renderHud()
+    let save
+    try {
+      save = runController?.saveStable()
+    } catch {
+      overlayAction = null
+      overlayError = 'The Hold choice could not be saved. Try again.'
+      renderHud()
+      return
+    }
+    Promise.resolve(save)
+      .then((result) => {
+        if (destroyed) return
+        overlayAction = null
+        overlayError = result?.status === 'saved'
+          ? null
+          : 'The Hold choice could not be saved. Try again.'
+        renderHud()
+      })
+      .catch(() => {
+        if (destroyed) return
+        overlayAction = null
+        overlayError = 'The Hold choice could not be saved. Try again.'
+        renderHud()
+      })
+  }
+  const handleCampaignCapture = (instanceId) => {
+    if (overlayAction !== null) return
+    overlayAction = 'campaign-capture'
+    overlayError = null
+    renderHud()
+    let action
+    try {
+      action = runController?.captureHold(instanceId)
+    } catch {
+      overlayAction = null
+      overlayError = 'The selected card could not be captured. Try again.'
+      renderHud()
+      return
+    }
+    Promise.resolve(action)
+      .then(() => {
+        if (destroyed) return
+        overlayAction = null
+        holdManagerOpen = false
+        renderHud()
+      })
+      .catch(() => {
+        if (destroyed) return
+        overlayAction = null
+        overlayError = 'The selected card could not be captured. Try again.'
+        renderHud()
+      })
+  }
+  const handleCampaignTransition = (kind) => {
+    if (overlayAction !== null) return
+    overlayAction = `campaign-${kind}`
+    overlayError = null
+    renderHud()
+    let action
+    try {
+      action = kind === 'retry'
+        ? runController?.retryEncounter()
+        : runController?.claimReward()
+    } catch {
+      overlayAction = null
+      overlayError = `The campaign ${kind} could not be completed. Try again.`
+      renderHud()
+      return
+    }
+    Promise.resolve(action)
+      .then(() => {
+        if (destroyed) return
+        overlayAction = null
+        renderHud()
+      })
+      .catch(() => {
+        if (destroyed) return
+        overlayAction = null
+        overlayError = `The campaign ${kind} could not be completed. Try again.`
+        renderHud()
+      })
+  }
   const pauseOverlay = createPauseOverlay({
     onResume: handleResume,
     onSaveAndMain: handleSaveAndMain,
@@ -491,7 +662,24 @@ export function createGameScreen({
     onMainMenu: handleEndMain,
     onRestart: handleRestart,
   })
-  overlayHost.append(pauseOverlay.element, endOverlay.element)
+  const campaignOverlay = createCampaignOverlay({
+    onChooseNormal: () => handleCampaignChoice('normal'),
+    onChooseHold: () => handleCampaignChoice('hold'),
+    onRetrySave: handleCampaignSaveRetry,
+    onCapture: handleCampaignCapture,
+    onRetry: () => handleCampaignTransition('retry'),
+    onClaimReward: () => handleCampaignTransition('reward'),
+    onMainMenu: handleEndMain,
+    onRestart: handleRestart,
+    onCancel: () => {
+      if (overlayAction === null) {
+        holdManagerOpen = false
+        overlayError = null
+        renderHud()
+      }
+    },
+  })
+  overlayHost.append(pauseOverlay.element, endOverlay.element, campaignOverlay.element)
 
   element.append(battlefieldHost, hud, overlayHost)
   let requestReveal = () => {}
@@ -637,18 +825,44 @@ export function createGameScreen({
       ? {
           stage: '—',
           'source-count': '—',
+          'campaign-health': '—',
+          'campaign-encounter': '—',
+          'player-source-count': '—',
           'player-draw-count': '—',
           'player-won-count': '—',
+          'opponent-source-count': '—',
           'opponent-draw-count': '—',
           'opponent-won-count': '—',
           'contested-count': '—',
           'burn-count': '—',
         }
-      : {
+      : isCampaignState(match)
+        ? {
+            stage: `P ${stageText(match.encounter.supplyMode.player)} · O ${stageText(match.encounter.supplyMode.opponent)}`,
+            'source-count': (
+              match.encounter.zones.playerSourcePile.length
+              + match.encounter.zones.opponentSourcePile.length
+            ),
+            'campaign-health': `${match.health}/${match.maxHealth}`,
+            'campaign-encounter': `${match.encounterIndex + 1}/3`,
+            'player-source-count': match.encounter.zones.playerSourcePile.length,
+            'player-draw-count': match.encounter.zones.player.drawPile.length,
+            'player-won-count': match.encounter.zones.player.wonPile.length,
+            'opponent-source-count': match.encounter.zones.opponentSourcePile.length,
+            'opponent-draw-count': match.encounter.zones.opponent.drawPile.length,
+            'opponent-won-count': match.encounter.zones.opponent.wonPile.length,
+            'contested-count': match.encounter.zones.contestedPile.length,
+            'burn-count': match.encounter.zones.burnPile.length,
+          }
+        : {
           stage: stageText(match.stage),
           'source-count': match.zones.sourceDeck.length,
+          'campaign-health': '—',
+          'campaign-encounter': '—',
+          'player-source-count': '—',
           'player-draw-count': match.zones.player.drawPile.length,
           'player-won-count': match.zones.player.wonPile.length,
+          'opponent-source-count': '—',
           'opponent-draw-count': match.zones.opponent.drawPile.length,
           'opponent-won-count': match.zones.opponent.wonPile.length,
           'contested-count': match.zones.contestedPile.length,
@@ -697,6 +911,16 @@ export function createGameScreen({
       message = interactionFailure
     } else if (presentationFailure || presentationState.status === 'failed') {
       message = 'Presentation skipped after a rendering error.'
+    } else if (match.machineState === 'awaitingHoldChoice') {
+      message = 'Choose the prepared card or the card in Hold.'
+    } else if (match.machineState === 'awaitingRetry') {
+      message = 'Encounter ended. Retry to continue the campaign.'
+    } else if (match.machineState === 'awaitingReward') {
+      message = 'Encounter won. Claim the scripted reward to continue.'
+    } else if (isCampaignState(match) && match.status === 'ended') {
+      message = match.outcome.result === 'victory'
+        ? 'Campaign complete. All encounters won.'
+        : 'Campaign ended when health reached zero.'
     } else if (match.status === 'ended') {
       message = terminalStatusText(match.outcome)
     } else if (presentationState.status === 'skipped') {
@@ -729,6 +953,7 @@ export function createGameScreen({
       || ACTIVE_PRESENTATION_STATUSES.has(presentationState.status)
     )
     const revealBusy = revealActionPending || presentationActive
+    const campaign = isCampaignState(match)
     revealInput?.setEnabled(matchReady && renderingAvailable)
     revealInput?.setBusy(revealBusy)
     battlefield.setDeckInputState?.({
@@ -739,7 +964,14 @@ export function createGameScreen({
     pauseInput?.setBusy(pauseActionPending)
     autoRevealCheckbox.disabled = (
       match?.status !== 'active'
-      || match.machineState === 'paused'
+      || match.machineState !== 'ready'
+    )
+    holdButton.hidden = !campaign
+    holdButton.disabled = (
+      !campaign
+      || !matchReady
+      || revealBusy
+      || overlayAction !== null
     )
     if (revealInput === null) {
       revealButton.disabled = !matchReady || !renderingAvailable || revealBusy
@@ -749,7 +981,11 @@ export function createGameScreen({
 
   function terminalPresentationSettled() {
     const match = latestSnapshot?.match
-    if (match?.status !== 'ended') return false
+    if (match?.status !== 'ended' || isCampaignState(match)) return false
+    return eventPresentationSettled(match)
+  }
+
+  function eventPresentationSettled(match) {
     if (!['saved', 'failed'].includes(latestSnapshot.saveStatus)) return false
     const eventId = match.pendingEvent?.id
     if (eventId === undefined) return true
@@ -762,14 +998,54 @@ export function createGameScreen({
     )
   }
 
+  function campaignOverlayState() {
+    const match = latestSnapshot?.match
+    if (!isCampaignState(match) || match.machineState === 'paused') {
+      return { mode: null, targets: [] }
+    }
+    if (holdManagerOpen && match.machineState === 'ready') {
+      const targets = getEligibleHoldTargets(match).map((target) => {
+        const card = getCard(target.cardId)
+        const pile = target.zone.endsWith('drawPile') ? 'Draw' : 'Won'
+        return {
+          ...target,
+          label: `${card.rank}${card.suit} · ${pile} pile ${target.index + 1}`,
+        }
+      })
+      return { mode: 'hold-capture', targets }
+    }
+    if (
+      match.machineState === 'awaitingHoldChoice'
+      && ['saved', 'failed'].includes(latestSnapshot.saveStatus)
+    ) {
+      return { mode: 'hold-choice', targets: [] }
+    }
+    if (
+      ['awaitingRetry', 'awaitingReward', 'ended'].includes(match.machineState)
+      && eventPresentationSettled(match)
+    ) {
+      const mode = match.machineState === 'awaitingRetry'
+        ? 'retry'
+        : match.machineState === 'awaitingReward'
+          ? 'reward'
+          : 'campaign-end'
+      return { mode, targets: [] }
+    }
+    return { mode: null, targets: [] }
+  }
+
   function renderOverlays() {
     const endVisible = terminalPresentationSettled()
     const paused = latestSnapshot?.match?.machineState === 'paused'
-    pauseOverlay.element.hidden = !paused || endVisible
+    const campaignState = campaignOverlayState()
+    const campaignVisible = campaignState.mode !== null
+    pauseOverlay.element.hidden = !paused || endVisible || campaignVisible
     endOverlay.element.hidden = !endVisible
+    campaignOverlay.element.hidden = !campaignVisible
     hud.inert = (
       paused
       || endVisible
+      || campaignVisible
       || element.dataset.updateBlocked === 'true'
     )
     const actionState = {
@@ -781,6 +1057,14 @@ export function createGameScreen({
     }
     pauseOverlay.update(latestSnapshot, actionState)
     endOverlay.update(latestSnapshot, actionState)
+    if (campaignVisible) {
+      campaignOverlay.update(latestSnapshot, {
+        mode: campaignState.mode,
+        targets: campaignState.targets,
+        busy: overlayAction !== null || latestSnapshot.saveStatus === 'saving',
+        error: overlayError,
+      })
+    }
   }
 
   function renderHud() {
@@ -821,6 +1105,7 @@ export function createGameScreen({
   } catch (error) {
     pauseOverlay.teardown()
     endOverlay.teardown()
+    campaignOverlay.teardown()
     battlefield.teardown?.()
     throw error
   }
@@ -997,7 +1282,9 @@ export function createGameScreen({
 
     let action
     try {
-      action = runController?.revealOrContinue()
+      action = runController?.revealOrContinue({
+        autoChooseNormal: autoRevealCheckbox.checked,
+      })
       revealActionEventId = latestSnapshot?.match?.pendingEvent?.id ?? null
       renderHud()
     } catch {
@@ -1038,7 +1325,23 @@ export function createGameScreen({
       autoRevealCoordinator.stop()
     }
   }
+  const handleHoldManagement = () => {
+    const match = latestSnapshot?.match
+    if (
+      holdButton.disabled
+      || !isCampaignState(match)
+      || match.machineState !== 'ready'
+    ) {
+      return
+    }
+    autoRevealChainActive = false
+    autoRevealCoordinator.stop()
+    holdManagerOpen = true
+    overlayError = null
+    renderHud()
+  }
   autoRevealCheckbox.addEventListener('change', handleAutoRevealChange)
+  holdButton.addEventListener('click', handleHoldManagement)
   requestReveal = handleReveal
 
   const handlePause = () => {
@@ -1087,6 +1390,7 @@ export function createGameScreen({
     pauseInput?.destroy?.()
     pauseOverlay.teardown()
     endOverlay.teardown()
+    campaignOverlay.teardown()
     eventPlayer.destroy()
     battlefield.teardown?.()
     throw error
@@ -1135,10 +1439,12 @@ export function createGameScreen({
       unsubscribeSaves?.()
       element.removeEventListener(UPDATE_BLOCKED_EVENT, handleUpdateBlocked)
       autoRevealCheckbox.removeEventListener('change', handleAutoRevealChange)
+      holdButton.removeEventListener('click', handleHoldManagement)
       revealInput.destroy()
       pauseInput.destroy()
       pauseOverlay.teardown()
       endOverlay.teardown()
+      campaignOverlay.teardown()
       eventPlayer.destroy()
       battlefield.teardown?.()
     },

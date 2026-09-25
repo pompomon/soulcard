@@ -4,6 +4,13 @@ import {
   createMatch,
   revealOrContinue,
 } from '../../src/domain/match-machine.js'
+import {
+  captureCampaignHold,
+  chooseCampaignReveal,
+  createCampaignRun,
+  getEligibleHoldTargets,
+  prepareCampaignReveal,
+} from '../../src/domain/campaign-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { createClashSettledEvent } from '../../src/domain/events.js'
 import {
@@ -457,6 +464,36 @@ test('turn-zero snapshots deduplicate and teardown cancels pending work idempote
   assert.equal(player.getState().status, 'destroyed')
   await assert.rejects(player.present(pending), /destroyed/)
   assert.throws(() => player.cancel(''), /nonempty/)
+})
+
+test('same-turn Campaign Hold replacements synchronize distinct fingerprints', async () => {
+  let campaign = createCampaignRun({
+    runId: 'event-player-hold-replacement',
+    seed: 0,
+    ruleset: BASELINE_RULESET,
+  })
+  for (let turn = 0; turn < 3; turn += 1) {
+    const prepared = prepareCampaignReveal(campaign)
+    campaign = chooseCampaignReveal(prepared.match, 'normal').match
+  }
+  const targets = getEligibleHoldTargets(campaign)
+  assert.equal(targets.length, 2)
+
+  const first = captureCampaignHold(campaign, targets[0].instanceId)
+  const second = captureCampaignHold(first, targets[1].instanceId)
+  assert.equal(second.turn, first.turn)
+  assert.equal(second.machineState, first.machineState)
+  assert.notEqual(second.stateFingerprint, first.stateFingerprint)
+
+  const adapter = createAdapter()
+  const player = createEventPlayer({ adapter })
+  assert.equal((await player.present(first)).status, 'synchronized')
+  assert.equal((await player.present(second)).status, 'synchronized')
+  assert.equal(
+    adapter.calls.filter(([kind]) => kind === 'sync').length,
+    2,
+  )
+  assert.equal((await player.present(second)).status, 'duplicate')
 })
 
 test('player validates adapters, settings, timing, and committed snapshots', async () => {

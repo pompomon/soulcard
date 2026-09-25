@@ -7,6 +7,9 @@ export const BATTLEFIELD_LAYOUT_MODES = Object.freeze([
 
 export const BATTLEFIELD_ZONE_IDS = Object.freeze([
   'sourceDeck',
+  'playerSourcePile',
+  'opponentSourcePile',
+  'hold',
   'opponentDrawPile',
   'opponentWonPile',
   'opponentReveal',
@@ -33,6 +36,9 @@ const MODE_SPECS = Object.freeze({
     }),
     zones: Object.freeze({
       sourceDeck: Object.freeze({ x: -2.65, y: 0, z: 0.2 }),
+      playerSourcePile: Object.freeze({ x: -2.65, y: -2.25, z: 0.2 }),
+      opponentSourcePile: Object.freeze({ x: -2.65, y: 2.25, z: 0.2 }),
+      hold: Object.freeze({ x: 2.75, y: -2.65, z: 0.2 }),
       opponentDrawPile: Object.freeze({ x: -2.35, y: 4.1, z: 0.2 }),
       opponentWonPile: Object.freeze({ x: 2.35, y: 4.1, z: 0.2 }),
       opponentReveal: Object.freeze({ x: 0.35, y: 1.45, z: 0.3 }),
@@ -53,6 +59,9 @@ const MODE_SPECS = Object.freeze({
     }),
     zones: Object.freeze({
       sourceDeck: Object.freeze({ x: -5, y: 0, z: 0.2 }),
+      playerSourcePile: Object.freeze({ x: -5, y: -1.55, z: 0.2 }),
+      opponentSourcePile: Object.freeze({ x: -5, y: 1.55, z: 0.2 }),
+      hold: Object.freeze({ x: 4.8, y: -2.1, z: 0.2 }),
       opponentDrawPile: Object.freeze({ x: -3.9, y: 2.1, z: 0.2 }),
       opponentWonPile: Object.freeze({ x: -2.1, y: 2.1, z: 0.2 }),
       opponentReveal: Object.freeze({ x: 0.3, y: 1.1, z: 0.3 }),
@@ -73,6 +82,9 @@ const MODE_SPECS = Object.freeze({
     }),
     zones: Object.freeze({
       sourceDeck: Object.freeze({ x: -3.8, y: 0, z: 0.2 }),
+      playerSourcePile: Object.freeze({ x: -3.8, y: -2, z: 0.2 }),
+      opponentSourcePile: Object.freeze({ x: -3.8, y: 2, z: 0.2 }),
+      hold: Object.freeze({ x: 3.8, y: -2.45, z: 0.2 }),
       opponentDrawPile: Object.freeze({ x: -3.2, y: 3.2, z: 0.2 }),
       opponentWonPile: Object.freeze({ x: -1.1, y: 3.2, z: 0.2 }),
       opponentReveal: Object.freeze({ x: 0.5, y: 1.45, z: 0.3 }),
@@ -93,6 +105,9 @@ const MODE_SPECS = Object.freeze({
     }),
     zones: Object.freeze({
       sourceDeck: Object.freeze({ x: -4.8, y: 0, z: 0.2 }),
+      playerSourcePile: Object.freeze({ x: -4.8, y: -2.1, z: 0.2 }),
+      opponentSourcePile: Object.freeze({ x: -4.8, y: 2.1, z: 0.2 }),
+      hold: Object.freeze({ x: 4.7, y: -2.35, z: 0.2 }),
       opponentDrawPile: Object.freeze({ x: -3.6, y: 2.65, z: 0.2 }),
       opponentWonPile: Object.freeze({ x: -1.35, y: 2.65, z: 0.2 }),
       opponentReveal: Object.freeze({ x: 0.45, y: 1.4, z: 0.3 }),
