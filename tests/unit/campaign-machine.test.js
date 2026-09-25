@@ -156,6 +156,17 @@ test('campaign validation enforces exact authored card instances', () => {
   replacedOpponent.cards.find(({ campaignOwner }) => campaignOwner === 'opponent').cardId = 'c-AH'
   refingerprint(replacedOpponent)
   assert.throws(() => validateCampaignState(replacedOpponent), /authored encounter content/)
+
+  const swappedSources = clone(run)
+  const playerInstance = swappedSources.encounter.zones.playerSourcePile[0]
+  swappedSources.encounter.zones.playerSourcePile[0] =
+    swappedSources.encounter.zones.opponentSourcePile[0]
+  swappedSources.encounter.zones.opponentSourcePile[0] = playerInstance
+  refingerprint(swappedSources)
+  assert.throws(
+    () => validateCampaignState(swappedSources),
+    /source piles must contain only matching-provenance instances/,
+  )
 })
 
 test('campaign fixed structures reject accessors and hidden fields without invoking them', () => {
@@ -167,6 +178,18 @@ test('campaign fixed structures reject accessors and hidden fields without invok
   const modifierAccessor = clone(run)
   const modifier = modifierAccessor.activeModifiers[0]
   let invoked = false
+  const rngAccessor = clone(run)
+  const algorithm = rngAccessor.rng.algorithm
+  Object.defineProperty(rngAccessor.rng, 'algorithm', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return algorithm
+    },
+  })
+  assert.throws(() => validateCampaignState(rngAccessor), /JSON-compatible data/)
+  assert.equal(invoked, false)
+
   Object.defineProperty(modifierAccessor.activeModifiers, '0', {
     enumerable: true,
     get() {

@@ -281,6 +281,13 @@ function collectEncounterInstances(run, instances) {
       `campaign.encounter.zones.${name}[${index}]`,
     ))
   }
+  for (const side of SIDES) {
+    if (zones[`${side}SourcePile`].some((instanceId) => (
+      instances.get(instanceId)?.campaignOwner !== side
+    ))) {
+      throw new Error('Campaign source piles must contain only matching-provenance instances')
+    }
+  }
   for (const [name, pile] of records) {
     assertDenseArray(pile, `campaign.encounter.zones.${name}`)
     pile.forEach((record, index) => {
@@ -708,6 +715,8 @@ export function validateCampaignState(run) {
   }
   assertIdentifier(run.runId, 'campaign.runId')
   assertCampaignRuleset(run.ruleset)
+  assertPlainObject(run.rng, 'campaign.rng')
+  assertExactKeys(run.rng, ['algorithm', 'seed', 'state'], 'campaign.rng')
   restoreRng(run.rng)
   if (!MACHINE_STATES.includes(run.machineState)) {
     throw new TypeError('campaign.machineState is not a public stable boundary')
