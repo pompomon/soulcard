@@ -126,6 +126,7 @@ function snapshotKey(match) {
     match.turn,
     match.machineState,
     match.pendingEvent?.id ?? null,
+    match.stateFingerprint ?? null,
   ])
 }
 
