@@ -47,8 +47,16 @@ function emptyZones() {
   }
 }
 
-function fingerprint(run) {
+function refingerprint(run) {
   run.stateFingerprint = createCampaignStateFingerprint(run)
+  if (run.pendingEvent !== null) {
+    run.pendingEvent.stateFingerprint = run.stateFingerprint
+  }
+  return run
+}
+
+function fingerprint(run) {
+  refingerprint(run)
   validateCampaignState(run)
   return run
 }
@@ -118,6 +126,72 @@ test('campaign setup uses authored decks and player-then-opponent shuffle order'
     lifetime: 'campaign',
     effect: { type: 'maximum-health', value: 5 },
   }])
+})
+
+test('campaign validation enforces exact authored card instances', () => {
+  const run = createCampaignRun({
+    runId: 'campaign-authored-cards',
+    seed: 1,
+    ruleset: BASELINE_RULESET,
+  })
+
+  const extra = clone(run)
+  extra.cards.push({
+    instanceId: 'player-999',
+    cardId: 'c-AS',
+    campaignOwner: 'player',
+  })
+  extra.deckLayout.push('player-999')
+  extra.encounter.zones.playerSourcePile.push('player-999')
+  refingerprint(extra)
+  assert.throws(() => validateCampaignState(extra), /authored encounter content/)
+
+  const replacedPlayer = clone(run)
+  replacedPlayer.cards[0].cardId = 'c-AS'
+  refingerprint(replacedPlayer)
+  assert.throws(() => validateCampaignState(replacedPlayer), /authored encounter content/)
+
+  const replacedOpponent = clone(run)
+  replacedOpponent.cards.find(({ campaignOwner }) => campaignOwner === 'opponent').cardId = 'c-AH'
+  refingerprint(replacedOpponent)
+  assert.throws(() => validateCampaignState(replacedOpponent), /authored encounter content/)
+})
+
+test('campaign fixed structures reject accessors and hidden fields without invoking them', () => {
+  const run = createCampaignRun({
+    runId: 'campaign-fixed-data',
+    seed: 2,
+    ruleset: BASELINE_RULESET,
+  })
+  const modifierAccessor = clone(run)
+  const modifier = modifierAccessor.activeModifiers[0]
+  let invoked = false
+  Object.defineProperty(modifierAccessor.activeModifiers, '0', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return modifier
+    },
+  })
+  assert.throws(() => validateCampaignState(modifierAccessor), /dense array/)
+  assert.equal(invoked, false)
+
+  const hiddenModifier = clone(run)
+  Object.defineProperty(hiddenModifier.activeModifiers[0].effect, 'hidden', {
+    value: true,
+  })
+  assert.throws(() => validateCampaignState(hiddenModifier), /must contain only/)
+
+  const rewardAccessor = clone(winEncounter(run))
+  Object.defineProperty(rewardAccessor.pendingReward, 'type', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return 'add-aces'
+    },
+  })
+  assert.throws(() => validateCampaignState(rewardAccessor), /JSON-compatible data/)
+  assert.equal(invoked, false)
 })
 
 test('manual reveal persists a candidate-bound Hold choice before emitting an event', () => {
@@ -335,38 +409,131 @@ test('scripted rewards add two new player Aces then restore health up to five', 
 })
 
 test('campaign validation binds transition states to their encounter outcomes', () => {
-  const awaitingReward = clone(winEncounter(createCampaignRun({
+  const awaitingReward = clone(loseEncounter(createCampaignRun({
     runId: 'campaign-invalid-reward-outcome',
     seed: 4,
     ruleset: BASELINE_RULESET,
   })))
-  awaitingReward.encounter.outcome = {
-    result: 'win',
-    winner: 'opponent',
-    reason: 'playerUnableToReveal',
-  }
-  awaitingReward.pendingEvent = null
-  awaitingReward.stateFingerprint = createCampaignStateFingerprint(awaitingReward)
+  awaitingReward.machineState = 'awaitingReward'
+  awaitingReward.pendingReward = clone(CAMPAIGN_ENCOUNTERS[0].reward)
+  refingerprint(awaitingReward)
   assert.throws(
     () => validateCampaignState(awaitingReward),
     /awaitingReward requires a player encounter win/,
   )
 
-  const awaitingRetry = clone(loseEncounter(createCampaignRun({
+  const awaitingRetry = clone(winEncounter(createCampaignRun({
     runId: 'campaign-invalid-retry-outcome',
     seed: 4,
     ruleset: BASELINE_RULESET,
   })))
-  awaitingRetry.encounter.outcome = {
+  awaitingRetry.machineState = 'awaitingRetry'
+  awaitingRetry.pendingReward = null
+  refingerprint(awaitingRetry)
+  assert.throws(
+    () => validateCampaignState(awaitingRetry),
+    /awaitingRetry requires an opponent win or draw/,
+  )
+})
+
+test('campaign terminal outcomes require exhausted regular supply', () => {
+  const won = clone(winEncounter(createCampaignRun({
+    runId: 'campaign-invalid-win-supply',
+    seed: 4,
+    ruleset: BASELINE_RULESET,
+  })))
+  const revealed = new Set(won.pendingEvent.reveals.map(({ instanceId }) => instanceId))
+  const opponentCard = won.encounter.zones.player.wonPile.find((instanceId) => (
+    !revealed.has(instanceId)
+    && won.cards.find((card) => card.instanceId === instanceId).campaignOwner === 'opponent'
+  ))
+  won.encounter.zones.player.wonPile.splice(
+    won.encounter.zones.player.wonPile.indexOf(opponentCard),
+    1,
+  )
+  won.encounter.zones.opponent.drawPile.push(opponentCard)
+  refingerprint(won)
+  assert.throws(
+    () => validateCampaignState(won),
+    /loser must have no regular supply/,
+  )
+
+  const drawInput = mutableReady(createCampaignRun({
+    runId: 'campaign-invalid-draw-supply',
+    seed: 11,
+    ruleset: BASELINE_RULESET,
+  }))
+  const player = drawInput.cards.find(({ cardId, campaignOwner }) => (
+    cardId === 'c-2D' && campaignOwner === 'player'
+  )).instanceId
+  const opponent = drawInput.cards.find(({ cardId, campaignOwner }) => (
+    cardId === 'c-2S' && campaignOwner === 'opponent'
+  )).instanceId
+  drawInput.encounter.zones = emptyZones()
+  drawInput.encounter.zones.playerSourcePile.push(player)
+  drawInput.encounter.zones.opponentSourcePile.push(opponent)
+  drawInput.encounter.zones.burnPile.push(
+    ...drawInput.cards
+      .map(({ instanceId }) => instanceId)
+      .filter((instanceId) => ![player, opponent].includes(instanceId)),
+  )
+  drawInput.encounter.supplyMode = { player: 'source', opponent: 'source' }
+  const drawn = clone(resolvePrepared(fingerprint(drawInput)).match)
+  const remaining = drawn.encounter.zones.burnPile.pop()
+  drawn.encounter.zones.player.drawPile.push(remaining)
+  refingerprint(drawn)
+  assert.throws(
+    () => validateCampaignState(drawn),
+    /both sides to exhaust regular supply/,
+  )
+})
+
+test('campaign decision and terminal boundaries enforce their pending events', () => {
+  const terminal = clone(loseEncounter(createCampaignRun({
+    runId: 'campaign-missing-terminal-event',
+    seed: 5,
+    ruleset: BASELINE_RULESET,
+  })))
+  terminal.pendingEvent = null
+  refingerprint(terminal)
+  assert.throws(
+    () => validateCampaignState(terminal),
+    /terminal campaign transition requires its pending event/,
+  )
+
+  const resolved = resolvePrepared(createCampaignRun({
+    runId: 'campaign-choice-event',
+    seed: 3,
+    ruleset: BASELINE_RULESET,
+  })).match
+  const previousEvent = clone(resolved.pendingEvent)
+  const choice = clone(prepareCampaignReveal(resolved).match)
+  choice.pendingEvent = previousEvent
+  refingerprint(choice)
+  assert.throws(
+    () => validateCampaignState(choice),
+    /Hold choice boundary cannot retain a pending event/,
+  )
+
+  const mismatch = clone(loseEncounter(createCampaignRun({
+    runId: 'campaign-event-outcome-mismatch',
+    seed: 5,
+    ruleset: BASELINE_RULESET,
+  })))
+  mismatch.encounter.outcome = {
     result: 'win',
     winner: 'player',
     reason: 'opponentUnableToReveal',
   }
-  awaitingRetry.pendingEvent = null
-  awaitingRetry.stateFingerprint = createCampaignStateFingerprint(awaitingRetry)
+  mismatch.machineState = 'awaitingReward'
+  mismatch.pendingReward = clone(CAMPAIGN_ENCOUNTERS[0].reward)
+  mismatch.encounter.zones.player.wonPile.push(
+    ...mismatch.encounter.zones.opponent.wonPile.splice(0),
+  )
+  refingerprint(mismatch)
   assert.throws(
-    () => validateCampaignState(awaitingRetry),
-    /awaitingRetry requires an opponent win or draw/,
+    () => validateCampaignState(mismatch),
+    /matching settled event/,
   )
 })
 

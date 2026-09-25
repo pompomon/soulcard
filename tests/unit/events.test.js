@@ -298,3 +298,18 @@ test('event factories reject accessors and extra fields before reading nested da
     /must contain only/,
   )
 })
+
+test('committed event dispatch rejects a version accessor without invoking it', () => {
+  const event = clone(createClashSettledEvent(SETTLED_INPUT))
+  let invoked = false
+  Object.defineProperty(event, 'eventVersion', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return EVENT_VERSION
+    },
+  })
+
+  assert.throws(() => validateCommittedEvent(event), /JSON-compatible data/)
+  assert.equal(invoked, false)
+})

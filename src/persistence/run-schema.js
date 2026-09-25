@@ -244,11 +244,16 @@ export function validateRunSaveVersion(save, expectedVersion) {
     throw new RangeError(`expectedVersion must be ${SAVE_SCHEMA_VERSION}`)
   }
   assertPlainObject(save, 'save')
-  if (!Number.isSafeInteger(save.saveSchemaVersion)) {
+  const versionDescriptor = Object.getOwnPropertyDescriptor(save, 'saveSchemaVersion')
+  if (!versionDescriptor?.enumerable || !Object.hasOwn(versionDescriptor, 'value')) {
+    throw new TypeError('save.saveSchemaVersion must be JSON-compatible data')
+  }
+  const saveSchemaVersion = versionDescriptor.value
+  if (!Number.isSafeInteger(saveSchemaVersion)) {
     throw new TypeError('saveSchemaVersion must be a safe integer')
   }
-  if (save.saveSchemaVersion !== expectedVersion) {
-    throw new UnsupportedSaveVersionError(save.saveSchemaVersion)
+  if (saveSchemaVersion !== expectedVersion) {
+    throw new UnsupportedSaveVersionError(saveSchemaVersion)
   }
   assertExactKeys(save, SAVE_KEYS, 'save')
   if (!['classic', 'campaign'].includes(save.runType)) {

@@ -148,3 +148,44 @@ test('campaign event validation rejects array index accessors without invoking t
   assert.throws(() => validateCampaignEvent(event), /dense array/)
   assert.equal(invoked, false)
 })
+
+test('campaign event validation rejects a type accessor without invoking it', () => {
+  const event = structuredClone(createCampaignClashSettledEvent({
+    runId: 'campaign-type-accessor',
+    turn: 1,
+    encounterIndex: 0,
+    encounterAttempt: 1,
+    winner: 'player',
+    reveals: [
+      {
+        instanceId: 'player-1',
+        cardId: 'c-KD',
+        suppliedBy: 'player',
+        from: 'player.sourcePile',
+      },
+      {
+        instanceId: 'opponent-1',
+        cardId: 'c-QS',
+        suppliedBy: 'opponent',
+        from: 'opponent.sourcePile',
+      },
+    ],
+    transfers: [
+      { instanceId: 'player-1', to: 'player.wonPile' },
+      { instanceId: 'opponent-1', to: 'player.wonPile' },
+    ],
+    burned: [],
+    stateFingerprint: 'fingerprint',
+  }))
+  let invoked = false
+  Object.defineProperty(event, 'type', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return 'clashSettled'
+    },
+  })
+
+  assert.throws(() => validateCampaignEvent(event), /JSON-compatible data/)
+  assert.equal(invoked, false)
+})

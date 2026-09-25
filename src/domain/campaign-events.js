@@ -250,6 +250,11 @@ function deepFreeze(value) {
 
 export function validateCampaignEvent(event) {
   assertPlainObject(event, 'event')
+  const typeDescriptor = Object.getOwnPropertyDescriptor(event, 'type')
+  if (!typeDescriptor?.enumerable || !Object.hasOwn(typeDescriptor, 'value')) {
+    throw new TypeError('event.type must be JSON-compatible data')
+  }
+  const eventType = typeDescriptor.value
   const common = [
     'eventVersion',
     'id',
@@ -258,7 +263,7 @@ export function validateCampaignEvent(event) {
     'encounterIndex',
     'encounterAttempt',
   ]
-  if (event.type === 'clashSettled') {
+  if (eventType === 'clashSettled') {
     assertExactKeys(event, [
       ...common,
       'winner',
@@ -275,7 +280,7 @@ export function validateCampaignEvent(event) {
     assertSettled(event)
     return event
   }
-  if (event.type === 'clashDrawn') {
+  if (eventType === 'clashDrawn') {
     assertExactKeys(event, [
       ...common,
       'reason',

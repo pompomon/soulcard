@@ -210,6 +210,17 @@ test('schema validation rejects non-JSON containers and accessors without invoki
   })
   assert.throws(() => validateRunSave(indexAccessor), /dense array/)
   assert.equal(invoked, false)
+
+  const versionAccessor = fixture('run-save-v4.json')
+  Object.defineProperty(versionAccessor, 'saveSchemaVersion', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return SAVE_SCHEMA_VERSION
+    },
+  })
+  assert.throws(() => validateRunSave(versionAccessor), /JSON-compatible data/)
+  assert.equal(invoked, false)
 })
 
 test('schema validation rejects hidden fields on saved reveal records', () => {

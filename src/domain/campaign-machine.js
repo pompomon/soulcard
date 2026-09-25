@@ -161,8 +161,29 @@ function deepFreeze(value) {
   return value
 }
 
-function sameData(first, second) {
-  return JSON.stringify(canonicalize(first)) === JSON.stringify(canonicalize(second))
+function assertFixedData(value, expected, name) {
+  if (Array.isArray(expected)) {
+    assertDenseArray(value, name)
+    if (value.length !== expected.length) {
+      throw new Error(`${name} must match its authored value`)
+    }
+    for (let index = 0; index < expected.length; index += 1) {
+      assertFixedData(value[index], expected[index], `${name}[${index}]`)
+    }
+    return
+  }
+  if (expected !== null && typeof expected === 'object') {
+    assertPlainObject(value, name)
+    const keys = Object.keys(expected)
+    assertExactKeys(value, keys, name)
+    for (const key of keys) {
+      assertFixedData(value[key], expected[key], `${name}.${key}`)
+    }
+    return
+  }
+  if (!Object.is(value, expected)) {
+    throw new Error(`${name} must match its authored value`)
+  }
 }
 
 function assertCampaignRuleset(ruleset) {
@@ -174,6 +195,19 @@ function assertCampaignRuleset(ruleset) {
 
 function cardMap(run) {
   return new Map(run.cards.map((card) => [card.instanceId, card]))
+}
+
+function createExpectedPlayerCards(encounterIndex) {
+  const cardIds = [...CAMPAIGN_STARTER_CARD_IDS]
+  for (let index = 0; index < encounterIndex; index += 1) {
+    const reward = getCampaignEncounter(index).reward
+    if (reward?.type === 'add-aces') cardIds.push(...reward.cardIds)
+  }
+  return cardIds.map((cardId, index) => ({
+    instanceId: `player-${String(index + 1).padStart(3, '0')}`,
+    cardId,
+    campaignOwner: 'player',
+  }))
 }
 
 function assertCardRecords(run) {
@@ -196,8 +230,19 @@ function assertCardRecords(run) {
     }
     instances.set(card.instanceId, card)
   }
-  if (run.cards.length < CAMPAIGN_STARTER_CARD_IDS.length) {
-    throw new Error('Campaign card instances cannot shrink below the starter deck')
+  const expected = [
+    ...createExpectedPlayerCards(run.encounterIndex),
+    ...createOpponentCards(run.encounterIndex, run.encounterAttempt),
+  ]
+  if (
+    run.cards.length !== expected.length
+    || run.cards.some((card, index) => (
+      card.instanceId !== expected[index].instanceId
+      || card.cardId !== expected[index].cardId
+      || card.campaignOwner !== expected[index].campaignOwner
+    ))
+  ) {
+    throw new Error('Campaign card instances must match the authored encounter content')
   }
   return instances
 }
@@ -289,6 +334,14 @@ function assertDeckLayout(run, instances) {
   }
 }
 
+function hasRegularSupply(zones, side) {
+  return (
+    zones[`${side}SourcePile`].length > 0
+    || zones[side].drawPile.length > 0
+    || zones[side].wonPile.length > 0
+  )
+}
+
 function assertEncounterShape(run) {
   const definition = getCampaignEncounter(run.encounterIndex)
   assertPlainObject(run.encounter, 'campaign.encounter')
@@ -322,6 +375,19 @@ function assertEncounterShape(run) {
       `campaign.encounter.zones.${side}`,
     )
   }
+  for (const [name, pile] of [
+    ['playerSourcePile', zones.playerSourcePile],
+    ['opponentSourcePile', zones.opponentSourcePile],
+    ['player.drawPile', zones.player.drawPile],
+    ['player.wonPile', zones.player.wonPile],
+    ['opponent.drawPile', zones.opponent.drawPile],
+    ['opponent.wonPile', zones.opponent.wonPile],
+    ['contestedPile', zones.contestedPile],
+    ['burnPile', zones.burnPile],
+    ['inPlay', zones.inPlay],
+  ]) {
+    assertDenseArray(pile, `campaign.encounter.zones.${name}`)
+  }
   if (zones.inPlay.length !== 0) {
     throw new Error('Campaign stable boundaries require an empty inPlay zone')
   }
@@ -338,7 +404,11 @@ function assertEncounterShape(run) {
     return
   }
   assertPlainObject(run.encounter.outcome, 'campaign.encounter.outcome')
-  if (run.encounter.outcome.result === 'win') {
+  const resultDescriptor = Object.getOwnPropertyDescriptor(run.encounter.outcome, 'result')
+  if (!resultDescriptor?.enumerable || !Object.hasOwn(resultDescriptor, 'value')) {
+    throw new TypeError('campaign.encounter.outcome.result must be JSON-compatible data')
+  }
+  if (resultDescriptor.value === 'win') {
     assertExactKeys(
       run.encounter.outcome,
       ['result', 'winner', 'reason'],
@@ -356,7 +426,11 @@ function assertEncounterShape(run) {
     if (zones.contestedPile.length !== 0) {
       throw new Error('A won campaign encounter cannot retain a contested pile')
     }
-  } else if (run.encounter.outcome.result === 'draw') {
+    const loser = run.encounter.outcome.winner === 'player' ? 'opponent' : 'player'
+    if (hasRegularSupply(zones, loser)) {
+      throw new Error('A campaign encounter loser must have no regular supply')
+    }
+  } else if (resultDescriptor.value === 'draw') {
     assertExactKeys(
       run.encounter.outcome,
       ['result', 'reason'],
@@ -367,6 +441,9 @@ function assertEncounterShape(run) {
     }
     if (zones.contestedPile.length === 0) {
       throw new Error('A drawn campaign encounter must retain its contest')
+    }
+    if (SIDES.some((side) => hasRegularSupply(zones, side))) {
+      throw new Error('A drawn campaign encounter requires both sides to exhaust regular supply')
     }
   } else {
     throw new TypeError('campaign encounter outcome must be win or draw')
@@ -427,7 +504,17 @@ function refreshFingerprint(run) {
 }
 
 function assertPendingEvent(run, instances) {
-  if (run.pendingEvent === null) return
+  const terminalTransition = ['awaitingRetry', 'awaitingReward', 'ended']
+    .includes(run.machineState)
+  if (run.pendingEvent === null) {
+    if (terminalTransition) {
+      throw new Error('A terminal campaign transition requires its pending event')
+    }
+    return
+  }
+  if (run.machineState === 'awaitingHoldChoice') {
+    throw new Error('A Hold choice boundary cannot retain a pending event')
+  }
   validateCampaignEvent(run.pendingEvent)
   if (
     run.pendingEvent.id !== `${run.runId}:clash-${run.turn}`
@@ -436,6 +523,25 @@ function assertPendingEvent(run, instances) {
     || run.pendingEvent.encounterAttempt !== run.encounterAttempt
   ) {
     throw new Error('Campaign pending event must describe the latest clash')
+  }
+  const encounterOutcome = run.encounter.outcome
+  if (encounterOutcome === null && run.pendingEvent.type === 'clashDrawn') {
+    throw new Error('A campaign draw event requires a drawn encounter outcome')
+  }
+  if (
+    encounterOutcome?.result === 'draw'
+    && run.pendingEvent.type !== 'clashDrawn'
+  ) {
+    throw new Error('A drawn campaign encounter requires a draw event')
+  }
+  if (
+    encounterOutcome?.result === 'win'
+    && (
+      run.pendingEvent.type !== 'clashSettled'
+      || run.pendingEvent.winner !== encounterOutcome.winner
+    )
+  ) {
+    throw new Error('A won campaign encounter requires a matching settled event')
   }
   for (const reveal of run.pendingEvent.reveals) {
     if (instances.get(reveal.instanceId)?.cardId !== reveal.cardId) {
@@ -534,9 +640,10 @@ function assertPendingReward(run) {
     return
   }
   const expected = getCampaignEncounter(run.encounterIndex).reward
-  if (expected === null || !sameData(run.pendingReward, expected)) {
+  if (expected === null) {
     throw new Error('Pending campaign reward must match the authored encounter reward')
   }
+  assertFixedData(run.pendingReward, expected, 'campaign.pendingReward')
 }
 
 export function isCampaignState(value) {
@@ -576,9 +683,11 @@ export function validateCampaignState(run) {
   ) {
     throw new TypeError('Campaign encounter position is invalid')
   }
-  if (!sameData(run.activeModifiers, [CAMPAIGN_MODIFIER])) {
-    throw new Error('Campaign Duel requires its single campaign-lifetime modifier')
-  }
+  assertFixedData(
+    run.activeModifiers,
+    [CAMPAIGN_MODIFIER],
+    'campaign.activeModifiers',
+  )
   const instances = assertCardRecords(run)
   assertEncounterShape(run)
   collectEncounterInstances(run, instances)
@@ -598,11 +707,7 @@ export function validateCampaignState(run) {
 }
 
 function createPlayerCards() {
-  return CAMPAIGN_STARTER_CARD_IDS.map((cardId, index) => ({
-    instanceId: `player-${String(index + 1).padStart(3, '0')}`,
-    cardId,
-    campaignOwner: 'player',
-  }))
+  return createExpectedPlayerCards(0)
 }
 
 function createOpponentCards(encounterIndex, encounterAttempt) {

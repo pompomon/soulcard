@@ -309,7 +309,11 @@ function deepFreeze(value) {
 
 export function validateCommittedEvent(event) {
   assertPlainObject(event, 'event')
-  if (event.eventVersion === CAMPAIGN_EVENT_VERSION) {
+  const versionDescriptor = Object.getOwnPropertyDescriptor(event, 'eventVersion')
+  if (!versionDescriptor?.enumerable || !Object.hasOwn(versionDescriptor, 'value')) {
+    throw new TypeError('event.eventVersion must be JSON-compatible data')
+  }
+  if (versionDescriptor.value === CAMPAIGN_EVENT_VERSION) {
     return validateCampaignEvent(event)
   }
   const typeDescriptor = Object.getOwnPropertyDescriptor(event, 'type')
