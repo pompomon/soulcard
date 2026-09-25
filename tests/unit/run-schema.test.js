@@ -221,6 +221,20 @@ test('schema validation rejects non-JSON containers and accessors without invoki
   })
   assert.throws(() => validateRunSave(versionAccessor), /JSON-compatible data/)
   assert.equal(invoked, false)
+
+  const modeAccessor = clone(activeFixtureMatch())
+  Object.defineProperty(modeAccessor, 'mode', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return 'campaign'
+    },
+  })
+  assert.throws(
+    () => createRunSave(modeAccessor, { savedAt: SAVED_AT }),
+    /must contain only/,
+  )
+  assert.equal(invoked, false)
 })
 
 test('schema validation rejects hidden fields on saved reveal records', () => {

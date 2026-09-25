@@ -704,7 +704,13 @@ function assertPendingReward(run) {
 }
 
 export function isCampaignState(value) {
-  return value !== null && typeof value === 'object' && value.mode === 'campaign'
+  if (value === null || typeof value !== 'object') return false
+  const descriptor = Object.getOwnPropertyDescriptor(value, 'mode')
+  return (
+    descriptor?.enumerable === true
+    && Object.hasOwn(descriptor, 'value')
+    && descriptor.value === 'campaign'
+  )
 }
 
 export function validateCampaignState(run) {
