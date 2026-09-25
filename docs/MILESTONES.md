@@ -30,5 +30,6 @@ dependency-map sections.
       (depends on: 11–18)
 - [ ] 20. MVP release gate and definition of done (depends on: 1–19)
 - [ ] 21. Post-MVP expansion (post-MVP, after 20; adventure-run work uses internal
-      21.1–21.5 sub-milestones, not additional roadmap milestones:
+      21.1–21.5 sub-milestones followed by keyboard milestone 21.6, not additional
+      roadmap milestones:
       `ROGUELIKE_ADVENTURE_RUN_PLAN.md`)

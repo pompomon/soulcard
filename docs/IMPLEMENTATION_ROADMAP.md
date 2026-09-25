@@ -1332,11 +1332,12 @@ reviewable PR.
 - **Checks/risks:** Release candidate build on Pages path; rollback is cache/schema-aware.
 
 ### 21. Post-MVP expansion
-- **Goal/files:** First-class full keyboard support (navigation, gameplay, shortcuts,
-  focus-flow tests/instructions), then encounter/reward/relic/route systems, multiple
-  themes, audio/haptics, privacy-conscious optional metrics, and only later optional
-  slots/cloud sync. The cumulative five-milestone roguelike adventure-run proposal is
-  tracked in [`ROGUELIKE_ADVENTURE_RUN_PLAN.md`](./ROGUELIKE_ADVENTURE_RUN_PLAN.md).
+- **Goal/files:** Build the cumulative five-milestone roguelike adventure run first,
+  followed by first-class full keyboard support as internal milestone 21.6 (navigation,
+  gameplay, shortcuts, focus-flow tests/instructions). Multiple themes, audio/haptics,
+  privacy-conscious optional metrics, and only later optional slots/cloud sync remain
+  separate expansion work. The ordered 21.1–21.6 plan is tracked in
+  [`ROGUELIKE_ADVENTURE_RUN_PLAN.md`](./ROGUELIKE_ADVENTURE_RUN_PLAN.md).
 - **Acceptance:** Each remains separately versioned and does not undermine deterministic
   saves or zone invariants.
 - **Checks/risks:** Accessibility and privacy reviews precede release.

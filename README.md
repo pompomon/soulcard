@@ -82,6 +82,8 @@ gameplay, shortcuts, focus trapping, and focus-flow instructions remain post-MVP
 Auto-reveal is an opt-in checkbox beside Reveal/Continue. It defaults off for each Game
 screen mount and is not persisted. After the player manually reveals with it enabled,
 each completed presentation starts the next clash; reduced-motion skips also continue.
+In Campaign, Auto-reveal saves the deterministic Hold-choice boundary and selects the
+normal candidate automatically (or the held card when it is the sole legal supply).
 Disabling it during presentation stops the chain after that clash. Pause, cancellation,
 presentation failure, update preparation, run replacement, teardown, and terminal outcomes
 stop automatic progression, and the next chain always requires another manual
@@ -92,6 +94,13 @@ domain RNG snapshot, and immediately queues the stable turn-zero run for Indexed
 persistence before play continues. The canonical comparison order is unchanged except
 that 2 beats Ace; 2 still loses to 3 through King.
 
+Campaign creates a separate three-encounter run in the same Game screen. It starts at
+3/5 health with all Diamonds and Hearts, then faces Spades/Clubs, Jacks/Queens/Kings,
+and four Aces for 1, 1, and 2 damage. The first reward adds new Spade- and Club-Ace
+instances; the second restores one health. Campaign card instances retain immutable
+player/opponent provenance, and the one-slot Hold action can capture only player-owned
+cards currently in the player's draw or won pile.
+
 The Settings screen persists a Turn burning preference independently from active runs.
 It selects the burn-enabled or burn-disabled ruleset only when starting or restarting a
 game. Resuming keeps the complete ruleset stored with that run. Replacing a current or
@@ -101,9 +110,9 @@ still-restoring saved run requires confirmation.
 
 Main enables Resume only after a valid ready, paused, or completed run restores. Invalid
 or incompatible saves remain quarantined until explicitly discarded; unavailable storage
-is reported without blocking session-only play. Current saves use save schema version 3
-and game rules version 2; rules-version-1 saves are incompatible because their clash
-comparison semantics differ.
+is reported without blocking session-only play. Current saves use save schema version 4. Classic runs use game rules version 2 and
+Campaign runs use version 3; schema-version-1 through schema-version-3 records are
+deliberately quarantined and require explicit discard.
 
 Pause remains an overlay inside Game. Resume continues the exact snapshot, Save & Main
 Menu navigates only after a successful stable save, and Restart Game requires confirmation
@@ -119,11 +128,13 @@ Reveal/Continue activation selects one encounter action. The AI controller does 
 produce match snapshots or use timers, browser state, presentation callbacks,
 `Math.random`, or domain RNG.
 
-`run-controller` validates the injected AI action, applies it to the current snapshot
+For classic matches, `run-controller` validates the injected AI action and applies it
+to the current snapshot
 through the match machine, and queues the resulting stable save before the HUD presents
 that event. Ties, the one-time source-to-personal transition, personal-pile recycling,
-and terminal inability therefore remain authoritative domain transitions. The empty
-persisted `futureModifiers` field remains reserved; no modifier behavior is implemented.
+and terminal inability therefore remain authoritative domain transitions. Campaign
+encounters instead use their campaign machine's persisted Hold decisions, independent
+source/personal supply modes, health, rewards, and campaign-lifetime modifier state.
 
 ## Offline cache and updates
 

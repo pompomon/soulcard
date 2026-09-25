@@ -1,20 +1,19 @@
 # Roguelike adventure-run plan
 
-This is a post-MVP implementation plan. It does not implement or mark complete any
-gameplay milestone. It refines the adventure-run portion of roadmap milestone 21 into
-five cumulative, playable sub-milestones; the milestone's other expansion work remains
-outside this plan. Roadmap milestone 21's first-class full keyboard support must be
-complete before sub-milestone 21.1 begins.
+This is a post-MVP implementation plan. It refines the adventure-run portion of roadmap
+milestone 21 into five cumulative, playable sub-milestones. First-class full keyboard
+support follows the adventure work as milestone 21.6 rather than blocking Campaign Duel.
 
 ## Progress checklist
 
 | Status | Milestone | Depends on | Playable outcome |
 | --- | --- | --- | --- |
-| [ ] | 21.1 Campaign Duel | 20 + milestone 21 keyboard support | Three retryable encounters with health, a persistent deck, and Hold |
+| [ ] | 21.1 Campaign Duel | 20 | Three retryable encounters with health, a persistent deck, and Hold |
 | [ ] | 21.2 Reward Drafts and Hold Upgrades | 21.1 | Build-changing rewards and the opponent-reveal Hold boon |
 | [ ] | 21.3 Branching Expedition | 21.2 | A route with combat, shops, and events |
 | [ ] | 21.4 Encounter Archetypes and Elite Ladder | 21.3 | Elites, rest nodes, and a boss campaign |
 | [ ] | 21.5 Seeded Procedural Campaign | 21.4 | A replayable generated roguelike campaign |
+| [ ] | 21.6 First-class Keyboard Support | 21.5 | Complete keyboard navigation, gameplay, shortcuts, focus flow, tests, and instructions |
 
 ## Shared decisions and invariants
 
@@ -125,6 +124,16 @@ three-encounter expedition.
 
 **Scope**
 
+- Add a separate Main-menu **Campaign** action; **Start New Game** continues to create
+  the classic match. Both run types resume through the existing Game screen.
+- Start at 3 health with a maximum of 5. The persistent starter deck is all thirteen
+  Diamonds followed by all thirteen Hearts.
+- Author three fixed opponents in order: all thirteen Spades followed by all thirteen
+  Clubs for 1 damage; all Jacks, Queens, and Kings without Aces for 1 damage; and all
+  four Aces for 2 damage.
+- After the first win, create new player-provenance Spade- and Club-Ace instances. After
+  the second win, restore 1 health up to 5. The final win ends the campaign without a
+  reward.
 - Introduce campaign-run state: health, encounter index, persistent player deck,
   encounter definition, held-card zone, active modifiers, campaign RNG, and terminal
   campaign outcome.
@@ -140,12 +149,15 @@ three-encounter expedition.
 - Deliver one Hold slot, capture only from an explicitly eligible settled card with
   `campaignOwner: player` under current player control, and deterministic replacement
   that cannot duplicate or lose a card.
-- Implement health loss, same-encounter retry, victory advancement, and a fixed three
-  encounter sequence. Add one scripted reward after each win that adds, removes, or
-  replaces a player card instance and one simple modifier.
-- Version rules, events, and save schema; migrate or deliberately quarantine legacy
-  saves. Surface all run decisions in Game-owned overlays without adding top-level
-  screens.
+- Implement health loss, same-encounter retry, victory advancement, and the fixed
+  encounter/reward sequence. Keep the single maximum-health modifier active for the
+  complete campaign run.
+- Auto-reveal still commits the `awaitingHoldChoice` boundary, then chooses the normal
+  candidate automatically; if only Hold can supply a card, it chooses that sole legal
+  option rather than stopping.
+- Version campaign rules and events and advance saves to schema v4. Deliberately
+  quarantine schema-v1 through schema-v3 saves. Surface all run decisions in Game-owned
+  overlays without adding top-level screens.
 
 **Acceptance and validation**
 
@@ -157,6 +169,9 @@ three-encounter expedition.
   rejection, health depletion, migration, interrupted save, source/personal recycle,
   burn settlement, terminal draw, and deterministic replay. Browser checks confirm the
   canvas, semantic choices, and no relevant console errors.
+
+Completion remains gated by roadmap milestone 20 even when the 21.1 implementation and
+its acceptance checks are present.
 
 ## 21.2 Reward Drafts and Hold Upgrades
 
@@ -262,6 +277,24 @@ campaign finale.
 - Tests cover seed corpus replay, path reachability, bounded pools, generated node
   validity, campaign simulation guards, migrations, lifecycle saves, and browser
   navigation through generated choices.
+
+## 21.6 First-class Keyboard Support
+
+**Goal:** make the completed classic and adventure modes fully operable and documented
+for keyboard users without changing authoritative game rules.
+
+**Scope**
+
+- Add complete navigation, gameplay, shortcut, overlay focus-management, and instruction
+  support for classic and campaign actions.
+- Keep native semantic controls canonical and route keyboard activation through the same
+  guarded controller actions used by pointer input.
+
+**Acceptance and validation**
+
+- Classic matches and complete generated campaigns can be played without pointer input.
+- Focus order, restoration, trapping, shortcuts, and instructions have automated
+  focus-flow coverage and browser validation.
 
 ## Delivery rules
 
