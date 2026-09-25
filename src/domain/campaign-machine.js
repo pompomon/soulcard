@@ -566,13 +566,14 @@ function assertPendingEvent(run, instances) {
   }
   if (run.pendingEvent.type === 'clashSettled') {
     const winner = run.pendingEvent.winner
-    for (const { instanceId } of run.pendingEvent.transfers) {
-      if (
-        !run.encounter.zones[winner].drawPile.includes(instanceId)
-        && !run.encounter.zones[winner].wonPile.includes(instanceId)
-      ) {
-        throw new Error('Campaign event transfers must belong to the winner')
-      }
+    const transfers = run.pendingEvent.transfers.map(({ instanceId }) => instanceId)
+    const wonPile = run.encounter.zones[winner].wonPile
+    const transferStart = wonPile.length - transfers.length
+    if (
+      transferStart < 0
+      || transfers.some((instanceId, index) => wonPile[transferStart + index] !== instanceId)
+    ) {
+      throw new Error('Campaign event transfers must be the winner won-pile suffix')
     }
     for (const instanceId of run.pendingEvent.burned) {
       if (!run.encounter.zones.burnPile.includes(instanceId)) {

@@ -538,6 +538,35 @@ test('campaign decision and terminal boundaries enforce their pending events', (
   )
 })
 
+test('campaign settled transfers match the winner won-pile suffix', () => {
+  const settled = resolvePrepared(createCampaignRun({
+    runId: 'campaign-transfer-suffix',
+    seed: 3,
+    ruleset: NO_BURN_RULESET,
+  })).match
+  const transfers = settled.pendingEvent.transfers.map(({ instanceId }) => instanceId)
+  const winner = settled.pendingEvent.winner
+  assert.ok(transfers.length >= 2)
+
+  const misplaced = clone(settled)
+  misplaced.encounter.zones[winner].wonPile.splice(-transfers.length)
+  misplaced.encounter.zones[winner].drawPile.push(...transfers)
+  refingerprint(misplaced)
+  assert.throws(
+    () => validateCampaignState(misplaced),
+    /winner won-pile suffix/,
+  )
+
+  const reordered = clone(settled)
+  const wonPile = reordered.encounter.zones[winner].wonPile
+  wonPile.splice(-2, 2, wonPile.at(-1), wonPile.at(-2))
+  refingerprint(reordered)
+  assert.throws(
+    () => validateCampaignState(reordered),
+    /winner won-pile suffix/,
+  )
+})
+
 test('campaign pending events bind terminal reveal parity and Hold availability', () => {
   const forgedTerminal = clone(resolvePrepared(createCampaignRun({
     runId: 'campaign-forged-terminal',
