@@ -388,6 +388,21 @@ function assertEncounterShape(run) {
   ]) {
     assertDenseArray(pile, `campaign.encounter.zones.${name}`)
   }
+  for (const side of SIDES) {
+    const source = zones[`${side}SourcePile`]
+    if (run.encounter.supplyMode[side] === 'personal' && source.length > 0) {
+      throw new Error(`Campaign ${side} personal supply mode requires an empty source pile`)
+    }
+    if (
+      run.encounter.supplyMode[side] === 'source'
+      && zones[side].drawPile.length > 0
+    ) {
+      throw new Error(`Campaign ${side} source supply mode requires an empty personal draw pile`)
+    }
+  }
+  if (!run.ruleset.burn.enabled && zones.burnPile.length > 0) {
+    throw new Error('A no-burn campaign cannot contain burned cards')
+  }
   if (zones.inPlay.length !== 0) {
     throw new Error('Campaign stable boundaries require an empty inPlay zone')
   }
@@ -567,6 +582,21 @@ function assertPendingEvent(run, instances) {
   if (run.pendingEvent.type === 'clashSettled') {
     const winner = run.pendingEvent.winner
     const transfers = run.pendingEvent.transfers.map(({ instanceId }) => instanceId)
+    const burned = run.pendingEvent.burned
+    const expectedTransfers = run.pendingEvent.reveals
+      .filter(({ suppliedBy }) => !run.ruleset.burn.enabled || suppliedBy === winner)
+      .map(({ instanceId }) => instanceId)
+    const expectedBurned = run.pendingEvent.reveals
+      .filter(({ suppliedBy }) => run.ruleset.burn.enabled && suppliedBy !== winner)
+      .map(({ instanceId }) => instanceId)
+    if (
+      transfers.length !== expectedTransfers.length
+      || burned.length !== expectedBurned.length
+      || transfers.some((instanceId, index) => expectedTransfers[index] !== instanceId)
+      || burned.some((instanceId, index) => expectedBurned[index] !== instanceId)
+    ) {
+      throw new Error('Campaign event settlement must match the active burn ruleset')
+    }
     const wonPile = run.encounter.zones[winner].wonPile
     const transferStart = wonPile.length - transfers.length
     if (
@@ -575,10 +605,13 @@ function assertPendingEvent(run, instances) {
     ) {
       throw new Error('Campaign event transfers must be the winner won-pile suffix')
     }
-    for (const instanceId of run.pendingEvent.burned) {
-      if (!run.encounter.zones.burnPile.includes(instanceId)) {
-        throw new Error('Campaign event burns must remain in the burn pile')
-      }
+    const burnPile = run.encounter.zones.burnPile
+    const burnStart = burnPile.length - burned.length
+    if (
+      burnStart < 0
+      || burned.some((instanceId, index) => burnPile[burnStart + index] !== instanceId)
+    ) {
+      throw new Error('Campaign event burns must be the burn-pile suffix')
     }
   } else if (
     run.pendingEvent.reveals.length !== run.encounter.zones.contestedPile.length

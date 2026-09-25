@@ -236,6 +236,34 @@ test('independent supply modes permit mixed source and personal reveals', () => 
   assert.equal(resolved.match.encounter.supplyMode.opponent, 'personal')
 })
 
+test('campaign validation rejects contradictory supply modes', () => {
+  const initial = createCampaignRun({
+    runId: 'campaign-invalid-supply-mode',
+    seed: 8,
+    ruleset: BASELINE_RULESET,
+  })
+
+  for (const side of ['player', 'opponent']) {
+    const personal = clone(initial)
+    personal.encounter.supplyMode[side] = 'personal'
+    refingerprint(personal)
+    assert.throws(
+      () => validateCampaignState(personal),
+      new RegExp(`${side} personal supply mode requires an empty source pile`),
+    )
+
+    const source = clone(initial)
+    source.encounter.zones[side].drawPile.push(
+      source.encounter.zones[`${side}SourcePile`].shift(),
+    )
+    refingerprint(source)
+    assert.throws(
+      () => validateCampaignState(source),
+      new RegExp(`${side} source supply mode requires an empty personal draw pile`),
+    )
+  }
+})
+
 test('Hold-only decisions accept Hold and reject a missing normal candidate', () => {
   const run = mutableReady(createCampaignRun({
     runId: 'campaign-hold-only',
@@ -549,8 +577,9 @@ test('campaign settled transfers match the winner won-pile suffix', () => {
   assert.ok(transfers.length >= 2)
 
   const misplaced = clone(settled)
-  misplaced.encounter.zones[winner].wonPile.splice(-transfers.length)
-  misplaced.encounter.zones[winner].drawPile.push(...transfers)
+  misplaced.encounter.zones[winner].wonPile.push(
+    misplaced.encounter.zones[`${winner}SourcePile`].shift(),
+  )
   refingerprint(misplaced)
   assert.throws(
     () => validateCampaignState(misplaced),
@@ -564,6 +593,86 @@ test('campaign settled transfers match the winner won-pile suffix', () => {
   assert.throws(
     () => validateCampaignState(reordered),
     /winner won-pile suffix/,
+  )
+})
+
+test('campaign settled events obey the active burn ruleset', () => {
+  const baseline = clone(resolvePrepared(createCampaignRun({
+    runId: 'campaign-baseline-settlement',
+    seed: 3,
+    ruleset: BASELINE_RULESET,
+  })).match)
+  const baselineEvent = baseline.pendingEvent
+  const baselineWinner = baselineEvent.winner
+  const baselineReveals = baselineEvent.reveals.map(({ instanceId }) => instanceId)
+  baseline.encounter.zones[baselineWinner].wonPile.splice(
+    -baselineEvent.transfers.length,
+  )
+  baseline.encounter.zones[baselineWinner].wonPile.push(...baselineReveals)
+  baseline.encounter.zones.burnPile.splice(-baselineEvent.burned.length)
+  baselineEvent.transfers = baselineReveals.map((instanceId) => ({
+    instanceId,
+    to: `${baselineWinner}.wonPile`,
+  }))
+  baselineEvent.burned = []
+  refingerprint(baseline)
+  assert.throws(
+    () => validateCampaignState(baseline),
+    /settlement must match the active burn ruleset/,
+  )
+
+  const noBurn = clone(resolvePrepared(createCampaignRun({
+    runId: 'campaign-no-burn-settlement',
+    seed: 3,
+    ruleset: NO_BURN_RULESET,
+  })).match)
+  const noBurnEvent = noBurn.pendingEvent
+  const noBurnWinner = noBurnEvent.winner
+  const transferred = noBurnEvent.reveals
+    .filter(({ suppliedBy }) => suppliedBy === noBurnWinner)
+    .map(({ instanceId }) => instanceId)
+  const burned = noBurnEvent.reveals
+    .filter(({ suppliedBy }) => suppliedBy !== noBurnWinner)
+    .map(({ instanceId }) => instanceId)
+  noBurnEvent.transfers = transferred.map((instanceId) => ({
+    instanceId,
+    to: `${noBurnWinner}.wonPile`,
+  }))
+  noBurnEvent.burned = burned
+  refingerprint(noBurn)
+  assert.throws(
+    () => validateCampaignState(noBurn),
+    /settlement must match the active burn ruleset/,
+  )
+
+  const noBurnWithoutEvent = clone(createCampaignRun({
+    runId: 'campaign-no-burn-state',
+    seed: 3,
+    ruleset: NO_BURN_RULESET,
+  }))
+  noBurnWithoutEvent.encounter.zones.burnPile.push(
+    noBurnWithoutEvent.encounter.zones.playerSourcePile.shift(),
+  )
+  refingerprint(noBurnWithoutEvent)
+  assert.throws(
+    () => validateCampaignState(noBurnWithoutEvent),
+    /no-burn campaign cannot contain burned cards/,
+  )
+})
+
+test('campaign settled burns match the burn-pile suffix', () => {
+  const settled = clone(resolvePrepared(createCampaignRun({
+    runId: 'campaign-burn-suffix',
+    seed: 15,
+    ruleset: BASELINE_RULESET,
+  })).match)
+  assert.equal(settled.pendingEvent.burned.length, 2)
+  const burnPile = settled.encounter.zones.burnPile
+  burnPile.splice(-2, 2, burnPile.at(-1), burnPile.at(-2))
+  refingerprint(settled)
+  assert.throws(
+    () => validateCampaignState(settled),
+    /burn-pile suffix/,
   )
 })
 
