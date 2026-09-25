@@ -630,17 +630,12 @@ versions. Invalid, incomplete, or corrupt runs are quarantined/discardable and l
 Main with Resume disabled and a clear discard/start-new recovery path—never a resume
 crash loop.
 
-The implemented current format is `saveSchemaVersion: 3` with
-`gameRulesVersion: 2`. Save schema version 2 added the match `outcome` required to
-restore terminal runs exactly; schema version 3 admits the stable `paused` machine state
-without changing the rules or committed-event formats. Schema version 1 active/ready
-saves carrying current game rules migrate through schema version 2 by adding
-`outcome: null`, and valid schema version 2 ready/ended saves then migrate to schema
-version 3 without changing domain data. A schema version 1 terminal record and a forged
-schema version 2 paused record are rejected because those versions did not represent
-those states. Existing `gameRulesVersion: 1` records are quarantined as incompatible
-rather than being reinterpreted under the 2-over-Ace rule. No synthetic older format is
-accepted.
+The implemented current format is `saveSchemaVersion: 4`. It discriminates Classic
+and Campaign records with `runType`; Classic retains `gameRulesVersion: 2`, while
+Campaign uses its campaign rules version. Because version 4 introduces card-instance
+identity and a new run shape, schema versions 1–3 are deliberately quarantined rather
+than migrated or reinterpreted. Unknown future versions, incompatible rules, and
+synthetic older formats are also quarantined.
 
 Save only at stable domain boundaries: after every committed clash, explicit pause,
 and best effort on `visibilitychange`, `pagehide`, and lifecycle freeze events when the
@@ -658,8 +653,9 @@ and pass the stated zone validation.
 
 ```json
 {
-  "saveSchemaVersion": 3,
+  "saveSchemaVersion": 4,
   "gameRulesVersion": 2,
+  "runType": "classic",
   "savedAt": "2026-09-19T07:00:00.000Z",
   "runId": "run-42",
   "rng": { "algorithm": "mulberry32", "seed": 12345, "state": 3771268942 },
@@ -940,14 +936,13 @@ reviewable PR.
   and corrupted/unknown saves recover by discard/start-new.
 - **Checks/risks:** Unit migration/validation/corruption and deterministic
   save-resume-equivalence tests; IndexedDB quota/error handling.
-- **Acceptance evidence:** `src/persistence/run-schema.js` introduced the exact version 2
-  stable-save shape, full structural/domain/event validation, immutable serialization,
-  and restoration including terminal outcomes and pending presentation events; milestone
-  10 evolves the current shape to version 3 for paused boundaries.
-  `src/persistence/migrations.js` performs explicit version 1-to-2 and 2-to-3 migrations
-  without mutating input and rejects skipped, future, ambiguous terminal, forged paused,
-  or incompatible-rules records. `src/persistence/run-repository.js` atomically stores one
-  active run in IndexedDB, upgrades migrated records, quarantines invalid records,
+- **Acceptance evidence:** `src/persistence/run-schema.js` validates the exact version 4
+  Classic/Campaign stable-save shapes, including terminal outcomes, paused boundaries,
+  and pending presentation events, and serializes them immutably.
+  `src/persistence/migrations.js` accepts validated version 4 records without mutating
+  input and deliberately quarantines legacy versions 1–3, skipped or future versions,
+  and incompatible-rules records. `src/persistence/run-repository.js` atomically stores one
+  active run in IndexedDB, quarantines invalid or unsupported records,
   exposes discard/replacement recovery, and returns explicit blocked, unavailable,
   quota, abort, and transaction failure results without reporting false success.
   Complete active, legacy, and terminal fixtures plus focused tests cover turn-zero,
