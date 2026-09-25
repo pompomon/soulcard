@@ -1,6 +1,6 @@
 import { compareCards } from '../domain/cards.js'
 import { validateCommittedEvent } from '../domain/events.js'
-import { validateMatchState } from '../domain/match-machine.js'
+import { runVisualKey, validateRunState } from '../domain/run-state.js'
 
 export const EVENT_PRESENTATION_TIMING = Object.freeze({
   revealMs: 400,
@@ -110,9 +110,9 @@ function deepFreeze(value) {
 }
 
 function detachMatch(match) {
-  validateMatchState(match)
+  validateRunState(match)
   const detached = cloneData(match)
-  validateMatchState(detached)
+  validateRunState(detached)
   return deepFreeze(detached)
 }
 
@@ -144,6 +144,9 @@ export function createEventTimeline(event, timing = EVENT_PRESENTATION_TIMING) {
     return {
       kind: 'reveal',
       cardId: reveal.cardId,
+      ...(reveal.instanceId === undefined
+        ? {}
+        : { instanceId: reveal.instanceId, visualKey: reveal.instanceId }),
       suppliedBy: reveal.suppliedBy,
       from: reveal.from ?? null,
       revealIndex: index,
@@ -155,7 +158,7 @@ export function createEventTimeline(event, timing = EVENT_PRESENTATION_TIMING) {
 
   if (event.type === 'clashSettled') {
     const transfers = new Map(
-      event.transfers.map((transfer) => [transfer.cardId, transfer]),
+      event.transfers.map((transfer) => [runVisualKey(transfer), transfer]),
     )
     const burned = new Set(event.burned)
     const transferDuration = event.transfers.length === 0
@@ -163,18 +166,25 @@ export function createEventTimeline(event, timing = EVENT_PRESENTATION_TIMING) {
       : timing.settlementMs / event.transfers.length
 
     for (const reveal of event.reveals) {
-      const transfer = transfers.get(reveal.cardId)
+      const visualKey = runVisualKey(reveal)
+      const transfer = transfers.get(visualKey)
       if (transfer) {
         steps.push({
           kind: 'transfer',
-          cardId: transfer.cardId,
+          cardId: reveal.cardId,
+          ...(reveal.instanceId === undefined
+            ? {}
+            : { instanceId: reveal.instanceId, visualKey }),
           to: transfer.to,
           durationMs: transferDuration,
         })
-      } else if (burned.has(reveal.cardId)) {
+      } else if (burned.has(visualKey)) {
         steps.push({
           kind: 'burn',
           cardId: reveal.cardId,
+          ...(reveal.instanceId === undefined
+            ? {}
+            : { instanceId: reveal.instanceId, visualKey }),
           to: 'burnPile',
           durationMs: timing.burnMs,
         })
@@ -185,6 +195,9 @@ export function createEventTimeline(event, timing = EVENT_PRESENTATION_TIMING) {
       kind: 'retain',
       reason: event.reason,
       cardIds: event.reveals.map(({ cardId }) => cardId),
+      ...(event.eventVersion === 5
+        ? { visualKeys: event.reveals.map(runVisualKey) }
+        : {}),
       durationMs: 0,
     })
   }

@@ -1,6 +1,7 @@
 import { createScreenCoordinator } from './screen-coordinator.js'
 import { createRunController } from './run-controller.js'
 import { createNewMatch } from './new-match.js'
+import { createNewCampaign } from './new-campaign.js'
 import { createRunRepository } from '../persistence/run-repository.js'
 import { createSettingsRepository } from '../persistence/settings-repository.js'
 import { createPageLifecycle } from '../pwa/lifecycle.js'
@@ -11,6 +12,7 @@ import { createGameScreen } from '../ui/hud.js'
 import { createUpdateNotice } from '../ui/update-notice.js'
 import { mountBattlefield as mountResponsiveBattlefield } from '../presentation/battlefield.js'
 import { BASELINE_RULESET, NO_BURN_RULESET } from '../domain/ruleset.js'
+import { isCampaignState } from '../domain/run-state.js'
 
 const START_OVER_MESSAGE = 'Start a new game? Your current saved game will be replaced.'
 
@@ -118,10 +120,14 @@ export function bootstrap({
   eventPlayerFactory = undefined,
   inputControllerFactory = undefined,
   newMatchFactory = createNewMatch,
+  newCampaignFactory = createNewCampaign,
   confirmStartOver = defaultConfirmStartOver,
 } = {}) {
   if (typeof newMatchFactory !== 'function') {
     throw new TypeError('newMatchFactory must be a function')
+  }
+  if (typeof newCampaignFactory !== 'function') {
+    throw new TypeError('newCampaignFactory must be a function')
   }
   if (typeof confirmStartOver !== 'function') {
     throw new TypeError('confirmStartOver must be a function')
@@ -192,7 +198,7 @@ export function bootstrap({
     )
   }
 
-  const startNewGame = () => {
+  const startNewRun = (factory) => {
     if (requiresReplacementConfirmation() && !confirmStartOver()) {
       return false
     }
@@ -200,7 +206,7 @@ export function bootstrap({
     const ruleset = settingsController.getSnapshot().burnEnabled
       ? BASELINE_RULESET
       : NO_BURN_RULESET
-    const match = newMatchFactory({ ruleset })
+    const match = factory({ ruleset })
     activeRunController.discardPendingRestore()
     if (coordinator?.activeScreen === 'game') {
       coordinator.navigate('main')
@@ -212,6 +218,13 @@ export function bootstrap({
     void save
     return true
   }
+  const startNewGame = () => startNewRun(newMatchFactory)
+  const startNewCampaign = () => startNewRun(newCampaignFactory)
+  const restartCurrentRun = () => (
+    isCampaignState(activeRunController.currentMatch)
+      ? startNewCampaign()
+      : startNewGame()
+  )
 
   try {
     if (typeof updateControllerFactory !== 'function') {
@@ -233,6 +246,7 @@ export function bootstrap({
             resumeAvailable: canResume,
             runController: activeRunController,
             onStart: startNewGame,
+            onCampaign: startNewCampaign,
             onResume: () => {
               if (activeRunController.currentMatch !== null) navigate('game')
             },
@@ -258,7 +272,7 @@ export function bootstrap({
             eventPlayerFactory,
             inputControllerFactory,
             onMainMenu: () => coordinator.navigate('main'),
-            onRestart: startNewGame,
+            onRestart: restartCurrentRun,
           }),
           activeUpdateController,
           updateNoticeFactory,

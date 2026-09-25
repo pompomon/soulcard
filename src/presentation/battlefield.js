@@ -9,7 +9,12 @@ import {
   createSettingsSnapshot,
 } from '../app/settings.js'
 import { validateCommittedEvent } from '../domain/events.js'
-import { validateMatchState } from '../domain/match-machine.js'
+import {
+  isCampaignState,
+  resolveRunCardId,
+  runVisualKey,
+  validateRunState,
+} from '../domain/run-state.js'
 import { createTextureCache } from './texture-cache.js'
 import { createThemeRegistry } from './themes/registry.js'
 import { createInputController } from './input.js'
@@ -99,6 +104,17 @@ function assertInputController(controller) {
 
 function actionableDeckZone(match) {
   if (match?.status !== 'active') return null
+  if (isCampaignState(match)) {
+    if (
+      match.encounter.supplyMode.player === 'source'
+      && match.encounter.zones.playerSourcePile.length > 0
+    ) {
+      return 'playerSourcePile'
+    }
+    if (match.encounter.zones.player.drawPile.length > 0) return 'playerDrawPile'
+    if (match.encounter.zones.player.wonPile.length > 0) return 'playerWonPile'
+    return match.hold === null ? null : 'hold'
+  }
   if (match.stage === 'source') {
     return match.zones.sourceDeck.length > 0 ? 'sourceDeck' : null
   }
@@ -111,7 +127,7 @@ function decisiveWinningCardId(event) {
   if (event.type !== 'clashSettled') return null
   for (let index = event.reveals.length - 1; index >= 0; index -= 1) {
     if (event.reveals[index].suppliedBy === event.winner) {
-      return event.reveals[index].cardId
+      return runVisualKey(event.reveals[index])
     }
   }
   return null
@@ -638,6 +654,7 @@ export function mountBattlefield(host, {
 
   function createCardVisual({
     cardId,
+    visualKey = cardId,
     faceUp,
     parent,
     zoneId,
@@ -662,6 +679,7 @@ export function mountBattlefield(host, {
     parent.add(mesh)
     const visual = {
       cardId,
+      visualKey,
       faceUp,
       parent,
       zoneId,
@@ -688,10 +706,15 @@ export function mountBattlefield(host, {
     return null
   }
 
-  function addPileRepresentative(zoneId, cardId, faceUp, stackIndex = 0) {
-    if (cardId === null) return
+  function addPileRepresentative(zoneId, identity, faceUp, stackIndex = 0) {
+    if (identity === null) return
+    const cardId = resolveRunCardId(currentMatch, identity)
+    if (cardId === undefined) {
+      throw new Error(`Unknown card identity: ${String(identity)}`)
+    }
     const visual = createCardVisual({
       cardId,
+      visualKey: identity,
       faceUp,
       parent: zoneGroups.get(zoneId),
       zoneId,
@@ -707,12 +730,26 @@ export function mountBattlefield(host, {
   function renderSnapshotCards(match, excluded = new Set()) {
     for (const placeholder of placeholderMeshes.values()) placeholder.visible = false
     activeDeckZoneId = actionableDeckZone(match)
-    const { zones } = match
-    addPileRepresentative(
-      'sourceDeck',
-      firstVisibleCard(zones.sourceDeck, excluded),
-      false,
-    )
+    const zones = isCampaignState(match) ? match.encounter.zones : match.zones
+    if (isCampaignState(match)) {
+      addPileRepresentative(
+        'playerSourcePile',
+        firstVisibleCard(zones.playerSourcePile, excluded),
+        false,
+      )
+      addPileRepresentative(
+        'opponentSourcePile',
+        firstVisibleCard(zones.opponentSourcePile, excluded),
+        false,
+      )
+      addPileRepresentative('hold', match.hold, true)
+    } else {
+      addPileRepresentative(
+        'sourceDeck',
+        firstVisibleCard(zones.sourceDeck, excluded),
+        false,
+      )
+    }
     for (const side of ['player', 'opponent']) {
       const prefix = side === 'player' ? 'player' : 'opponent'
       addPileRepresentative(
@@ -727,10 +764,10 @@ export function mountBattlefield(host, {
       )
     }
     const contest = zones.contestedPile
-      .filter(({ cardId }) => !excluded.has(cardId))
+      .filter((record) => !excluded.has(runVisualKey(record)))
       .slice(-MAX_CONTEST_CARDS)
-    contest.forEach(({ cardId }, index) => {
-      addPileRepresentative('contestedPile', cardId, true, index)
+    contest.forEach((record, index) => {
+      addPileRepresentative('contestedPile', runVisualKey(record), true, index)
     })
     addPileRepresentative(
       'burnPile',
@@ -842,51 +879,53 @@ export function mountBattlefield(host, {
     while (transientVisuals.size >= MAX_TRANSIENT_CARDS) {
       const oldest = transientVisuals.entries().next().value
       if (!oldest) return
-      const [cardId, visual] = oldest
-      transientVisuals.delete(cardId)
+      const [visualKey, visual] = oldest
+      transientVisuals.delete(visualKey)
       releaseVisual(visual)
     }
   }
 
-  function ensureTransientCard(cardId, suppliedBy) {
-    const existing = transientVisuals.get(cardId)
+  function ensureTransientCard(visualKey, cardId, suppliedBy) {
+    const existing = transientVisuals.get(visualKey)
     if (existing) return existing
     trimTransientCards()
     const zoneId = `${suppliedBy}Reveal`
     const visual = createCardVisual({
       cardId,
+      visualKey,
       faceUp: true,
       parent: scene,
       zoneId,
       transient: true,
     })
-    transientVisuals.set(cardId, visual)
+    transientVisuals.set(visualKey, visual)
     placeTransient(visual)
     return visual
   }
 
   function releaseSettledVisuals() {
     for (const visual of settledVisuals) {
-      if (transientVisuals.get(visual.cardId) === visual) {
-        transientVisuals.delete(visual.cardId)
+      if (transientVisuals.get(visual.visualKey) === visual) {
+        transientVisuals.delete(visual.visualKey)
       }
       releaseVisual(visual)
     }
     settledVisuals.clear()
   }
 
-  function ensureSettlementCard(cardId, suppliedBy) {
-    const existing = transientVisuals.get(cardId)
+  function ensureSettlementCard(visualKey, cardId, suppliedBy) {
+    const existing = transientVisuals.get(visualKey)
     if (existing) return existing
     const visual = createCardVisual({
       cardId,
+      visualKey,
       faceUp: true,
       parent: scene,
       zoneId: 'contestedPile',
       offset: Object.freeze({ x: 0, y: 0, z: 0.12 }),
       transient: true,
     })
-    transientVisuals.set(cardId, visual)
+    transientVisuals.set(visualKey, visual)
     placeTransient(visual)
     return visual
   }
@@ -1062,7 +1101,7 @@ export function mountBattlefield(host, {
       if (retainedMatch !== null) {
         const excluded = retainedEvent === null
           ? new Set()
-          : new Set(retainedEvent.reveals.map(({ cardId }) => cardId))
+          : new Set(retainedEvent.reveals.map(runVisualKey))
         renderSnapshotCards(retainedMatch, excluded)
         for (const step of retainedSteps) applyPresentationStep(step, 0)
       }
@@ -1210,7 +1249,7 @@ export function mountBattlefield(host, {
 
   function syncSnapshot(match, context = {}) {
     if (disposed) throw new Error('Battlefield has been destroyed')
-    validateMatchState(match)
+    validateRunState(match)
     appliedEventSteps.length = 0
     if (!contextReady()) {
       currentMatch = match
@@ -1230,7 +1269,7 @@ export function mountBattlefield(host, {
 
   function beginEvent(event, match) {
     if (disposed) throw new Error('Battlefield has been destroyed')
-    validateMatchState(match)
+    validateRunState(match)
     validateCommittedEvent(event)
     if (
       match.pendingEvent === null
@@ -1251,7 +1290,7 @@ export function mountBattlefield(host, {
     currentMatch = match
     currentEvent = event
     currentDecisiveCardId = decisiveWinningCardId(event)
-    renderSnapshotCards(match, new Set(event.reveals.map(({ cardId }) => cardId)))
+    renderSnapshotCards(match, new Set(event.reveals.map(runVisualKey)))
     publishPresentation('prepared')
     renderCurrentFrame()
   }
@@ -1265,9 +1304,15 @@ export function mountBattlefield(host, {
 
   function applyPresentationStep(step, durationMs) {
     if (step.kind === 'reveal') {
-      const visual = ensureTransientCard(step.cardId, step.suppliedBy)
+      const visual = ensureTransientCard(step.visualKey ?? step.cardId, step.cardId, step.suppliedBy)
       const originZone = step.from === 'sourceDeck'
         ? 'sourceDeck'
+        : step.from === 'player.sourcePile'
+          ? 'playerSourcePile'
+          : step.from === 'opponent.sourcePile'
+            ? 'opponentSourcePile'
+            : step.from === 'player.hold'
+              ? 'hold'
         : step.from === 'player.drawPile'
           ? 'playerDrawPile'
           : step.from === 'opponent.drawPile'
@@ -1286,16 +1331,17 @@ export function mountBattlefield(host, {
       )
       publishPresentation(step.tied ? 'tie-reveal' : 'reveal', step.cardId)
     } else if (step.kind === 'transfer' || step.kind === 'burn') {
-      const reveal = currentEvent.reveals.find(({ cardId }) => cardId === step.cardId)
+      const stepKey = step.visualKey ?? step.cardId
+      const reveal = currentEvent.reveals.find((record) => runVisualKey(record) === stepKey)
       if (!reveal) throw new Error('Settlement step must reference a revealed card')
       releaseSettledVisuals()
-      const visual = ensureSettlementCard(step.cardId, reveal.suppliedBy)
+      const visual = ensureSettlementCard(stepKey, step.cardId, reveal.suppliedBy)
       startTween(
         visual,
         destinationZone(step.to),
         Object.freeze({ x: 0, y: 0, z: 0.14 }),
         durationMs,
-        step.kind === 'transfer' && step.cardId === currentDecisiveCardId
+        step.kind === 'transfer' && stepKey === currentDecisiveCardId
           ? PILE_SCALE_MODE
           : null,
       )

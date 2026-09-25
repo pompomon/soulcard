@@ -47,7 +47,7 @@ export function createAutoRevealCoordinator({ runController } = {}) {
         ) {
           return null
         }
-        return runController.revealOrContinue()
+        return runController.revealOrContinue({ autoChooseNormal: true })
       })
     },
     stop() {

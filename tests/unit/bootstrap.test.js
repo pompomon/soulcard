@@ -3,6 +3,7 @@ import test from 'node:test'
 import { bootstrap } from '../../src/app/bootstrap.js'
 import { createRunController } from '../../src/app/run-controller.js'
 import { createMatch } from '../../src/domain/match-machine.js'
+import { createCampaignRun } from '../../src/domain/campaign-machine.js'
 import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
 import { createSettingsRepository } from '../../src/persistence/settings-repository.js'
 
@@ -226,6 +227,78 @@ test('Start New creates, saves, and opens a playable baseline match', async (t) 
   assert.equal(saves.length, 2)
   assert.equal(saves[1].turn, 1)
 
+  await app.destroy()
+})
+
+test('Campaign starts a separately authored campaign run from the main menu', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const campaign = createCampaignRun({
+    runId: 'campaign-bootstrap',
+    seed: 41,
+    ruleset: BASELINE_RULESET,
+  })
+  const saves = []
+  const root = new FakeElement('div')
+  const app = bootstrap({
+    root,
+    runRepository: {
+      load: async () => ({ status: 'empty' }),
+      async save(run) {
+        saves.push(run)
+        return { status: 'saved', savedAt: '2026-09-25T04:00:00.000Z' }
+      },
+    },
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield: () => undefined,
+    newCampaignFactory: ({ ruleset }) => {
+      assert.equal(ruleset, BASELINE_RULESET)
+      return campaign
+    },
+    eventPlayerFactory: () => ({
+      present(run) {
+        return Promise.resolve({
+          status: run.pendingEvent === null ? 'synchronized' : 'completed',
+          eventId: run.pendingEvent?.id ?? null,
+          reason: null,
+        })
+      },
+      setPaused() {},
+      destroy() {},
+    }),
+  })
+  await app.ready
+
+  byAction(root, 'campaign').dispatch('click')
+
+  assert.equal(app.activeScreen, 'game')
+  assert.equal(app.runSnapshot.match.mode, 'campaign')
+  assert.equal(byAction(root, 'hold').hidden, false)
+  await waitFor(() => app.runSnapshot.saveStatus === 'saved')
+  assert.deepEqual(saves, [campaign])
+  assert.equal(byAction(root, 'reveal').disabled, false)
+
+  byAction(root, 'reveal').dispatch('click')
+  await waitFor(() => (
+    app.runSnapshot.match.machineState === 'awaitingHoldChoice'
+    && app.runSnapshot.saveStatus === 'saved'
+  ))
+  const normalChoice = byAction(root, 'campaign-normal')
+  assert.equal(normalChoice.hidden, false)
+  normalChoice.dispatch('click')
+  await waitFor(() => (
+    app.runSnapshot.match.turn === 1
+    && app.runSnapshot.saveStatus === 'saved'
+  ))
+  assert.equal(saves.length, 3)
   await app.destroy()
 })
 

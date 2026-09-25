@@ -1,6 +1,7 @@
 {
-  "saveSchemaVersion": 3,
+  "saveSchemaVersion": 4,
   "gameRulesVersion": 2,
+  "runType": "classic",
   "savedAt": "2026-09-21T08:05:00.000Z",
   "runId": "fixture-terminal",
   "rng": {

@@ -210,3 +210,143 @@ export function createEndOverlay({
     },
   }
 }
+
+export function createCampaignOverlay({
+  onChooseNormal,
+  onChooseHold,
+  onCapture,
+  onRetry,
+  onClaimReward,
+  onMainMenu,
+  onRestart,
+  onCancel,
+} = {}) {
+  for (const [name, callback] of Object.entries({
+    onChooseNormal,
+    onChooseHold,
+    onCapture,
+    onRetry,
+    onClaimReward,
+    onMainMenu,
+    onRestart,
+    onCancel,
+  })) {
+    assertCallback(callback, name)
+  }
+
+  const { element, panel } = createOverlay({
+    className: 'campaign-overlay',
+    labelId: 'campaign-overlay-title',
+  })
+  element.dataset.campaignOverlay = ''
+
+  const heading = document.createElement('h2')
+  heading.id = 'campaign-overlay-title'
+  const description = document.createElement('p')
+  description.className = 'campaign-overlay__description'
+  description.dataset.campaignDescription = ''
+  const targetHost = document.createElement('div')
+  targetHost.className = 'campaign-overlay__targets'
+  targetHost.dataset.holdTargets = ''
+  const status = document.createElement('p')
+  status.className = 'campaign-overlay__status game-overlay__status'
+  status.dataset.campaignStatus = ''
+  status.setAttribute('role', 'status')
+  status.setAttribute('aria-live', 'polite')
+  status.setAttribute('aria-atomic', 'true')
+
+  const actions = document.createElement('div')
+  actions.className = 'game-overlay__actions'
+  const buttons = {
+    normal: createButton('Reveal normal card', onChooseNormal, 'game-button game-button--primary'),
+    hold: createButton('Reveal held card', onChooseHold),
+    retry: createButton('Retry encounter', onRetry, 'game-button game-button--primary'),
+    reward: createButton('Claim reward', onClaimReward, 'game-button game-button--primary'),
+    main: createButton('Main Menu', onMainMenu, 'game-button game-button--primary'),
+    restart: createButton('Restart Campaign', onRestart),
+    cancel: createButton('Cancel', onCancel),
+  }
+  for (const [action, button] of Object.entries(buttons)) {
+    button.dataset.action = `campaign-${action}`
+    actions.append(button)
+  }
+  panel.append(heading, description, targetHost, status, actions)
+  element.append(panel)
+
+  function setMode(mode, snapshot, options) {
+    for (const button of Object.values(buttons)) button.hidden = true
+    if (typeof targetHost.replaceChildren === 'function') {
+      targetHost.replaceChildren()
+    } else if (Array.isArray(targetHost.children)) {
+      targetHost.children.length = 0
+    }
+    const match = snapshot.match
+    if (mode === 'hold-choice') {
+      heading.textContent = 'Choose your reveal'
+      description.textContent = match.holdChoice.candidate === null
+        ? 'The prepared pile is empty. Reveal the held card to continue.'
+        : match.hold === null
+          ? 'Reveal the prepared normal card.'
+          : 'Reveal the prepared normal card or use Hold.'
+      buttons.normal.hidden = false
+      buttons.normal.disabled = options.busy || match.holdChoice.candidate === null
+      buttons.hold.hidden = match.hold === null
+      buttons.hold.disabled = options.busy || match.hold === null
+    } else if (mode === 'hold-capture') {
+      heading.textContent = match.hold === null ? 'Capture into Hold' : 'Replace held card'
+      description.textContent = options.targets.length === 0
+        ? 'No player-owned card in your draw or won pile is eligible.'
+        : 'Choose a player-owned card from your current draw or won pile.'
+      for (const target of options.targets) {
+        const button = createButton(
+          target.label,
+          () => onCapture(target.instanceId),
+          'game-button campaign-overlay__target',
+        )
+        button.dataset.holdTarget = target.instanceId
+        button.disabled = options.busy
+        targetHost.append(button)
+      }
+      buttons.cancel.hidden = false
+      buttons.cancel.disabled = options.busy
+    } else if (mode === 'retry') {
+      heading.textContent = 'Encounter lost'
+      description.textContent = `${match.encounter.name} dealt ${match.encounter.damage} damage. ${match.health} health remains.`
+      buttons.retry.hidden = false
+      buttons.retry.disabled = options.busy
+    } else if (mode === 'reward') {
+      heading.textContent = 'Encounter won'
+      if (match.pendingReward.type === 'add-aces') {
+        description.textContent = 'Reward: add the Spade and Club Aces to your campaign deck.'
+      } else {
+        description.textContent = `Reward: restore ${match.pendingReward.amount} health, up to ${match.maxHealth}.`
+      }
+      buttons.reward.hidden = false
+      buttons.reward.disabled = options.busy
+    } else if (mode === 'campaign-end') {
+      heading.textContent = match.outcome.result === 'victory' ? 'Campaign victory' : 'Campaign defeat'
+      description.textContent = match.outcome.result === 'victory'
+        ? 'You defeated all three campaign opponents.'
+        : 'Your health was depleted. Start a new campaign to try again.'
+      buttons.main.hidden = false
+      buttons.restart.hidden = false
+      buttons.main.disabled = options.busy
+      buttons.restart.disabled = options.busy
+    }
+  }
+
+  return {
+    element,
+    update(snapshot, {
+      mode,
+      targets = [],
+      busy = false,
+      error = null,
+    } = {}) {
+      setMode(mode, snapshot, { targets, busy })
+      status.textContent = error
+        ?? (snapshot.saveStatus === 'saving' ? 'Saving campaign…' : saveStatusText(snapshot))
+    },
+    teardown() {},
+  }
+}

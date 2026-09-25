@@ -22,20 +22,8 @@ function allObjects(value) {
   return [value, ...Object.values(value).flatMap(allObjects)]
 }
 
-test('version 1 active saves migrate through each step without rewriting its event', () => {
-  const legacy = fixture('run-save-v1.json')
-  const before = clone(legacy)
-  const migrated = migrateRunSave(legacy)
-
-  assert.deepEqual(migrated, fixture('run-save-legacy-v3.json'))
-  assert.deepEqual(legacy, before)
-  assert.ok(allObjects(migrated).every(Object.isFrozen))
-  assert.notEqual(migrated, legacy)
-  assert.notEqual(migrated.match, legacy.match)
-})
-
-test('current saves are validated, cloned, and frozen without migration', () => {
-  const current = fixture('run-save-v3.json')
+test('current schema saves are validated, cloned, and frozen', () => {
+  const current = fixture('run-save-v4.json')
   const migrated = migrateRunSave(current)
 
   assert.deepEqual(migrated, current)
@@ -43,83 +31,42 @@ test('current saves are validated, cloned, and frozen without migration', () => 
   assert.ok(allObjects(migrated).every(Object.isFrozen))
 })
 
-test('version 2 active and terminal saves migrate without changing domain data', () => {
-  for (const [legacyName, currentName] of [
-    ['run-save-v2.json', 'run-save-legacy-v3.json'],
-    ['run-save-terminal-v2.json', 'run-save-terminal-legacy-v3.json'],
+test('schema versions 1 through 3 are deliberately quarantined without migration', () => {
+  for (const [name, version] of [
+    ['run-save-v1.json', 1],
+    ['run-save-v2.json', 2],
+    ['run-save-v2.json', 3],
   ]) {
-    const legacy = fixture(legacyName)
-    const migrated = migrateRunSave(legacy)
-
-    assert.deepEqual(migrated, fixture(currentName))
-    assert.equal(migrated.saveSchemaVersion, 3)
-    assert.ok(allObjects(migrated).every(Object.isFrozen))
+    const legacy = fixture(name)
+    legacy.saveSchemaVersion = version
+    assert.throws(
+      () => migrateRunSave(legacy),
+      (error) => error instanceof UnsupportedSaveVersionError && error.version === version,
+    )
   }
 })
 
-test('unknown, skipped, malformed, and incompatible versions are rejected', () => {
-  const current = fixture('run-save-v3.json')
-  const invalidVersions = [
-    { ...clone(current), saveSchemaVersion: 4 },
-    { ...clone(current), saveSchemaVersion: 20 },
-  ]
-  for (const save of invalidVersions) {
-    assert.throws(() => migrateRunSave(save), UnsupportedSaveVersionError)
-  }
-
+test('future, malformed, and incompatible current versions are rejected', () => {
+  const current = fixture('run-save-v4.json')
+  assert.throws(
+    () => migrateRunSave({ ...clone(current), saveSchemaVersion: 20 }),
+    UnsupportedSaveVersionError,
+  )
   for (const save of [
     {},
     { ...clone(current), saveSchemaVersion: 0 },
     { ...clone(current), saveSchemaVersion: 1.5 },
-    { ...clone(current), saveSchemaVersion: '1' },
+    { ...clone(current), saveSchemaVersion: '4' },
   ]) {
     assert.throws(() => migrateRunSave(save), TypeError)
   }
-
   assert.throws(
     () => migrateRunSave({ ...clone(current), gameRulesVersion: 1 }),
     UnsupportedGameRulesVersionError,
   )
-  const legacy = fixture('run-save-v1.json')
-  assert.throws(
-    () => migrateRunSave({ ...clone(legacy), gameRulesVersion: 1 }),
-    UnsupportedGameRulesVersionError,
-  )
-  assert.throws(
-    () => migrateRunSave({ ...clone(legacy), gameRulesVersion: '2' }),
-    /gameRulesVersion must be a safe integer/,
-  )
 })
 
-test('legacy migration rejects ambiguous terminal and shape variants', () => {
-  const terminal = fixture('run-save-terminal-v2.json')
-  terminal.saveSchemaVersion = 1
-  delete terminal.match.outcome
-  assert.throws(
-    () => migrateRunSave(terminal),
-    /version 1 supports only active ready matches/,
-  )
-
-  const legacyWithOutcome = fixture('run-save-v1.json')
-  legacyWithOutcome.match.outcome = null
-  assert.throws(() => migrateRunSave(legacyWithOutcome), /must contain only/)
-
-  const incomplete = fixture('run-save-v1.json')
-  incomplete.match.sourceDeck.pop()
-  assert.throws(() => migrateRunSave(incomplete), /all 52 cards/)
-})
-
-test('version 2 rejects forged paused records instead of treating them as current saves', () => {
-  const paused = fixture('run-save-paused-v3.json')
-  paused.saveSchemaVersion = 2
-
-  assert.throws(
-    () => migrateRunSave(paused),
-    /version 2 does not support paused matches/,
-  )
-})
-
-test('migration rejects accessors without invoking legacy data', () => {
+test('legacy quarantine does not inspect or invoke nested accessors', () => {
   const legacy = fixture('run-save-v1.json')
   let invoked = false
   Object.defineProperty(legacy.match, 'sourceDeck', {
@@ -130,6 +77,6 @@ test('migration rejects accessors without invoking legacy data', () => {
     },
   })
 
-  assert.throws(() => migrateRunSave(legacy), /JSON-compatible data/)
+  assert.throws(() => migrateRunSave(legacy), UnsupportedSaveVersionError)
   assert.equal(invoked, false)
 })

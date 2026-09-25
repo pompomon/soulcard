@@ -1,4 +1,8 @@
 import { compareCards, getCard, isCardId } from './cards.js'
+import {
+  CAMPAIGN_EVENT_VERSION,
+  validateCampaignEvent,
+} from './campaign-events.js'
 
 export const EVENT_VERSION = 4
 
@@ -305,6 +309,9 @@ function deepFreeze(value) {
 
 export function validateCommittedEvent(event) {
   assertPlainObject(event, 'event')
+  if (event.eventVersion === CAMPAIGN_EVENT_VERSION) {
+    return validateCampaignEvent(event)
+  }
   const typeDescriptor = Object.getOwnPropertyDescriptor(event, 'type')
   if (!typeDescriptor?.enumerable || !Object.hasOwn(typeDescriptor, 'value')) {
     throw new TypeError('event.type must be JSON-compatible data')
