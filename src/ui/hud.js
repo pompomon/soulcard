@@ -517,7 +517,13 @@ export function createGameScreen({
     }
   }
   const handleCampaignChoice = (choice) => {
-    if (overlayAction !== null) return
+    if (
+      overlayAction !== null
+      || latestSnapshot?.saveStatus !== 'saved'
+      || latestSnapshot?.match?.machineState !== 'awaitingHoldChoice'
+    ) {
+      return
+    }
     overlayAction = `campaign-${choice}`
     overlayError = null
     revealActionPending = true
@@ -551,6 +557,42 @@ export function createGameScreen({
         overlayAction = null
         revealActionPending = false
         overlayError = 'The reveal choice could not be completed. Try again.'
+        renderHud()
+      })
+  }
+  const handleCampaignSaveRetry = () => {
+    if (
+      overlayAction !== null
+      || latestSnapshot?.saveStatus !== 'failed'
+      || latestSnapshot?.match?.machineState !== 'awaitingHoldChoice'
+    ) {
+      return
+    }
+    overlayAction = 'campaign-save'
+    overlayError = null
+    renderHud()
+    let save
+    try {
+      save = runController?.saveStable()
+    } catch {
+      overlayAction = null
+      overlayError = 'The Hold choice could not be saved. Try again.'
+      renderHud()
+      return
+    }
+    Promise.resolve(save)
+      .then((result) => {
+        if (destroyed) return
+        overlayAction = null
+        overlayError = result?.status === 'saved'
+          ? null
+          : 'The Hold choice could not be saved. Try again.'
+        renderHud()
+      })
+      .catch(() => {
+        if (destroyed) return
+        overlayAction = null
+        overlayError = 'The Hold choice could not be saved. Try again.'
         renderHud()
       })
   }
@@ -623,6 +665,7 @@ export function createGameScreen({
   const campaignOverlay = createCampaignOverlay({
     onChooseNormal: () => handleCampaignChoice('normal'),
     onChooseHold: () => handleCampaignChoice('hold'),
+    onRetrySave: handleCampaignSaveRetry,
     onCapture: handleCampaignCapture,
     onRetry: () => handleCampaignTransition('retry'),
     onClaimReward: () => handleCampaignTransition('reward'),

@@ -334,6 +334,42 @@ test('scripted rewards add two new player Aces then restore health up to five', 
   assert.equal(run.deckLayout.length, 28)
 })
 
+test('campaign validation binds transition states to their encounter outcomes', () => {
+  const awaitingReward = clone(winEncounter(createCampaignRun({
+    runId: 'campaign-invalid-reward-outcome',
+    seed: 4,
+    ruleset: BASELINE_RULESET,
+  })))
+  awaitingReward.encounter.outcome = {
+    result: 'win',
+    winner: 'opponent',
+    reason: 'playerUnableToReveal',
+  }
+  awaitingReward.pendingEvent = null
+  awaitingReward.stateFingerprint = createCampaignStateFingerprint(awaitingReward)
+  assert.throws(
+    () => validateCampaignState(awaitingReward),
+    /awaitingReward requires a player encounter win/,
+  )
+
+  const awaitingRetry = clone(loseEncounter(createCampaignRun({
+    runId: 'campaign-invalid-retry-outcome',
+    seed: 4,
+    ruleset: BASELINE_RULESET,
+  })))
+  awaitingRetry.encounter.outcome = {
+    result: 'win',
+    winner: 'player',
+    reason: 'opponentUnableToReveal',
+  }
+  awaitingRetry.pendingEvent = null
+  awaitingRetry.stateFingerprint = createCampaignStateFingerprint(awaitingRetry)
+  assert.throws(
+    () => validateCampaignState(awaitingRetry),
+    /awaitingRetry requires an opponent win or draw/,
+  )
+})
+
 test('encounter damage retries while positive and ends at zero health', () => {
   let run = createCampaignRun({
     runId: 'campaign-health',

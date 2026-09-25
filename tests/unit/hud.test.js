@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createRunController } from '../../src/app/run-controller.js'
+import { createCampaignRun } from '../../src/domain/campaign-machine.js'
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { createGameScreen } from '../../src/ui/hud.js'
@@ -498,6 +499,81 @@ test('Save & Main Menu retries failed persistence without leaving pause', async 
   await flushMicrotasks()
   assert.equal(mainMenuCalls, 1)
   assert.equal(saveCalls, 3)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Campaign Hold choices stay blocked until the decision boundary is saved', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  let saveCalls = 0
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      async save() {
+        saveCalls += 1
+        if (saveCalls === 1) {
+          return {
+            status: 'storage-unavailable',
+            operation: 'save',
+            reason: 'quota-exceeded',
+          }
+        }
+        return {
+          status: 'saved',
+          savedAt: '2026-09-25T06:00:00.000Z',
+        }
+      },
+    },
+    initialMatch: createCampaignRun({
+      runId: 'hud-campaign-save-boundary',
+      seed: 3,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+  })
+  const overlay = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'campaignOverlay'),
+  )
+  const normal = byAction(screen, 'campaign-normal')
+  const retrySave = byAction(screen, 'campaign-save')
+
+  byAction(screen, 'reveal').dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+
+  assert.equal(controller.currentMatch.machineState, 'awaitingHoldChoice')
+  assert.equal(controller.getSnapshot().saveStatus, 'failed')
+  assert.equal(overlay.hidden, false)
+  assert.equal(normal.disabled, true)
+  assert.equal(retrySave.hidden, false)
+  normal.dispatch('click')
+  assert.equal(controller.currentMatch.machineState, 'awaitingHoldChoice')
+  assert.equal(controller.currentMatch.turn, 0)
+  assert.throws(
+    () => controller.chooseHoldChoice('normal'),
+    /must be saved before it can be resolved/,
+  )
+
+  retrySave.dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+
+  assert.equal(saveCalls, 2)
+  assert.equal(controller.getSnapshot().saveStatus, 'saved')
+  assert.equal(overlay.hidden, false)
+  assert.equal(normal.disabled, false)
+  assert.equal(retrySave.hidden, true)
 
   screen.teardown()
   await controller.destroy()

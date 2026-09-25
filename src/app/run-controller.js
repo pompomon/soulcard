@@ -437,6 +437,9 @@ export function createRunController({
     if (match === null || !isCampaignState(match)) {
       throw new Error('No active campaign is available')
     }
+    if (saveStatus !== 'saved') {
+      throw new Error('The Campaign Hold decision must be saved before it can be resolved')
+    }
     const transition = chooseCampaignReveal(match, choice)
     markMatch(transition.match)
     const save = queueSave(transition.match)

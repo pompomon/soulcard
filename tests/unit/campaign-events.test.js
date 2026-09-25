@@ -106,3 +106,45 @@ test('campaign event validation rejects duplicate instances and mismatched origi
   wrongOrigin.reveals[0].from = 'opponent.sourcePile'
   assert.throws(() => validateCampaignEvent(wrongOrigin), /supplied side/)
 })
+
+test('campaign event validation rejects array index accessors without invoking them', () => {
+  const event = structuredClone(createCampaignClashSettledEvent({
+    runId: 'campaign-accessor',
+    turn: 1,
+    encounterIndex: 0,
+    encounterAttempt: 1,
+    winner: 'player',
+    reveals: [
+      {
+        instanceId: 'player-1',
+        cardId: 'c-KD',
+        suppliedBy: 'player',
+        from: 'player.sourcePile',
+      },
+      {
+        instanceId: 'opponent-1',
+        cardId: 'c-QS',
+        suppliedBy: 'opponent',
+        from: 'opponent.sourcePile',
+      },
+    ],
+    transfers: [
+      { instanceId: 'player-1', to: 'player.wonPile' },
+      { instanceId: 'opponent-1', to: 'player.wonPile' },
+    ],
+    burned: [],
+    stateFingerprint: 'fingerprint',
+  }))
+  const firstReveal = event.reveals[0]
+  let invoked = false
+  Object.defineProperty(event.reveals, '0', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return firstReveal
+    },
+  })
+
+  assert.throws(() => validateCampaignEvent(event), /dense array/)
+  assert.equal(invoked, false)
+})

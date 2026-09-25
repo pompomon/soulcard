@@ -198,6 +198,18 @@ test('schema validation rejects non-JSON containers and accessors without invoki
   })
   assert.throws(() => validateRunSave(accessor), /JSON-compatible data/)
   assert.equal(invoked, false)
+
+  const indexAccessor = fixture('run-save-v4.json')
+  const firstCard = indexAccessor.match.sourceDeck[0]
+  Object.defineProperty(indexAccessor.match.sourceDeck, '0', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return firstCard
+    },
+  })
+  assert.throws(() => validateRunSave(indexAccessor), /dense array/)
+  assert.equal(invoked, false)
 })
 
 test('schema validation rejects hidden fields on saved reveal records', () => {

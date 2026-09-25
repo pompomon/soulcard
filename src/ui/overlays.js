@@ -214,6 +214,7 @@ export function createEndOverlay({
 export function createCampaignOverlay({
   onChooseNormal,
   onChooseHold,
+  onRetrySave,
   onCapture,
   onRetry,
   onClaimReward,
@@ -224,6 +225,7 @@ export function createCampaignOverlay({
   for (const [name, callback] of Object.entries({
     onChooseNormal,
     onChooseHold,
+    onRetrySave,
     onCapture,
     onRetry,
     onClaimReward,
@@ -260,6 +262,7 @@ export function createCampaignOverlay({
   const buttons = {
     normal: createButton('Reveal normal card', onChooseNormal, 'game-button game-button--primary'),
     hold: createButton('Reveal held card', onChooseHold),
+    save: createButton('Retry save', onRetrySave, 'game-button game-button--primary'),
     retry: createButton('Retry encounter', onRetry, 'game-button game-button--primary'),
     reward: createButton('Claim reward', onClaimReward, 'game-button game-button--primary'),
     main: createButton('Main Menu', onMainMenu, 'game-button game-button--primary'),
@@ -282,6 +285,7 @@ export function createCampaignOverlay({
     }
     const match = snapshot.match
     if (mode === 'hold-choice') {
+      const boundarySaved = snapshot.saveStatus === 'saved'
       heading.textContent = 'Choose your reveal'
       description.textContent = match.holdChoice.candidate === null
         ? 'The prepared pile is empty. Reveal the held card to continue.'
@@ -289,9 +293,15 @@ export function createCampaignOverlay({
           ? 'Reveal the prepared normal card.'
           : 'Reveal the prepared normal card or use Hold.'
       buttons.normal.hidden = false
-      buttons.normal.disabled = options.busy || match.holdChoice.candidate === null
+      buttons.normal.disabled = (
+        options.busy
+        || !boundarySaved
+        || match.holdChoice.candidate === null
+      )
       buttons.hold.hidden = match.hold === null
-      buttons.hold.disabled = options.busy || match.hold === null
+      buttons.hold.disabled = options.busy || !boundarySaved || match.hold === null
+      buttons.save.hidden = snapshot.saveStatus !== 'failed'
+      buttons.save.disabled = options.busy
     } else if (mode === 'hold-capture') {
       heading.textContent = match.hold === null ? 'Capture into Hold' : 'Replace held card'
       description.textContent = options.targets.length === 0

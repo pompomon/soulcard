@@ -55,6 +55,12 @@ function assertDenseArray(value, name, { nonempty = false } = {}) {
   ) {
     throw new TypeError(`${name} must be a dense array`)
   }
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
+    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
+      throw new TypeError(`${name} must be a dense array`)
+    }
+  }
 }
 
 function assertInstanceId(value, name) {

@@ -503,6 +503,29 @@ function assertCampaignOutcome(run) {
   }
 }
 
+function assertEncounterTransition(run) {
+  const outcome = run.encounter.outcome
+  const playerWon = outcome?.result === 'win' && outcome.winner === 'player'
+  if (['ready', 'paused', 'awaitingHoldChoice'].includes(run.machineState)) {
+    if (outcome !== null) {
+      throw new Error('An active campaign decision boundary cannot have an encounter outcome')
+    }
+  } else if (run.machineState === 'awaitingReward') {
+    if (!playerWon) {
+      throw new Error('awaitingReward requires a player encounter win')
+    }
+  } else if (run.machineState === 'awaitingRetry') {
+    if (outcome === null || playerWon) {
+      throw new Error('awaitingRetry requires an opponent win or draw')
+    }
+  } else if (
+    run.machineState === 'ended'
+    && (run.outcome.result === 'victory') !== playerWon
+  ) {
+    throw new Error('The terminal encounter outcome must match the campaign outcome')
+  }
+}
+
 function assertPendingReward(run) {
   if (run.machineState !== 'awaitingReward') {
     if (run.pendingReward !== null) {
@@ -563,6 +586,7 @@ export function validateCampaignState(run) {
   assertHoldChoice(run)
   assertPendingReward(run)
   assertCampaignOutcome(run)
+  assertEncounterTransition(run)
   assertPendingEvent(run, instances)
   if (typeof run.stateFingerprint !== 'string' || run.stateFingerprint.length === 0) {
     throw new TypeError('campaign.stateFingerprint must be a nonempty string')
