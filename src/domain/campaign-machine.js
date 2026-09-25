@@ -529,6 +529,13 @@ function assertPendingEvent(run, instances) {
     throw new Error('A campaign draw event requires a drawn encounter outcome')
   }
   if (
+    encounterOutcome === null
+    && run.pendingEvent.type === 'clashSettled'
+    && run.pendingEvent.reveals.length % 2 !== 0
+  ) {
+    throw new Error('A nonterminal campaign event requires complete reveal rounds')
+  }
+  if (
     encounterOutcome?.result === 'draw'
     && run.pendingEvent.type !== 'clashDrawn'
   ) {
@@ -539,9 +546,18 @@ function assertPendingEvent(run, instances) {
     && (
       run.pendingEvent.type !== 'clashSettled'
       || run.pendingEvent.winner !== encounterOutcome.winner
+      || run.pendingEvent.reveals.length % 2 !== 1
     )
   ) {
-    throw new Error('A won campaign encounter requires a matching settled event')
+    throw new Error('A won campaign encounter requires a matching settled event with terminal inability')
+  }
+  if (
+    encounterOutcome?.result === 'win'
+    && encounterOutcome.winner === 'opponent'
+    && run.hold !== null
+    && run.pendingEvent.reveals.length === 1
+  ) {
+    throw new Error('A first-round player inability cannot bypass occupied Hold')
   }
   for (const reveal of run.pendingEvent.reveals) {
     if (instances.get(reveal.instanceId)?.cardId !== reveal.cardId) {

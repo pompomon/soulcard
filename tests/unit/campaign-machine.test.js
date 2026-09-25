@@ -16,6 +16,7 @@ import {
   CAMPAIGN_ENCOUNTERS,
   CAMPAIGN_STARTER_CARD_IDS,
 } from '../../src/domain/campaign-content.js'
+import { CAMPAIGN_EVENT_VERSION } from '../../src/domain/campaign-events.js'
 import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
 import { createRng, shuffle } from '../../src/domain/rng.js'
 
@@ -534,6 +535,111 @@ test('campaign decision and terminal boundaries enforce their pending events', (
   assert.throws(
     () => validateCampaignState(mismatch),
     /matching settled event/,
+  )
+})
+
+test('campaign pending events bind terminal reveal parity and Hold availability', () => {
+  const forgedTerminal = clone(resolvePrepared(createCampaignRun({
+    runId: 'campaign-forged-terminal',
+    seed: 3,
+    ruleset: BASELINE_RULESET,
+  })).match)
+  assert.equal(forgedTerminal.pendingEvent.winner, 'player')
+  assert.equal(forgedTerminal.pendingEvent.reveals.length % 2, 0)
+  forgedTerminal.encounter.zones.player.wonPile.push(
+    ...forgedTerminal.encounter.zones.opponentSourcePile.splice(0),
+    ...forgedTerminal.encounter.zones.opponent.drawPile.splice(0),
+    ...forgedTerminal.encounter.zones.opponent.wonPile.splice(0),
+  )
+  forgedTerminal.machineState = 'awaitingReward'
+  forgedTerminal.encounter.outcome = {
+    result: 'win',
+    winner: 'player',
+    reason: 'opponentUnableToReveal',
+  }
+  forgedTerminal.pendingReward = clone(CAMPAIGN_ENCOUNTERS[0].reward)
+  refingerprint(forgedTerminal)
+  assert.throws(
+    () => validateCampaignState(forgedTerminal),
+    /terminal inability/,
+  )
+
+  const forgedNonterminal = clone(winEncounter(createCampaignRun({
+    runId: 'campaign-forged-nonterminal',
+    seed: 3,
+    ruleset: BASELINE_RULESET,
+  })))
+  assert.equal(forgedNonterminal.pendingEvent.reveals.length % 2, 1)
+  forgedNonterminal.machineState = 'ready'
+  forgedNonterminal.encounter.outcome = null
+  forgedNonterminal.pendingReward = null
+  refingerprint(forgedNonterminal)
+  assert.throws(
+    () => validateCampaignState(forgedNonterminal),
+    /complete reveal rounds/,
+  )
+
+  let heldRun = resolvePrepared(createCampaignRun({
+    runId: 'campaign-hold-bypass',
+    seed: 3,
+    ruleset: BASELINE_RULESET,
+  })).match
+  heldRun = captureCampaignHold(
+    heldRun,
+    getEligibleHoldTargets(heldRun)[0].instanceId,
+  )
+  const holdBypass = mutableReady(heldRun)
+  const playerIds = holdBypass.cards
+    .filter(({ campaignOwner, instanceId }) => (
+      campaignOwner === 'player' && instanceId !== holdBypass.hold
+    ))
+    .map(({ instanceId }) => instanceId)
+  const opponentIds = holdBypass.cards
+    .filter(({ campaignOwner }) => campaignOwner === 'opponent')
+    .map(({ instanceId }) => instanceId)
+  const opponentReveal = opponentIds.shift()
+  holdBypass.encounter.zones = emptyZones()
+  holdBypass.encounter.zones.opponentSourcePile.push(opponentReveal)
+  holdBypass.encounter.zones.opponent.wonPile.push(...playerIds, ...opponentIds)
+  holdBypass.encounter.supplyMode = { player: 'source', opponent: 'source' }
+  fingerprint(holdBypass)
+
+  holdBypass.encounter.zones.opponentSourcePile.shift()
+  holdBypass.encounter.zones.opponent.wonPile.push(opponentReveal)
+  holdBypass.turn += 1
+  holdBypass.health -= holdBypass.encounter.damage
+  holdBypass.machineState = 'awaitingRetry'
+  holdBypass.encounter.outcome = {
+    result: 'win',
+    winner: 'opponent',
+    reason: 'playerUnableToReveal',
+  }
+  holdBypass.pendingEvent = {
+    eventVersion: CAMPAIGN_EVENT_VERSION,
+    id: `${holdBypass.runId}:clash-${holdBypass.turn}`,
+    type: 'clashSettled',
+    turn: holdBypass.turn,
+    encounterIndex: holdBypass.encounterIndex,
+    encounterAttempt: holdBypass.encounterAttempt,
+    winner: 'opponent',
+    reveals: [{
+      instanceId: opponentReveal,
+      cardId: holdBypass.cards.find(({ instanceId }) => instanceId === opponentReveal).cardId,
+      suppliedBy: 'opponent',
+      from: 'opponent.sourcePile',
+    }],
+    transfers: [{
+      instanceId: opponentReveal,
+      to: 'opponent.wonPile',
+    }],
+    burned: [],
+    stateFingerprint: 'pending',
+    pendingPresentation: 'settlement-v1',
+  }
+  refingerprint(holdBypass)
+  assert.throws(
+    () => validateCampaignState(holdBypass),
+    /cannot bypass occupied Hold/,
   )
 })
 
