@@ -8,7 +8,7 @@ support follows the adventure work as milestone 21.6 rather than blocking Campai
 
 | Status | Milestone | Depends on | Playable outcome |
 | --- | --- | --- | --- |
-| [ ] | 21.1 Campaign Duel | 20 | Three retryable encounters with health, a persistent deck, and Hold |
+| [x] | 21.1 Campaign Duel | 20 | Three retryable encounters with health, a persistent deck, and Hold |
 | [ ] | 21.2 Reward Drafts and Hold Upgrades | 21.1 | Build-changing rewards and the opponent-reveal Hold boon |
 | [ ] | 21.3 Branching Expedition | 21.2 | A route with combat, shops, and events |
 | [ ] | 21.4 Encounter Archetypes and Elite Ladder | 21.3 | Elites, rest nodes, and a boss campaign |
@@ -172,6 +172,14 @@ three-encounter expedition.
 
 Completion remains gated by roadmap milestone 20 even when the 21.1 implementation and
 its acceptance checks are present.
+
+**Completion evidence:** roadmap milestone 20 is complete. The Main-menu **Campaign**
+button enters Campaign Duel through the existing Game screen, and focused domain,
+persistence, controller, HUD, and bootstrap tests cover the acceptance matrix above.
+The text-only browser fixture at
+`/tests/browser/milestone-21-1-campaign.html` exercises that UI entry, a saved normal
+choice, Hold capture, and a saved held-card choice while reporting one canvas, semantic
+controls, completed presentations, and relevant console errors.
 
 ## 21.2 Reward Drafts and Hold Upgrades
 

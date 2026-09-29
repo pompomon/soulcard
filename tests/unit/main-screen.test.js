@@ -107,6 +107,10 @@ test('Main reports restore, recovery, session-only, and resumable states', (t) =
   assert.match(status.textContent, /Checking/)
   assert.equal(resume.disabled, true)
   assert.equal(discard.hidden, true)
+  assert.equal(campaign.tagName, 'BUTTON')
+  assert.equal(campaign.type, 'button')
+  assert.equal(campaign.textContent, 'Campaign')
+  assert.equal(campaign.disabled, false)
   campaign.dispatch('click')
   assert.equal(campaigns, 1)
 

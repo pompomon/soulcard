@@ -16,6 +16,14 @@ npm run dev
 
 Build the production site with `npm run build`; serve it with `npm run preview`.
 
+## Campaign Duel manual verification
+
+Run `npm run dev`, open the reported local URL, and choose **Campaign** from Main.
+That native button is the manual entry point for the three-encounter Campaign Duel in
+the existing Game screen. The deterministic browser acceptance fixture is available at
+`/tests/browser/milestone-21-1-campaign.html`; it reports its canvas, semantic Hold
+choices, presentation states, and console errors as text.
+
 ## Texture cache ownership
 
 Keep an acquired texture lease while a material references its texture. Release it only
