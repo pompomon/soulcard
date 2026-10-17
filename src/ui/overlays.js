@@ -211,13 +211,58 @@ export function createEndOverlay({
   }
 }
 
+function clearChildren(element) {
+  if (typeof element.replaceChildren === 'function') {
+    element.replaceChildren()
+  } else if (Array.isArray(element.children)) {
+    element.children.length = 0
+  }
+}
+
+function appendLineSection(host, title, lines, { ordered = false, emptyText = null } = {}) {
+  const section = document.createElement('section')
+  section.className = 'campaign-overlay__section'
+  const heading = document.createElement('h3')
+  heading.className = 'campaign-overlay__section-title'
+  heading.textContent = title
+  section.append(heading)
+  if (lines.length === 0 && emptyText !== null) {
+    const empty = document.createElement('p')
+    empty.className = 'campaign-overlay__line'
+    empty.textContent = emptyText
+    section.append(empty)
+  } else {
+    const list = document.createElement(ordered ? 'ol' : 'ul')
+    list.className = 'campaign-overlay__lines'
+    for (const line of lines) {
+      const item = document.createElement('li')
+      item.textContent = line
+      list.append(item)
+    }
+    section.append(list)
+  }
+  host.append(section)
+}
+
+function choiceDescription(match) {
+  if (match.holdChoice.candidate === null) {
+    return 'The prepared pile is empty. Reveal the held card to continue.'
+  }
+  return match.hold === null
+    ? 'Reveal the prepared normal card.'
+    : 'Reveal the prepared normal card or use Hold.'
+}
+
 export function createCampaignOverlay({
   onChooseNormal,
   onChooseHold,
   onRetrySave,
   onCapture,
   onRetry,
-  onClaimReward,
+  onChooseOffer,
+  onChooseTarget,
+  onBack,
+  onClose,
   onMainMenu,
   onRestart,
   onCancel,
@@ -228,7 +273,10 @@ export function createCampaignOverlay({
     onRetrySave,
     onCapture,
     onRetry,
-    onClaimReward,
+    onChooseOffer,
+    onChooseTarget,
+    onBack,
+    onClose,
     onMainMenu,
     onRestart,
     onCancel,
@@ -247,9 +295,12 @@ export function createCampaignOverlay({
   const description = document.createElement('p')
   description.className = 'campaign-overlay__description'
   description.dataset.campaignDescription = ''
-  const targetHost = document.createElement('div')
-  targetHost.className = 'campaign-overlay__targets'
-  targetHost.dataset.holdTargets = ''
+  const choiceHost = document.createElement('div')
+  choiceHost.className = 'campaign-overlay__targets'
+  choiceHost.dataset.campaignChoices = ''
+  const detailHost = document.createElement('div')
+  detailHost.className = 'campaign-overlay__details'
+  detailHost.dataset.campaignDetails = ''
   const status = document.createElement('p')
   status.className = 'campaign-overlay__status game-overlay__status'
   status.dataset.campaignStatus = ''
@@ -264,7 +315,8 @@ export function createCampaignOverlay({
     hold: createButton('Reveal held card', onChooseHold),
     save: createButton('Retry save', onRetrySave, 'game-button game-button--primary'),
     retry: createButton('Retry encounter', onRetry, 'game-button game-button--primary'),
-    reward: createButton('Claim reward', onClaimReward, 'game-button game-button--primary'),
+    back: createButton('Back', onBack),
+    close: createButton('Close', onClose, 'game-button game-button--primary'),
     main: createButton('Main Menu', onMainMenu, 'game-button game-button--primary'),
     restart: createButton('Restart Campaign', onRestart),
     cancel: createButton('Cancel', onCancel),
@@ -273,25 +325,22 @@ export function createCampaignOverlay({
     button.dataset.action = `campaign-${action}`
     actions.append(button)
   }
-  panel.append(heading, description, targetHost, status, actions)
+  panel.append(heading, description, choiceHost, detailHost, status, actions)
   element.append(panel)
 
   function setMode(mode, snapshot, options) {
     for (const button of Object.values(buttons)) button.hidden = true
-    if (typeof targetHost.replaceChildren === 'function') {
-      targetHost.replaceChildren()
-    } else if (Array.isArray(targetHost.children)) {
-      targetHost.children.length = 0
-    }
+    clearChildren(choiceHost)
+    clearChildren(detailHost)
     const match = snapshot.match
-    if (mode === 'hold-choice') {
-      const boundarySaved = snapshot.saveStatus === 'saved'
+    const view = options.view
+    const boundarySaved = snapshot.saveStatus === 'saved'
+    if (mode === 'hold-choice' || mode === 'informed-choice') {
       heading.textContent = 'Choose your reveal'
-      description.textContent = match.holdChoice.candidate === null
-        ? 'The prepared pile is empty. Reveal the held card to continue.'
-        : match.hold === null
-          ? 'Reveal the prepared normal card.'
-          : 'Reveal the prepared normal card or use Hold.'
+      description.textContent = choiceDescription(match)
+      if (mode === 'informed-choice') {
+        appendLineSection(detailHost, 'Hold Insight', view.lines)
+      }
       buttons.normal.hidden = false
       buttons.normal.disabled = (
         options.busy
@@ -315,7 +364,7 @@ export function createCampaignOverlay({
         )
         button.dataset.holdTarget = target.instanceId
         button.disabled = options.busy
-        targetHost.append(button)
+        choiceHost.append(button)
       }
       buttons.cancel.hidden = false
       buttons.cancel.disabled = options.busy
@@ -324,19 +373,70 @@ export function createCampaignOverlay({
       description.textContent = `${match.encounter.name} dealt ${match.encounter.damage} damage. ${match.health} health remains.`
       buttons.retry.hidden = false
       buttons.retry.disabled = options.busy
-    } else if (mode === 'reward') {
+    } else if (mode === 'reward-draft') {
       heading.textContent = 'Encounter won'
-      if (match.pendingReward.type === 'add-aces') {
-        description.textContent = 'Reward: add the Spade and Club Aces to your campaign deck.'
-      } else {
-        description.textContent = `Reward: restore ${match.pendingReward.amount} health, up to ${match.maxHealth}.`
+      description.textContent = boundarySaved
+        ? 'Choose one reward before the next encounter.'
+        : 'Rewards can be chosen once this draft is saved.'
+      for (const offer of view.offers) {
+        const item = document.createElement('div')
+        item.className = 'campaign-offer'
+        const button = createButton(
+          offer.title,
+          () => onChooseOffer(offer.offerId),
+          'game-button campaign-overlay__target campaign-offer__button',
+        )
+        button.dataset.rewardOffer = offer.offerId
+        button.disabled = options.busy || !boundarySaved || !offer.available
+        const detail = document.createElement('p')
+        detail.className = 'campaign-offer__detail'
+        detail.id = `campaign-offer-${offer.offerId}-detail`
+        detail.textContent = offer.detail
+        button.setAttribute('aria-describedby', detail.id)
+        item.append(button, detail)
+        choiceHost.append(item)
       }
-      buttons.reward.hidden = false
-      buttons.reward.disabled = options.busy
+      appendLineSection(detailHost, 'Active modifiers', view.modifiers)
+      buttons.save.hidden = snapshot.saveStatus !== 'failed'
+      buttons.save.disabled = options.busy
+    } else if (mode === 'reward-target') {
+      heading.textContent = view.heading
+      description.textContent = view.description
+      for (const target of view.targets) {
+        const button = createButton(
+          target.label,
+          () => onChooseTarget(target.instanceId),
+          'game-button campaign-overlay__target',
+        )
+        button.dataset.rewardTarget = target.instanceId
+        button.disabled = options.busy || !boundarySaved
+        choiceHost.append(button)
+      }
+      buttons.back.hidden = false
+      buttons.back.disabled = options.busy
+    } else if (mode === 'reward-saving') {
+      heading.textContent = view.failed ? 'Reward not saved' : 'Saving reward'
+      description.textContent = view.failed
+        ? 'Your reward is chosen but not saved. Retry the save to continue, or return to the main menu.'
+        : 'Saving your reward before the next encounter…'
+      buttons.save.hidden = !view.failed
+      buttons.save.disabled = options.busy
+      buttons.main.hidden = !view.failed
+      buttons.main.disabled = options.busy
+    } else if (mode === 'inspect') {
+      heading.textContent = 'Run details'
+      description.textContent = view.summary.join(' · ')
+      appendLineSection(detailHost, 'Active modifiers', view.modifiers)
+      appendLineSection(detailHost, 'Reward history', view.history, {
+        ordered: true,
+        emptyText: 'No rewards chosen yet.',
+      })
+      buttons.close.hidden = false
+      buttons.close.disabled = options.busy
     } else if (mode === 'campaign-end') {
       heading.textContent = match.outcome.result === 'victory' ? 'Campaign victory' : 'Campaign defeat'
       description.textContent = match.outcome.result === 'victory'
-        ? 'You defeated all three campaign opponents.'
+        ? 'You defeated every campaign opponent.'
         : 'Your health was depleted. Start a new campaign to try again.'
       buttons.main.hidden = false
       buttons.restart.hidden = false
@@ -350,10 +450,11 @@ export function createCampaignOverlay({
     update(snapshot, {
       mode,
       targets = [],
+      view = null,
       busy = false,
       error = null,
     } = {}) {
-      setMode(mode, snapshot, { targets, busy })
+      setMode(mode, snapshot, { targets, view, busy })
       status.textContent = error
         ?? (snapshot.saveStatus === 'saving' ? 'Saving campaign…' : saveStatusText(snapshot))
     },

@@ -546,6 +546,50 @@ button:disabled {
   overflow: auto;
 }
 
+.campaign-overlay__targets:empty,
+.campaign-overlay__details:empty {
+  display: none;
+}
+
+.campaign-offer {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.campaign-offer__detail,
+.campaign-overlay__line,
+.campaign-overlay__lines {
+  margin: 0;
+  color: rgb(255 255 255 / 72%);
+  font-size: 0.8rem;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.campaign-overlay__details {
+  display: grid;
+  max-height: min(30vh, 12rem);
+  gap: 0.75rem;
+  overflow: auto;
+}
+
+.campaign-overlay__section {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.campaign-overlay__section-title {
+  margin: 0;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.campaign-overlay__lines {
+  display: grid;
+  gap: 0.25rem;
+  padding-left: 1.25rem;
+}
+
 .game-overlay__panel .game-button {
   width: 100%;
   min-height: 44px;
@@ -648,6 +692,24 @@ button:disabled {
   align-items: stretch;
 }
 
+/* Campaign adds Hold and Run details. In the narrow tablet and desktop control column,
+   extra rows grow upward into the free space below the player panel. */
+.screen--game[data-layout-mode="tablet"] .game-controls,
+.screen--game[data-layout-mode="desktop"] .game-controls {
+  grid-row: 3 / 5;
+  grid-column: 3;
+}
+
+.screen--game[data-layout-mode="desktop"] .game-controls {
+  flex-flow: row wrap;
+  align-items: stretch;
+}
+
+.screen--game[data-layout-mode="desktop"] .game-controls .game-button,
+.screen--game[data-layout-mode="desktop"] .game-controls .auto-reveal-toggle {
+  flex: 1 1 calc(33.333% - 0.5rem);
+}
+
 .screen--game[data-layout-mode="tablet"] .game-hud__header {
   padding: 0.45rem 0.7rem;
 }
@@ -701,7 +763,7 @@ button:disabled {
 .screen--game[data-layout-mode="phone-landscape"] .game-controls .game-button {
   padding-inline: 0.1rem;
   font-size: 0.75rem;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .screen--game[data-layout-mode="phone-landscape"] .auto-reveal-toggle {

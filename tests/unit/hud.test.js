@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { createRunController } from '../../src/app/run-controller.js'
-import { createCampaignRun } from '../../src/domain/campaign-machine.js'
+import {
+  createCampaignRun,
+  getCampaignRewardTargets,
+} from '../../src/domain/campaign-machine.js'
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
+import { restoreRunSave } from '../../src/persistence/run-schema.js'
 import { createGameScreen } from '../../src/ui/hud.js'
 import { createUpdateNotice } from '../../src/ui/update-notice.js'
 
@@ -102,6 +107,57 @@ async function waitFor(predicate, rounds = 100) {
     await Promise.resolve()
   }
   assert.fail('Condition did not settle')
+}
+
+const CAMPAIGN_SAVED_AT = '2026-10-17T09:00:00.000Z'
+const SAVE_FAILURE = Object.freeze({
+  status: 'storage-unavailable',
+  operation: 'save',
+  reason: 'quota-exceeded',
+})
+
+function restoredFixture(name) {
+  return restoreRunSave(JSON.parse(readFileSync(
+    new URL(`../fixtures/${name}`, import.meta.url),
+    'utf8',
+  )))
+}
+
+function campaignOverlayParts(screen) {
+  const all = descendants(screen.element)
+  const overlay = all.find((element) => Object.hasOwn(element.dataset, 'campaignOverlay'))
+  const within = descendants(overlay)
+  return {
+    overlay,
+    heading: within.find((element) => element.id === 'campaign-overlay-title'),
+    description: within.find((element) => Object.hasOwn(element.dataset, 'campaignDescription')),
+    offers: () => descendants(overlay).filter(
+      (element) => element.dataset.rewardOffer !== undefined,
+    ),
+    targets: () => descendants(overlay).filter(
+      (element) => element.dataset.rewardTarget !== undefined,
+    ),
+    details: () => descendants(
+      within.find((element) => Object.hasOwn(element.dataset, 'campaignDetails')),
+    )
+      .filter((element) => ['H3', 'LI', 'P'].includes(element.tagName))
+      .map((element) => element.textContent),
+  }
+}
+
+function createSettledEventPlayerFactory(presented) {
+  return () => ({
+    present(match) {
+      presented.push(match)
+      return Promise.resolve({
+        status: match.pendingEvent === null ? 'synchronized' : 'completed',
+        eventId: match.pendingEvent?.id ?? null,
+        reason: null,
+      })
+    },
+    setPaused() {},
+    destroy() {},
+  })
 }
 
 function createControlledEventPlayerFactory(presentations) {
@@ -574,6 +630,282 @@ test('Campaign Hold choices stay blocked until the decision boundary is saved', 
   assert.equal(overlay.hidden, false)
   assert.equal(normal.disabled, false)
   assert.equal(retrySave.hidden, true)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Campaign reward drafts unlock after their save and hold the next encounter until the reward saves', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const writes = []
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save() {
+        const write = deferred()
+        writes.push(write)
+        return write.promise
+      },
+    },
+    initialMatch: restoredFixture('campaign-save-reward-v5.json'),
+  })
+  const presented = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createSettledEventPlayerFactory(presented),
+  })
+  const parts = campaignOverlayParts(screen)
+  const status = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'statusHost'),
+  )
+  const encounter = byValue(screen, 'campaign-encounter')
+  const retrySave = byAction(screen, 'campaign-save')
+  const mainMenu = byAction(screen, 'campaign-main')
+  const inspect = byAction(screen, 'inspect')
+
+  assert.equal(parts.overlay.hidden, true)
+  assert.equal(encounter.textContent, '1/3')
+  assert.equal(inspect.hidden, false)
+  assert.equal(inspect.disabled, true)
+
+  const draftSave = controller.saveStable()
+  await waitFor(() => writes.length === 1)
+  writes[0].resolve(SAVE_FAILURE)
+  await draftSave
+  await flushMicrotasks()
+
+  assert.equal(parts.overlay.hidden, false)
+  assert.equal(parts.heading.textContent, 'Encounter won')
+  assert.equal(parts.description.textContent, 'Rewards can be chosen once this draft is saved.')
+  assert.deepEqual(
+    parts.offers().map((button) => [button.dataset.rewardOffer, button.textContent]),
+    [
+      ['new-card', 'New card: QS'],
+      ['deck-edit', 'Remove a card'],
+      ['modifier', 'Modifier: Hold Insight'],
+      ['mend', 'Mend'],
+    ],
+  )
+  assert.ok(parts.offers().every((button) => button.disabled))
+  assert.equal(parts.details()[0], 'Active modifiers')
+  assert.match(parts.details()[1], /^Vitality Cap \(Permanent\)/)
+  assert.equal(retrySave.hidden, false)
+  parts.offers().at(-1).dispatch('click')
+  assert.equal(controller.currentMatch.machineState, 'awaitingReward')
+
+  retrySave.dispatch('click')
+  await waitFor(() => writes.length === 2)
+  writes[1].resolve({ status: 'saved', savedAt: CAMPAIGN_SAVED_AT })
+  await controller.whenIdle()
+  await flushMicrotasks()
+
+  assert.equal(parts.description.textContent, 'Choose one reward before the next encounter.')
+  assert.ok(parts.offers().every((button) => !button.disabled))
+  assert.equal(retrySave.hidden, true)
+  assert.equal(status.textContent, 'Encounter won. Choose a reward to continue.')
+  const presentedDraft = presented.length
+
+  parts.offers().find((button) => button.dataset.rewardOffer === 'mend').dispatch('click')
+  assert.equal(controller.currentMatch.encounterIndex, 1)
+  assert.equal(controller.currentMatch.machineState, 'ready')
+  assert.equal(parts.overlay.hidden, false)
+  assert.equal(parts.heading.textContent, 'Saving reward')
+  assert.deepEqual(parts.offers(), [])
+  assert.equal(encounter.textContent, '1/3')
+  assert.equal(status.textContent, 'Saving your reward before the next encounter…')
+
+  await waitFor(() => writes.length === 3)
+  writes[2].resolve(SAVE_FAILURE)
+  await controller.whenIdle()
+  await flushMicrotasks()
+
+  assert.equal(controller.getSnapshot().saveStatus, 'failed')
+  assert.equal(parts.overlay.hidden, false)
+  assert.equal(parts.heading.textContent, 'Reward not saved')
+  assert.equal(retrySave.hidden, false)
+  assert.equal(mainMenu.hidden, false)
+  assert.equal(encounter.textContent, '1/3')
+  assert.equal(status.textContent, 'Reward save failed. Retry the save before the next encounter.')
+  assert.equal(presented.length, presentedDraft)
+
+  retrySave.dispatch('click')
+  await waitFor(() => writes.length === 4)
+  writes[3].resolve({ status: 'saved', savedAt: CAMPAIGN_SAVED_AT })
+  await controller.whenIdle()
+  await flushMicrotasks()
+
+  assert.equal(parts.overlay.hidden, true)
+  assert.equal(encounter.textContent, '2/3')
+  assert.equal(presented.at(-1), controller.currentMatch)
+  assert.equal(inspect.disabled, false)
+  assert.equal(writes.length, 4)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Targeted campaign rewards list eligible deck cards and return with Back', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const draft = restoredFixture('campaign-save-reward-v5.json')
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'resumable', savedAt: CAMPAIGN_SAVED_AT, match: draft }),
+      save: async () => ({ status: 'saved', savedAt: CAMPAIGN_SAVED_AT }),
+    },
+  })
+  await controller.restore()
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createSettledEventPlayerFactory([]),
+  })
+  await flushMicrotasks()
+  const parts = campaignOverlayParts(screen)
+  const back = byAction(screen, 'campaign-back')
+  const eligible = getCampaignRewardTargets(draft, 'deck-edit')
+
+  parts.offers().find((button) => button.dataset.rewardOffer === 'deck-edit').dispatch('click')
+  assert.equal(parts.heading.textContent, 'Choose a card to remove')
+  assert.deepEqual(parts.offers(), [])
+  assert.deepEqual(
+    parts.targets().map((button) => button.dataset.rewardTarget),
+    eligible.map(({ instanceId }) => instanceId),
+  )
+  assert.ok(parts.targets().length > 0)
+  assert.ok(parts.targets().every((button) => !button.disabled))
+  assert.equal(back.hidden, false)
+  assert.equal(controller.currentMatch.machineState, 'awaitingReward')
+
+  back.dispatch('click')
+  assert.equal(parts.heading.textContent, 'Encounter won')
+  assert.equal(parts.offers().length, 4)
+  assert.equal(back.hidden, true)
+
+  parts.offers().find((button) => button.dataset.rewardOffer === 'deck-edit').dispatch('click')
+  const removed = parts.targets()[0].dataset.rewardTarget
+  parts.targets()[0].dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+
+  const next = controller.currentMatch
+  assert.equal(next.encounterIndex, 1)
+  assert.equal(next.rewardHistory.at(-1).targetInstanceId, removed)
+  assert.ok(next.cards.every(({ instanceId }) => instanceId !== removed))
+  assert.equal(parts.overlay.hidden, true)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Informed Hold choices show both next cards and Run details stays read-only', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const informed = restoredFixture('campaign-save-informed-v5.json')
+  const cardText = (instanceId) => {
+    const { cardId } = informed.cards.find((card) => card.instanceId === instanceId)
+    return cardId.slice(2)
+  }
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'resumable', savedAt: CAMPAIGN_SAVED_AT, match: informed }),
+      save: async () => ({ status: 'saved', savedAt: CAMPAIGN_SAVED_AT }),
+    },
+  })
+  await controller.restore()
+  const presented = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createSettledEventPlayerFactory(presented),
+  })
+  await flushMicrotasks()
+  const parts = campaignOverlayParts(screen)
+  const status = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'statusHost'),
+  )
+  const normal = byAction(screen, 'campaign-normal')
+  const hold = byAction(screen, 'campaign-hold')
+  const inspect = byAction(screen, 'inspect')
+  const close = byAction(screen, 'campaign-close')
+
+  assert.equal(parts.overlay.hidden, false)
+  assert.equal(parts.heading.textContent, 'Choose your reveal')
+  assert.deepEqual(parts.details(), [
+    'Hold Insight',
+    `Opponent's next card: ${cardText(informed.holdChoice.opponentCandidate)}`,
+    `Your next card: ${cardText(informed.holdChoice.candidate)}`,
+    'Hold is empty.',
+  ])
+  assert.equal(
+    status.textContent,
+    'Hold Insight shows both next cards. Choose the prepared card or the card in Hold.',
+  )
+  assert.equal(normal.hidden, false)
+  assert.equal(normal.disabled, false)
+  assert.equal(hold.hidden, true)
+  assert.equal(inspect.disabled, true)
+
+  normal.dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+
+  const event = controller.currentMatch.pendingEvent
+  assert.deepEqual(
+    event.reveals.slice(0, 2).map(({ suppliedBy, instanceId }) => [suppliedBy, instanceId]),
+    [
+      ['player', informed.holdChoice.candidate],
+      ['opponent', informed.holdChoice.opponentCandidate],
+    ],
+  )
+  assert.equal(presented.at(-1).pendingEvent.id, event.id)
+  assert.equal(controller.currentMatch.machineState, 'ready')
+  assert.equal(parts.overlay.hidden, true)
+  assert.equal(inspect.disabled, false)
+
+  inspect.dispatch('click')
+  const match = controller.currentMatch
+  assert.equal(parts.overlay.hidden, false)
+  assert.equal(parts.heading.textContent, 'Run details')
+  assert.equal(
+    parts.description.textContent,
+    `Health ${match.health}/${match.maxHealth} · Encounter 2/3 · Deck 26 cards · Hold is empty`,
+  )
+  assert.deepEqual(parts.details().filter((line) => !line.includes('(')), [
+    'Active modifiers',
+    'Reward history',
+    'Encounter 1: Gained Hold Insight',
+  ])
+  assert.equal(
+    parts.details().filter((line) => line.startsWith('Hold Insight (Permanent)')).length,
+    1,
+  )
+  assert.equal(close.hidden, false)
+  assert.equal(controller.currentMatch, match)
+
+  close.dispatch('click')
+  assert.equal(parts.overlay.hidden, true)
+  assert.equal(controller.currentMatch, match)
 
   screen.teardown()
   await controller.destroy()

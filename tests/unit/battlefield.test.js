@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import * as THREE from 'three'
+import {
+  chooseCampaignReveal,
+  prepareCampaignReveal,
+  selectCampaignReward,
+} from '../../src/domain/campaign-machine.js'
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
+import { restoreRunSave } from '../../src/persistence/run-schema.js'
 import { mountBattlefield } from '../../src/presentation/battlefield.js'
 import { createEventTimeline } from '../../src/presentation/event-player.js'
 
@@ -1295,6 +1302,61 @@ test('long tie settlements do not cascade texture recreation and live speed resc
   assert.equal([...acquisitionCounts.values()].filter((count) => count === 2).length, 2)
   assert.ok([...acquisitionCounts.values()].every((count) => count <= 2))
   assert.ok(handle.getPresentationState().transientCards <= 8)
+
+  handle.teardown()
+})
+
+test('campaign informed Hold choices render both peeked top cards face-up', () => {
+  const host = createHost(768, 1024)
+  const windowObject = createWindow({ width: 768, height: 1024 })
+  const observer = createObserverHarness()
+  const renderer = new FakeRenderer(host, {})
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => renderer,
+    textureCacheFactory: () => createTextureCacheHarness().cache,
+  })
+  windowObject.flushFrames()
+
+  const draft = restoreRunSave(JSON.parse(readFileSync(
+    new URL('../fixtures/campaign-save-reward-v5.json', import.meta.url),
+    'utf8',
+  )))
+  const ready = selectCampaignReward(draft, { offerId: 'modifier', targetInstanceId: null })
+  const informed = prepareCampaignReveal(ready).match
+  assert.equal(informed.machineState, 'awaitingInformedHoldChoice')
+  const { candidate, opponentCandidate } = informed.holdChoice
+  const cardIdOf = (instanceId) => informed.cards.find(
+    (card) => card.instanceId === instanceId,
+  ).cardId
+  const faces = (zoneId) => {
+    const zone = renderer.scene.getObjectByName(`battlefield-zone:${zoneId}`)
+    return zone.children
+      .filter(({ name }) => name.startsWith('battlefield-card:'))
+      .map(({ name }) => name)
+  }
+
+  handle.syncSnapshot(ready)
+  assert.deepEqual(faces('playerSourcePile'), [`battlefield-card:${cardIdOf(candidate)}:back`])
+  assert.deepEqual(
+    faces('opponentSourcePile'),
+    [`battlefield-card:${cardIdOf(opponentCandidate)}:back`],
+  )
+
+  handle.syncSnapshot(informed)
+  assert.deepEqual(faces('playerSourcePile'), [`battlefield-card:${cardIdOf(candidate)}:front`])
+  assert.deepEqual(
+    faces('opponentSourcePile'),
+    [`battlefield-card:${cardIdOf(opponentCandidate)}:front`],
+  )
+
+  const resolved = chooseCampaignReveal(informed, 'normal').match
+  handle.syncSnapshot(resolved)
+  assert.ok(
+    [...faces('playerSourcePile'), ...faces('opponentSourcePile')]
+      .every((name) => name.endsWith(':back')),
+  )
 
   handle.teardown()
 })
