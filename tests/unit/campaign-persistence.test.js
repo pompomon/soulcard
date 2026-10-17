@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { createAutoRevealCoordinator } from '../../src/app/auto-reveal-coordinator.js'
 import { createRunController } from '../../src/app/run-controller.js'
 import {
   CAMPAIGN_GAME_RULES_VERSION,
@@ -281,5 +282,118 @@ test('automatic campaign reveal stops at the saved choice when persistence fails
   assert.equal(result.match.machineState, 'awaitingHoldChoice')
   assert.equal(result.event, null)
   assert.equal(result.save.status, 'storage-unavailable')
+  await controller.destroy()
+})
+
+function recordingRepository(results = []) {
+  const writes = []
+  return {
+    writes,
+    async load() {
+      return { status: 'empty' }
+    },
+    async save(run) {
+      writes.push(run)
+      return results[writes.length - 1] ?? { status: 'saved', savedAt: SAVED_AT }
+    },
+  }
+}
+
+test('reward selection waits for the saved draft and saves the next encounter', async () => {
+  const draft = rewardFixtureRun()
+  const repository = recordingRepository([
+    { status: 'storage-unavailable', reason: 'quota-exceeded' },
+  ])
+  const controller = createRunController({ repository, initialMatch: draft })
+  const selection = { offerId: 'mend', targetInstanceId: null }
+
+  assert.throws(
+    () => controller.selectReward(selection),
+    /reward draft must be saved before a reward can be selected/,
+  )
+  assert.equal((await controller.saveStable()).status, 'storage-unavailable')
+  assert.equal(controller.getSnapshot().saveStatus, 'failed')
+  assert.throws(() => controller.selectReward(selection), /must be saved/)
+  assert.equal(controller.currentMatch.machineState, 'awaitingReward')
+
+  assert.equal((await controller.saveStable()).status, 'saved')
+  assert.throws(
+    () => controller.selectReward({ offerId: 'deck-edit', targetInstanceId: 'player-999' }),
+    /eligible card/,
+  )
+  assert.equal(controller.currentMatch.machineState, 'awaitingReward')
+  assert.equal(controller.getSnapshot().saveStatus, 'saved')
+
+  const result = await controller.selectReward(selection)
+  assert.deepEqual(result.match, select(draft, 'mend'))
+  assert.equal(result.save.status, 'saved')
+  assert.equal(result.match.encounterIndex, 1)
+  assert.equal(result.match.machineState, 'ready')
+  assert.deepEqual(repository.writes.at(-1), result.match)
+  assert.equal(controller.getSnapshot().saveStatus, 'saved')
+  await controller.destroy()
+})
+
+test('automatic reveal saves the informed Hold choice before resolving it', async () => {
+  const insight = select(rewardFixtureRun(), 'modifier')
+  const repository = recordingRepository()
+  const controller = createRunController({ repository, initialMatch: insight })
+
+  const result = await controller.revealOrContinue({ autoChooseNormal: true })
+  const prepared = prepareCampaignReveal(insight).match
+  assert.equal(repository.writes.length, 2)
+  assert.deepEqual(repository.writes[0], prepared)
+  assert.equal(repository.writes[0].machineState, 'awaitingInformedHoldChoice')
+  assert.deepEqual(result.match, chooseCampaignReveal(prepared, 'normal').match)
+  assert.deepEqual(repository.writes[1], result.match)
+  await controller.destroy()
+
+  const manual = createRunController({ repository: recordingRepository(), initialMatch: insight })
+  const informed = await manual.revealOrContinue()
+  assert.equal(informed.match.machineState, 'awaitingInformedHoldChoice')
+  assert.equal(informed.event, null)
+  const chosen = await manual.chooseHoldChoice('normal')
+  assert.deepEqual(chosen.match, result.match)
+  await manual.destroy()
+})
+
+test('automatic reveal never selects a pending reward', async () => {
+  const draft = rewardFixtureRun()
+  let reveals = 0
+  let selections = 0
+  const coordinator = createAutoRevealCoordinator({
+    runController: {
+      getSnapshot: () => ({ match: draft, saveStatus: 'saved' }),
+      revealOrContinue() {
+        reveals += 1
+      },
+      selectReward() {
+        selections += 1
+      },
+    },
+  })
+  const result = await coordinator.continueAfterPresentation({
+    active: true,
+    enabled: true,
+    saveSucceeded: true,
+    presentationStatus: 'completed',
+    runId: draft.runId,
+    eventId: draft.pendingEvent.id,
+    blocked: false,
+  })
+  assert.equal(result, null)
+  assert.equal(reveals, 0)
+  assert.equal(selections, 0)
+  coordinator.destroy()
+
+  const repository = recordingRepository()
+  const controller = createRunController({ repository, initialMatch: draft })
+  await controller.saveStable()
+  assert.throws(
+    () => controller.revealOrContinue({ autoChooseNormal: true }),
+    /Only a ready campaign can prepare a reveal/,
+  )
+  assert.equal(controller.currentMatch.machineState, 'awaitingReward')
+  assert.equal(repository.writes.length, 1)
   await controller.destroy()
 })
