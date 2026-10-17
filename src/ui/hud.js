@@ -9,9 +9,18 @@ import { createEventPlayer } from '../presentation/event-player.js'
 import { createInputController } from '../presentation/input.js'
 import { getCard } from '../domain/cards.js'
 import {
+  CAMPAIGN_HOLD_DECISION_STATES,
   getEligibleHoldTargets,
   isCampaignState,
 } from '../domain/campaign-machine.js'
+import { rewardRequiresTarget } from '../domain/campaign-rewards.js'
+import {
+  campaignInspectView,
+  encounterProgressText,
+  informedChoiceLines,
+  rewardDraftView,
+  rewardTargetView,
+} from './campaign-view.js'
 
 const ACTIVE_PRESENTATION_STATUSES = new Set(['queued', 'playing', 'paused'])
 const RENDER_CONTEXT_STATUSES = new Set(['ready', 'lost', 'restoring', 'failed'])
@@ -411,8 +420,16 @@ export function createGameScreen({
   holdButton.disabled = true
   holdButton.hidden = true
 
+  const inspectButton = createTextElement('button', 'game-button', 'Run details')
+  inspectButton.type = 'button'
+  inspectButton.dataset.action = 'inspect'
+  inspectButton.disabled = true
+  inspectButton.hidden = true
+
   controls.append(revealButton, autoRevealLabel)
-  if (isCampaignState(runController?.getSnapshot()?.match)) controls.append(holdButton)
+  if (isCampaignState(runController?.getSnapshot()?.match)) {
+    controls.append(holdButton, inspectButton)
+  }
   controls.append(pauseButton)
   hud.append(header, opponentPanel, comparison, playerPanel, pileMetrics, feedback, controls)
 
@@ -424,6 +441,11 @@ export function createGameScreen({
   let overlayAction = null
   let overlayError = null
   let holdManagerOpen = false
+  let inspectOpen = false
+  // Offer awaiting a deck target, and the reward draft held on screen until the
+  // selected reward's save succeeds.
+  let rewardOfferId = null
+  let rewardSave = null
   const handleResume = () => {
     if (overlayAction !== null) return
     overlayError = null
@@ -520,7 +542,7 @@ export function createGameScreen({
     if (
       overlayAction !== null
       || latestSnapshot?.saveStatus !== 'saved'
-      || latestSnapshot?.match?.machineState !== 'awaitingHoldChoice'
+      || !CAMPAIGN_HOLD_DECISION_STATES.includes(latestSnapshot?.match?.machineState)
     ) {
       return
     }
@@ -561,13 +583,23 @@ export function createGameScreen({
       })
   }
   const handleCampaignSaveRetry = () => {
+    const machineState = latestSnapshot?.match?.machineState
     if (
       overlayAction !== null
       || latestSnapshot?.saveStatus !== 'failed'
-      || latestSnapshot?.match?.machineState !== 'awaitingHoldChoice'
+      || (
+        rewardSave === null
+        && machineState !== 'awaitingReward'
+        && !CAMPAIGN_HOLD_DECISION_STATES.includes(machineState)
+      )
     ) {
       return
     }
+    const failureText = rewardSave !== null
+      ? 'The reward could not be saved. Try again.'
+      : machineState === 'awaitingReward'
+        ? 'The reward draft could not be saved. Try again.'
+        : 'The Hold choice could not be saved. Try again.'
     overlayAction = 'campaign-save'
     overlayError = null
     renderHud()
@@ -576,7 +608,7 @@ export function createGameScreen({
       save = runController?.saveStable()
     } catch {
       overlayAction = null
-      overlayError = 'The Hold choice could not be saved. Try again.'
+      overlayError = failureText
       renderHud()
       return
     }
@@ -584,15 +616,13 @@ export function createGameScreen({
       .then((result) => {
         if (destroyed) return
         overlayAction = null
-        overlayError = result?.status === 'saved'
-          ? null
-          : 'The Hold choice could not be saved. Try again.'
+        overlayError = result?.status === 'saved' ? null : failureText
         renderHud()
       })
       .catch(() => {
         if (destroyed) return
         overlayAction = null
-        overlayError = 'The Hold choice could not be saved. Try again.'
+        overlayError = failureText
         renderHud()
       })
   }
@@ -624,19 +654,17 @@ export function createGameScreen({
         renderHud()
       })
   }
-  const handleCampaignTransition = (kind) => {
+  const handleCampaignRetry = () => {
     if (overlayAction !== null) return
-    overlayAction = `campaign-${kind}`
+    overlayAction = 'campaign-retry'
     overlayError = null
     renderHud()
     let action
     try {
-      action = kind === 'retry'
-        ? runController?.retryEncounter()
-        : runController?.claimReward()
+      action = runController?.retryEncounter()
     } catch {
       overlayAction = null
-      overlayError = `The campaign ${kind} could not be completed. Try again.`
+      overlayError = 'The campaign retry could not be completed. Try again.'
       renderHud()
       return
     }
@@ -649,9 +677,80 @@ export function createGameScreen({
       .catch(() => {
         if (destroyed) return
         overlayAction = null
-        overlayError = `The campaign ${kind} could not be completed. Try again.`
+        overlayError = 'The campaign retry could not be completed. Try again.'
         renderHud()
       })
+  }
+  const rewardSelectable = () => (
+    overlayAction === null
+    && rewardSave === null
+    && latestSnapshot?.saveStatus === 'saved'
+    && isCampaignState(latestSnapshot?.match)
+    && latestSnapshot.match.machineState === 'awaitingReward'
+  )
+  const commitReward = (offerId, targetInstanceId) => {
+    const draft = latestSnapshot.match
+    overlayAction = 'campaign-reward'
+    overlayError = null
+    rewardSave = { draft }
+    renderHud()
+    let action
+    try {
+      action = runController?.selectReward({ offerId, targetInstanceId })
+    } catch {
+      overlayAction = null
+      rewardSave = null
+      overlayError = 'The reward could not be selected. Try again.'
+      renderHud()
+      return
+    }
+    Promise.resolve(action)
+      .then(() => {
+        if (destroyed) return
+        overlayAction = null
+        rewardOfferId = null
+        renderHud()
+      })
+      .catch(() => {
+        if (destroyed) return
+        overlayAction = null
+        if (latestSnapshot?.match === draft) {
+          rewardSave = null
+          overlayError = 'The reward could not be selected. Try again.'
+        } else {
+          overlayError = 'The reward could not be saved. Try again.'
+        }
+        renderHud()
+      })
+  }
+  const handleRewardOffer = (offerId) => {
+    if (!rewardSelectable()) return
+    const offer = latestSnapshot.match.pendingReward.offers
+      .find((candidate) => candidate.offerId === offerId)
+    if (offer === undefined) return
+    if (rewardRequiresTarget(offer.kind)) {
+      rewardOfferId = offerId
+      overlayError = null
+      renderHud()
+      return
+    }
+    commitReward(offerId, null)
+  }
+  const handleRewardTarget = (instanceId) => {
+    if (!rewardSelectable() || rewardOfferId === null) return
+    commitReward(rewardOfferId, instanceId)
+  }
+  const handleRewardBack = () => {
+    if (overlayAction !== null) return
+    rewardOfferId = null
+    overlayError = null
+    renderHud()
+  }
+  const handleInspectClose = () => {
+    if (overlayAction !== null) return
+    inspectOpen = false
+    overlayError = null
+    renderHud()
   }
   const pauseOverlay = createPauseOverlay({
     onResume: handleResume,
@@ -667,8 +766,11 @@ export function createGameScreen({
     onChooseHold: () => handleCampaignChoice('hold'),
     onRetrySave: handleCampaignSaveRetry,
     onCapture: handleCampaignCapture,
-    onRetry: () => handleCampaignTransition('retry'),
-    onClaimReward: () => handleCampaignTransition('reward'),
+    onRetry: handleCampaignRetry,
+    onChooseOffer: handleRewardOffer,
+    onChooseTarget: handleRewardTarget,
+    onBack: handleRewardBack,
+    onClose: handleInspectClose,
     onMainMenu: handleEndMain,
     onRestart: handleRestart,
     onCancel: () => {
@@ -819,8 +921,14 @@ export function createGameScreen({
     renderSaveWarning()
   }
 
+  // While a selected reward is saving, the HUD keeps showing the reward draft so the
+  // next encounter is never presented before its save succeeds.
+  function displayedMatch() {
+    return rewardSave?.draft ?? latestSnapshot?.match
+  }
+
   function renderMetrics() {
-    const match = latestSnapshot?.match
+    const match = displayedMatch()
     const metrics = match === null || match === undefined
       ? {
           stage: '—',
@@ -844,7 +952,7 @@ export function createGameScreen({
               + match.encounter.zones.opponentSourcePile.length
             ),
             'campaign-health': `${match.health}/${match.maxHealth}`,
-            'campaign-encounter': `${match.encounterIndex + 1}/3`,
+            'campaign-encounter': encounterProgressText(match),
             'player-source-count': match.encounter.zones.playerSourcePile.length,
             'player-draw-count': match.encounter.zones.player.drawPile.length,
             'player-won-count': match.encounter.zones.player.wonPile.length,
@@ -874,10 +982,10 @@ export function createGameScreen({
   }
 
   function renderComparison() {
-    const copy = comparisonText(latestSnapshot?.match)
+    const copy = comparisonText(displayedMatch())
     comparisonResult.textContent = copy.result
     comparisonDetails.textContent = copy.details
-    comparisonProgress.textContent = latestSnapshot?.match
+    comparisonProgress.textContent = displayedMatch()
       ? presentationProgressText(presentationState)
       : 'Waiting for a match.'
   }
@@ -891,6 +999,10 @@ export function createGameScreen({
       message = 'Game setup is not connected yet.'
     } else if (contextMessage !== null) {
       message = contextMessage
+    } else if (rewardSave !== null) {
+      message = snapshot.saveStatus === 'failed'
+        ? 'Reward save failed. Retry the save before the next encounter.'
+        : 'Saving your reward before the next encounter…'
     } else if (match.machineState === 'paused') {
       message = 'Game paused. Resume to continue.'
     } else if (snapshot.saveStatus === 'saving' && match.turn === 0) {
@@ -913,10 +1025,12 @@ export function createGameScreen({
       message = 'Presentation skipped after a rendering error.'
     } else if (match.machineState === 'awaitingHoldChoice') {
       message = 'Choose the prepared card or the card in Hold.'
+    } else if (match.machineState === 'awaitingInformedHoldChoice') {
+      message = 'Hold Insight shows both next cards. Choose the prepared card or the card in Hold.'
     } else if (match.machineState === 'awaitingRetry') {
       message = 'Encounter ended. Retry to continue the campaign.'
     } else if (match.machineState === 'awaitingReward') {
-      message = 'Encounter won. Claim the scripted reward to continue.'
+      message = 'Encounter won. Choose a reward to continue.'
     } else if (isCampaignState(match) && match.status === 'ended') {
       message = match.outcome.result === 'victory'
         ? 'Campaign complete. All encounters won.'
@@ -937,7 +1051,7 @@ export function createGameScreen({
   }
 
   function updateControls() {
-    const match = latestSnapshot?.match
+    const match = displayedMatch()
     const initialSavePending = (
       match?.turn === 0
       && latestSnapshot?.saveStatus === 'saving'
@@ -973,6 +1087,8 @@ export function createGameScreen({
       || revealBusy
       || overlayAction !== null
     )
+    inspectButton.hidden = !campaign
+    inspectButton.disabled = holdButton.disabled
     if (revealInput === null) {
       revealButton.disabled = !matchReady || !renderingAvailable || revealBusy
     }
@@ -1000,6 +1116,15 @@ export function createGameScreen({
 
   function campaignOverlayState() {
     const match = latestSnapshot?.match
+    if (rewardSave !== null) {
+      return {
+        mode: 'reward-saving',
+        targets: [],
+        view: {
+          failed: match !== rewardSave.draft && latestSnapshot.saveStatus === 'failed',
+        },
+      }
+    }
     if (!isCampaignState(match) || match.machineState === 'paused') {
       return { mode: null, targets: [] }
     }
@@ -1014,21 +1139,35 @@ export function createGameScreen({
       })
       return { mode: 'hold-capture', targets }
     }
+    if (inspectOpen && match.machineState === 'ready') {
+      return { mode: 'inspect', targets: [], view: campaignInspectView(match) }
+    }
     if (
-      match.machineState === 'awaitingHoldChoice'
+      CAMPAIGN_HOLD_DECISION_STATES.includes(match.machineState)
       && ['saved', 'failed'].includes(latestSnapshot.saveStatus)
     ) {
-      return { mode: 'hold-choice', targets: [] }
+      return match.machineState === 'awaitingInformedHoldChoice'
+        ? {
+            mode: 'informed-choice',
+            targets: [],
+            view: { lines: informedChoiceLines(match) },
+          }
+        : { mode: 'hold-choice', targets: [] }
     }
     if (
       ['awaitingRetry', 'awaitingReward', 'ended'].includes(match.machineState)
       && eventPresentationSettled(match)
     ) {
-      const mode = match.machineState === 'awaitingRetry'
-        ? 'retry'
-        : match.machineState === 'awaitingReward'
-          ? 'reward'
-          : 'campaign-end'
+      if (match.machineState === 'awaitingReward') {
+        return rewardOfferId === null
+          ? { mode: 'reward-draft', targets: [], view: rewardDraftView(match) }
+          : {
+              mode: 'reward-target',
+              targets: [],
+              view: rewardTargetView(match, rewardOfferId),
+            }
+      }
+      const mode = match.machineState === 'awaitingRetry' ? 'retry' : 'campaign-end'
       return { mode, targets: [] }
     }
     return { mode: null, targets: [] }
@@ -1061,6 +1200,7 @@ export function createGameScreen({
       campaignOverlay.update(latestSnapshot, {
         mode: campaignState.mode,
         targets: campaignState.targets,
+        view: campaignState.view ?? null,
         busy: overlayAction !== null || latestSnapshot.saveStatus === 'saving',
         error: overlayError,
       })
@@ -1340,8 +1480,24 @@ export function createGameScreen({
     overlayError = null
     renderHud()
   }
+  const handleInspect = () => {
+    const match = latestSnapshot?.match
+    if (
+      inspectButton.disabled
+      || !isCampaignState(match)
+      || match.machineState !== 'ready'
+    ) {
+      return
+    }
+    autoRevealChainActive = false
+    autoRevealCoordinator.stop()
+    inspectOpen = true
+    overlayError = null
+    renderHud()
+  }
   autoRevealCheckbox.addEventListener('change', handleAutoRevealChange)
   holdButton.addEventListener('click', handleHoldManagement)
+  inspectButton.addEventListener('click', handleInspect)
   requestReveal = handleReveal
 
   const handlePause = () => {
@@ -1409,6 +1565,19 @@ export function createGameScreen({
   const unsubscribeRun = runController?.subscribe((snapshot) => {
     latestSnapshot = snapshot
     const { match } = snapshot
+    if (rewardSave !== null && match?.runId !== rewardSave.draft.runId) {
+      rewardSave = null
+    } else if (
+      rewardSave !== null
+      && match !== rewardSave.draft
+      && snapshot.saveStatus === 'saved'
+    ) {
+      rewardSave = null
+    }
+    if (match?.machineState !== 'awaitingReward') rewardOfferId = null
+    if (match?.machineState !== 'ready' && match?.machineState !== 'paused') {
+      inspectOpen = false
+    }
     // Keep failures visible through transient unsaved/saving states until a save succeeds.
     if (isSaveFailureStatus(snapshot.saveStatus)) {
       showSaveWarning(snapshot.saveReason)
@@ -1424,7 +1593,12 @@ export function createGameScreen({
     renderHud()
 
     const saveSettled = snapshot.saveStatus === 'saved' || snapshot.saveStatus === 'failed'
-    if (match !== null && match !== undefined && (match.pendingEvent === null || saveSettled)) {
+    if (
+      rewardSave === null
+      && match !== null
+      && match !== undefined
+      && (match.pendingEvent === null || saveSettled)
+    ) {
       present(match, { saveSucceeded: snapshot.saveStatus === 'saved' })
     }
   })
@@ -1440,6 +1614,7 @@ export function createGameScreen({
       element.removeEventListener(UPDATE_BLOCKED_EVENT, handleUpdateBlocked)
       autoRevealCheckbox.removeEventListener('change', handleAutoRevealChange)
       holdButton.removeEventListener('click', handleHoldManagement)
+      inspectButton.removeEventListener('click', handleInspect)
       revealInput.destroy()
       pauseInput.destroy()
       pauseOverlay.teardown()

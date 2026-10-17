@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { bootstrap } from '../../src/app/bootstrap.js'
 import { createRunController } from '../../src/app/run-controller.js'
 import { createMatch } from '../../src/domain/match-machine.js'
 import { createCampaignRun } from '../../src/domain/campaign-machine.js'
 import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
+import { restoreRunSave } from '../../src/persistence/run-schema.js'
 import { createSettingsRepository } from '../../src/persistence/settings-repository.js'
 
 class FakeElement {
@@ -300,6 +302,91 @@ test('Campaign starts a separately authored campaign run from the main menu', as
   ))
   assert.equal(saves.length, 3)
   await app.destroy()
+})
+
+test('Resume continues saved Campaign reward drafts and informed Hold choices', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const savedAt = '2026-10-17T09:30:00.000Z'
+  async function resume(fixtureName) {
+    const saved = restoreRunSave(JSON.parse(readFileSync(
+      new URL(`../fixtures/${fixtureName}`, import.meta.url),
+      'utf8',
+    )))
+    const saves = []
+    const root = new FakeElement('div')
+    const app = bootstrap({
+      root,
+      runRepository: {
+        load: async () => ({ status: 'resumable', savedAt, match: saved }),
+        async save(run) {
+          saves.push(run)
+          return { status: 'saved', savedAt }
+        },
+      },
+      settingsRepository: createSettingsRepository({ storage: null }),
+      matchMedia: null,
+      pageLifecycleFactory: () => ({ destroy() {} }),
+      mountBattlefield: () => undefined,
+      eventPlayerFactory: () => ({
+        present(run) {
+          return Promise.resolve({
+            status: run.pendingEvent === null ? 'synchronized' : 'completed',
+            eventId: run.pendingEvent?.id ?? null,
+            reason: null,
+          })
+        },
+        setPaused() {},
+        destroy() {},
+      }),
+    })
+    await app.ready
+    assert.equal(app.resumeAvailable, true)
+    byAction(root, 'resume').dispatch('click')
+    assert.equal(app.activeScreen, 'game')
+    return { app, root, saved, saves }
+  }
+
+  const draft = await resume('campaign-save-reward-v5.json')
+  const mend = () => descendants(draft.root).find(
+    (element) => element.dataset.rewardOffer === 'mend',
+  )
+  await waitFor(() => mend()?.disabled === false)
+  assert.equal(draft.app.runSnapshot.match.machineState, 'awaitingReward')
+  mend().dispatch('click')
+  await waitFor(() => (
+    draft.app.runSnapshot.match.encounterIndex === 1
+    && draft.app.runSnapshot.saveStatus === 'saved'
+  ))
+  assert.equal(draft.saves.length, 1)
+  assert.equal(draft.saves[0].encounterIndex, 1)
+  assert.equal(draft.saves[0].rewardHistory.at(-1).kind, 'mend')
+  assert.equal(
+    draft.saves[0].health,
+    Math.min(draft.saved.maxHealth, draft.saved.health + 1),
+  )
+  await draft.app.destroy()
+
+  const informed = await resume('campaign-save-informed-v5.json')
+  const normal = byAction(informed.root, 'campaign-normal')
+  await waitFor(() => normal.hidden === false && normal.disabled === false)
+  normal.dispatch('click')
+  await waitFor(() => (
+    informed.app.runSnapshot.match.turn === informed.saved.turn + 1
+    && informed.app.runSnapshot.saveStatus === 'saved'
+  ))
+  assert.equal(informed.saves.length, 1)
+  assert.deepEqual(
+    informed.saves[0].pendingEvent.reveals.slice(0, 2).map(({ instanceId }) => instanceId),
+    [informed.saved.holdChoice.candidate, informed.saved.holdChoice.opponentCandidate],
+  )
+  await informed.app.destroy()
 })
 
 test('Start New applies the current burn-off preference', async (t) => {

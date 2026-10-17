@@ -123,6 +123,18 @@ function actionableDeckZone(match) {
   return null
 }
 
+// Hold Insight peeks are display-only: both prepared top cards render face-up while the
+// informed Hold choice is open.
+function informedPeekIdentities(match) {
+  if (!isCampaignState(match) || match.machineState !== 'awaitingInformedHoldChoice') {
+    return new Set()
+  }
+  return new Set(
+    [match.holdChoice.candidate, match.holdChoice.opponentCandidate]
+      .filter((instanceId) => instanceId !== null),
+  )
+}
+
 function decisiveWinningCardId(event) {
   if (event.type !== 'clashSettled') return null
   for (let index = event.reveals.length - 1; index >= 0; index -= 1) {
@@ -731,17 +743,14 @@ export function mountBattlefield(host, {
     for (const placeholder of placeholderMeshes.values()) placeholder.visible = false
     activeDeckZoneId = actionableDeckZone(match)
     const zones = isCampaignState(match) ? match.encounter.zones : match.zones
+    const peeked = informedPeekIdentities(match)
+    const topCard = (pile) => {
+      const identity = firstVisibleCard(pile, excluded)
+      return [identity, peeked.has(identity)]
+    }
     if (isCampaignState(match)) {
-      addPileRepresentative(
-        'playerSourcePile',
-        firstVisibleCard(zones.playerSourcePile, excluded),
-        false,
-      )
-      addPileRepresentative(
-        'opponentSourcePile',
-        firstVisibleCard(zones.opponentSourcePile, excluded),
-        false,
-      )
+      addPileRepresentative('playerSourcePile', ...topCard(zones.playerSourcePile))
+      addPileRepresentative('opponentSourcePile', ...topCard(zones.opponentSourcePile))
       addPileRepresentative('hold', match.hold, true)
     } else {
       addPileRepresentative(
@@ -752,11 +761,7 @@ export function mountBattlefield(host, {
     }
     for (const side of ['player', 'opponent']) {
       const prefix = side === 'player' ? 'player' : 'opponent'
-      addPileRepresentative(
-        `${prefix}DrawPile`,
-        firstVisibleCard(zones[side].drawPile, excluded),
-        false,
-      )
+      addPileRepresentative(`${prefix}DrawPile`, ...topCard(zones[side].drawPile))
       addPileRepresentative(
         `${prefix}WonPile`,
         lastVisibleCard(zones[side].wonPile, excluded),

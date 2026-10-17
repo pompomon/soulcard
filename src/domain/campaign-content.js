@@ -27,38 +27,27 @@ export const CAMPAIGN_ENCOUNTERS = deepFreeze([
     name: 'Suit Opposition',
     opponentCardIds: bySuits('S', 'C'),
     damage: 1,
-    reward: {
-      type: 'add-aces',
-      cardIds: ['c-AS', 'c-AC'],
-    },
   },
   {
     id: 'royal-court',
     name: 'Royal Court',
     opponentCardIds: byRanks('J', 'Q', 'K'),
     damage: 1,
-    reward: {
-      type: 'restore-health',
-      amount: 1,
-    },
   },
   {
     id: 'ace-assembly',
     name: 'Ace Assembly',
     opponentCardIds: byRanks('A'),
     damage: 2,
-    reward: null,
   },
 ])
 
-export const CAMPAIGN_MODIFIER = deepFreeze({
-  id: 'vitality-cap-v1',
-  lifetime: 'campaign',
-  effect: {
-    type: 'maximum-health',
-    value: CAMPAIGN_MAX_HEALTH,
-  },
-})
+// Reward drafts: seeded slots in draw order, followed by the unseeded Mend offer.
+export const CAMPAIGN_REWARD_SLOTS = deepFreeze(['new-card', 'deck-edit', 'modifier'])
+export const CAMPAIGN_MEND_OFFER_ID = 'mend'
+export const CAMPAIGN_MEND_HEALTH = 1
+export const CAMPAIGN_DECK_SIZE_LIMITS = deepFreeze({ minimum: 20, maximum: 40 })
+export const CAMPAIGN_CARD_COPY_LIMIT = 2
 
 export function getCampaignEncounter(index) {
   const encounter = CAMPAIGN_ENCOUNTERS[index]

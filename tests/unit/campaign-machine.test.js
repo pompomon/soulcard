@@ -4,12 +4,12 @@ import {
   HOLD_POSITION,
   captureCampaignHold,
   chooseCampaignReveal,
-  claimCampaignReward,
   createCampaignRun,
   createCampaignStateFingerprint,
   getEligibleHoldTargets,
   prepareCampaignReveal,
   retryCampaignEncounter,
+  selectCampaignReward,
   validateCampaignState,
 } from '../../src/domain/campaign-machine.js'
 import {
@@ -97,6 +97,14 @@ function loseEncounter(input) {
   return resolvePrepared(arrangeInability(input, 'player')).match
 }
 
+function firstDraft(seed, ruleset = BASELINE_RULESET) {
+  return clone(winEncounter(createCampaignRun({
+    runId: 'campaign-draft-source',
+    seed,
+    ruleset,
+  })).pendingReward)
+}
+
 test('campaign setup uses authored decks and player-then-opponent shuffle order', () => {
   const run = createCampaignRun({
     runId: 'campaign-setup',
@@ -125,8 +133,10 @@ test('campaign setup uses authored decks and player-then-opponent shuffle order'
   assert.deepEqual(run.activeModifiers, [{
     id: 'vitality-cap-v1',
     lifetime: 'campaign',
-    effect: { type: 'maximum-health', value: 5 },
+    grantedAtEncounterIndex: null,
   }])
+  assert.deepEqual(run.rewardHistory, [])
+  assert.equal(run.pendingReward, null)
 })
 
 test('campaign validation enforces exact authored card instances', () => {
@@ -201,20 +211,61 @@ test('campaign fixed structures reject accessors and hidden fields without invok
   assert.equal(invoked, false)
 
   const hiddenModifier = clone(run)
-  Object.defineProperty(hiddenModifier.activeModifiers[0].effect, 'hidden', {
+  Object.defineProperty(hiddenModifier.activeModifiers[0], 'hidden', {
     value: true,
   })
   assert.throws(() => validateCampaignState(hiddenModifier), /must contain only/)
 
   const rewardAccessor = clone(winEncounter(run))
-  Object.defineProperty(rewardAccessor.pendingReward, 'type', {
+  Object.defineProperty(rewardAccessor.pendingReward, 'encounterIndex', {
     enumerable: true,
     get() {
       invoked = true
-      return 'add-aces'
+      return 0
     },
   })
   assert.throws(() => validateCampaignState(rewardAccessor), /JSON-compatible data/)
+  assert.equal(invoked, false)
+
+  const offerAccessor = clone(winEncounter(run))
+  const offerKind = offerAccessor.pendingReward.offers[0].kind
+  Object.defineProperty(offerAccessor.pendingReward.offers[0], 'kind', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return offerKind
+    },
+  })
+  assert.throws(() => validateCampaignState(offerAccessor), /JSON-compatible data/)
+  assert.equal(invoked, false)
+
+  const historyAccessor = clone(selectCampaignReward(winEncounter(run), {
+    offerId: 'mend',
+    targetInstanceId: null,
+  }))
+  Object.defineProperty(historyAccessor.rewardHistory[0], 'offerId', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return 'mend'
+    },
+  })
+  assert.throws(() => validateCampaignState(historyAccessor), /JSON-compatible data/)
+  assert.equal(invoked, false)
+
+  const historyEntryAccessor = clone(selectCampaignReward(winEncounter(run), {
+    offerId: 'mend',
+    targetInstanceId: null,
+  }))
+  const entry = historyEntryAccessor.rewardHistory[0]
+  Object.defineProperty(historyEntryAccessor.rewardHistory, '0', {
+    enumerable: true,
+    get() {
+      invoked = true
+      return entry
+    },
+  })
+  assert.throws(() => validateCampaignState(historyEntryAccessor), /dense array/)
   assert.equal(invoked, false)
 })
 
@@ -558,37 +609,6 @@ test('terminal draws retain tied contests and retry with player-first shuffle or
   assert.deepEqual(retried.rng, control.snapshot())
 })
 
-test('scripted rewards add two new player Aces then restore health up to five', () => {
-  let run = createCampaignRun({
-    runId: 'campaign-rewards',
-    seed: 4,
-    ruleset: BASELINE_RULESET,
-  })
-  run = winEncounter(run)
-  assert.equal(run.machineState, 'awaitingReward')
-  run = claimCampaignReward(run)
-  assert.equal(run.encounterIndex, 1)
-  assert.deepEqual(
-    run.cards
-      .filter(({ campaignOwner, cardId }) => (
-        campaignOwner === 'player' && ['c-AS', 'c-AC'].includes(cardId)
-      ))
-      .map(({ cardId }) => cardId),
-    ['c-AS', 'c-AC'],
-  )
-  assert.equal(run.deckLayout.length, 28)
-
-  run = clone(run)
-  run.health = 4
-  run.stateFingerprint = createCampaignStateFingerprint(run)
-  validateCampaignState(run)
-  run = winEncounter(run)
-  run = claimCampaignReward(run)
-  assert.equal(run.encounterIndex, 2)
-  assert.equal(run.health, 5)
-  assert.equal(run.deckLayout.length, 28)
-})
-
 test('campaign validation binds transition states to their encounter outcomes', () => {
   const awaitingReward = clone(loseEncounter(createCampaignRun({
     runId: 'campaign-invalid-reward-outcome',
@@ -596,7 +616,7 @@ test('campaign validation binds transition states to their encounter outcomes', 
     ruleset: BASELINE_RULESET,
   })))
   awaitingReward.machineState = 'awaitingReward'
-  awaitingReward.pendingReward = clone(CAMPAIGN_ENCOUNTERS[0].reward)
+  awaitingReward.pendingReward = firstDraft(4)
   refingerprint(awaitingReward)
   assert.throws(
     () => validateCampaignState(awaitingReward),
@@ -707,7 +727,7 @@ test('campaign decision and terminal boundaries enforce their pending events', (
     reason: 'opponentUnableToReveal',
   }
   mismatch.machineState = 'awaitingReward'
-  mismatch.pendingReward = clone(CAMPAIGN_ENCOUNTERS[0].reward)
+  mismatch.pendingReward = firstDraft(5)
   mismatch.encounter.zones.player.wonPile.push(
     ...mismatch.encounter.zones.opponent.wonPile.splice(0),
   )
@@ -847,7 +867,7 @@ test('campaign pending events bind terminal reveal parity and Hold availability'
     winner: 'player',
     reason: 'opponentUnableToReveal',
   }
-  forgedTerminal.pendingReward = clone(CAMPAIGN_ENCOUNTERS[0].reward)
+  forgedTerminal.pendingReward = firstDraft(3)
   refingerprint(forgedTerminal)
   assert.throws(
     () => validateCampaignState(forgedTerminal),
@@ -958,9 +978,16 @@ test('final encounter deals two damage and the third win completes the campaign'
     seed: 7,
     ruleset: NO_BURN_RULESET,
   })
-  run = claimCampaignReward(winEncounter(run))
-  run = claimCampaignReward(winEncounter(run))
+  run = selectCampaignReward(winEncounter(run), {
+    offerId: 'new-card',
+    targetInstanceId: null,
+  })
+  run = selectCampaignReward(winEncounter(run), {
+    offerId: 'mend',
+    targetInstanceId: null,
+  })
   assert.equal(run.encounterIndex, 2)
+  assert.equal(run.health, 4)
   assert.equal(run.encounter.damage, 2)
 
   const losing = loseEncounter(run)
