@@ -1,10 +1,11 @@
 import { revealOrContinue as resolveClash } from '../domain/match-machine.js'
 import {
+  CAMPAIGN_HOLD_DECISION_STATES,
   captureCampaignHold,
   chooseCampaignReveal,
-  claimCampaignReward,
   prepareCampaignReveal,
   retryCampaignEncounter,
+  selectCampaignReward,
 } from '../domain/campaign-machine.js'
 import {
   isCampaignState,
@@ -394,7 +395,7 @@ export function createRunController({
         if (
           !autoChooseNormal
           || transition.event !== null
-          || transition.match.machineState !== 'awaitingHoldChoice'
+          || !CAMPAIGN_HOLD_DECISION_STATES.includes(transition.match.machineState)
           || saveResult.status !== 'saved'
         ) {
           return Object.freeze({
@@ -478,12 +479,15 @@ export function createRunController({
     }))
   }
 
-  function claimReward() {
+  function selectReward(selection) {
     assertActive()
     if (match === null || !isCampaignState(match)) {
       throw new Error('No active campaign is available')
     }
-    const nextMatch = claimCampaignReward(match)
+    if (saveStatus !== 'saved') {
+      throw new Error('The Campaign reward draft must be saved before a reward can be selected')
+    }
+    const nextMatch = selectCampaignReward(match, selection)
     markMatch(nextMatch)
     const save = queueSave(nextMatch)
     return save.then((saveResult) => Object.freeze({
@@ -572,7 +576,7 @@ export function createRunController({
     chooseHoldChoice,
     captureHold,
     retryEncounter,
-    claimReward,
+    selectReward,
     pause,
     resume,
     saveStable,
