@@ -1,0 +1,346 @@
+{
+  "saveSchemaVersion": 5,
+  "gameRulesVersion": 4,
+  "runType": "campaign",
+  "savedAt": "2026-09-25T04:00:00.000Z",
+  "runId": "fixture-campaign-modifiers",
+  "rng": {
+    "algorithm": "mulberry32",
+    "seed": 6,
+    "state": 3144025756
+  },
+  "ruleset": {
+    "id": "mvp-baseline-v2",
+    "burn": {
+      "enabled": true,
+      "eligibleScope": "all-losing-side-cards-in-resolved-contested-pile",
+      "decisiveWinningCard": "winner.wonPile"
+    }
+  },
+  "match": {
+    "campaignVersion": 2,
+    "machineState": "ready",
+    "turn": 45,
+    "status": "active",
+    "outcome": null,
+    "health": 3,
+    "maxHealth": 5,
+    "encounterIndex": 1,
+    "encounterAttempt": 1,
+    "cards": [
+      {
+        "instanceId": "player-001",
+        "cardId": "c-2D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-002",
+        "cardId": "c-3D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-003",
+        "cardId": "c-4D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-004",
+        "cardId": "c-5D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-005",
+        "cardId": "c-6D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-006",
+        "cardId": "c-7D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-007",
+        "cardId": "c-8D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-008",
+        "cardId": "c-9D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-009",
+        "cardId": "c-10D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-010",
+        "cardId": "c-JD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-011",
+        "cardId": "c-QD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-012",
+        "cardId": "c-KD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-013",
+        "cardId": "c-AD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-014",
+        "cardId": "c-2H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-015",
+        "cardId": "c-3H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-016",
+        "cardId": "c-4H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-017",
+        "cardId": "c-5H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-018",
+        "cardId": "c-6H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-019",
+        "cardId": "c-7H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-020",
+        "cardId": "c-8H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-021",
+        "cardId": "c-9H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-022",
+        "cardId": "c-10H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-023",
+        "cardId": "c-JH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-024",
+        "cardId": "c-QH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-025",
+        "cardId": "c-KH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-026",
+        "cardId": "c-AH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "opponent-2-1-001",
+        "cardId": "c-JS",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-2-1-002",
+        "cardId": "c-QS",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-2-1-003",
+        "cardId": "c-KS",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-2-1-004",
+        "cardId": "c-JH",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-2-1-005",
+        "cardId": "c-QH",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-2-1-006",
+        "cardId": "c-KH",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-2-1-007",
+        "cardId": "c-JD",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-2-1-008",
+        "cardId": "c-QD",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-2-1-009",
+        "cardId": "c-KD",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-2-1-010",
+        "cardId": "c-JC",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-2-1-011",
+        "cardId": "c-QC",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-2-1-012",
+        "cardId": "c-KC",
+        "campaignOwner": "opponent"
+      }
+    ],
+    "deckLayout": [
+      "player-001",
+      "player-002",
+      "player-003",
+      "player-004",
+      "player-005",
+      "player-006",
+      "player-007",
+      "player-008",
+      "player-009",
+      "player-010",
+      "player-011",
+      "player-012",
+      "holdPosition",
+      "player-014",
+      "player-015",
+      "player-016",
+      "player-017",
+      "player-018",
+      "player-019",
+      "player-020",
+      "player-021",
+      "player-022",
+      "player-023",
+      "player-024",
+      "player-025",
+      "player-026"
+    ],
+    "hold": "player-013",
+    "activeModifiers": [
+      {
+        "id": "vitality-cap-v1",
+        "lifetime": "campaign",
+        "grantedAtEncounterIndex": null
+      },
+      {
+        "id": "spoils-of-war-v1",
+        "lifetime": "encounter",
+        "grantedAtEncounterIndex": 0
+      }
+    ],
+    "encounter": {
+      "id": "royal-court",
+      "name": "Royal Court",
+      "damage": 1,
+      "supplyMode": {
+        "player": "source",
+        "opponent": "source"
+      },
+      "zones": {
+        "playerSourcePile": [
+          "player-016",
+          "player-025",
+          "player-023",
+          "player-026",
+          "player-008",
+          "player-024",
+          "player-015",
+          "player-001",
+          "player-009",
+          "player-010",
+          "player-017",
+          "player-020",
+          "player-004",
+          "player-018",
+          "player-003",
+          "player-011",
+          "player-007",
+          "player-012",
+          "player-006",
+          "player-005",
+          "player-019",
+          "player-022",
+          "player-014"
+        ],
+        "opponentSourcePile": [
+          "opponent-2-1-011",
+          "opponent-2-1-007",
+          "opponent-2-1-003",
+          "opponent-2-1-012",
+          "opponent-2-1-006",
+          "opponent-2-1-002",
+          "opponent-2-1-009",
+          "opponent-2-1-005",
+          "opponent-2-1-001"
+        ],
+        "player": {
+          "drawPile": [],
+          "wonPile": [
+            "opponent-2-1-010"
+          ]
+        },
+        "opponent": {
+          "drawPile": [],
+          "wonPile": [
+            "opponent-2-1-004",
+            "opponent-2-1-008"
+          ]
+        },
+        "contestedPile": [],
+        "burnPile": [
+          "player-021",
+          "player-002"
+        ],
+        "inPlay": []
+      },
+      "outcome": null
+    },
+    "holdChoice": null,
+    "pendingReward": null,
+    "rewardHistory": [
+      {
+        "encounterIndex": 0,
+        "offerId": "modifier",
+        "kind": "modifier",
+        "cardId": null,
+        "modifierId": "spoils-of-war-v1",
+        "targetInstanceId": null,
+        "createdInstanceId": null
+      }
+    ],
+    "stateFingerprint": "{\"activeModifiers\":[{\"grantedAtEncounterIndex\":null,\"id\":\"vitality-cap-v1\",\"lifetime\":\"campaign\"},{\"grantedAtEncounterIndex\":0,\"id\":\"spoils-of-war-v1\",\"lifetime\":\"encounter\"}],\"campaignVersion\":2,\"cards\":[{\"campaignOwner\":\"player\",\"cardId\":\"c-2D\",\"instanceId\":\"player-001\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3D\",\"instanceId\":\"player-002\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4D\",\"instanceId\":\"player-003\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5D\",\"instanceId\":\"player-004\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6D\",\"instanceId\":\"player-005\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7D\",\"instanceId\":\"player-006\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8D\",\"instanceId\":\"player-007\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9D\",\"instanceId\":\"player-008\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10D\",\"instanceId\":\"player-009\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JD\",\"instanceId\":\"player-010\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QD\",\"instanceId\":\"player-011\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KD\",\"instanceId\":\"player-012\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AD\",\"instanceId\":\"player-013\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-2H\",\"instanceId\":\"player-014\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3H\",\"instanceId\":\"player-015\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4H\",\"instanceId\":\"player-016\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5H\",\"instanceId\":\"player-017\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6H\",\"instanceId\":\"player-018\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7H\",\"instanceId\":\"player-019\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8H\",\"instanceId\":\"player-020\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9H\",\"instanceId\":\"player-021\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10H\",\"instanceId\":\"player-022\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JH\",\"instanceId\":\"player-023\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QH\",\"instanceId\":\"player-024\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KH\",\"instanceId\":\"player-025\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AH\",\"instanceId\":\"player-026\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JS\",\"instanceId\":\"opponent-2-1-001\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QS\",\"instanceId\":\"opponent-2-1-002\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KS\",\"instanceId\":\"opponent-2-1-003\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JH\",\"instanceId\":\"opponent-2-1-004\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QH\",\"instanceId\":\"opponent-2-1-005\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KH\",\"instanceId\":\"opponent-2-1-006\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JD\",\"instanceId\":\"opponent-2-1-007\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QD\",\"instanceId\":\"opponent-2-1-008\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KD\",\"instanceId\":\"opponent-2-1-009\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JC\",\"instanceId\":\"opponent-2-1-010\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QC\",\"instanceId\":\"opponent-2-1-011\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KC\",\"instanceId\":\"opponent-2-1-012\"}],\"deckLayout\":[\"player-001\",\"player-002\",\"player-003\",\"player-004\",\"player-005\",\"player-006\",\"player-007\",\"player-008\",\"player-009\",\"player-010\",\"player-011\",\"player-012\",\"holdPosition\",\"player-014\",\"player-015\",\"player-016\",\"player-017\",\"player-018\",\"player-019\",\"player-020\",\"player-021\",\"player-022\",\"player-023\",\"player-024\",\"player-025\",\"player-026\"],\"encounter\":{\"damage\":1,\"id\":\"royal-court\",\"name\":\"Royal Court\",\"outcome\":null,\"supplyMode\":{\"opponent\":\"source\",\"player\":\"source\"},\"zones\":{\"burnPile\":[\"player-021\",\"player-002\"],\"contestedPile\":[],\"inPlay\":[],\"opponent\":{\"drawPile\":[],\"wonPile\":[\"opponent-2-1-004\",\"opponent-2-1-008\"]},\"opponentSourcePile\":[\"opponent-2-1-011\",\"opponent-2-1-007\",\"opponent-2-1-003\",\"opponent-2-1-012\",\"opponent-2-1-006\",\"opponent-2-1-002\",\"opponent-2-1-009\",\"opponent-2-1-005\",\"opponent-2-1-001\"],\"player\":{\"drawPile\":[],\"wonPile\":[\"opponent-2-1-010\"]},\"playerSourcePile\":[\"player-016\",\"player-025\",\"player-023\",\"player-026\",\"player-008\",\"player-024\",\"player-015\",\"player-001\",\"player-009\",\"player-010\",\"player-017\",\"player-020\",\"player-004\",\"player-018\",\"player-003\",\"player-011\",\"player-007\",\"player-012\",\"player-006\",\"player-005\",\"player-019\",\"player-022\",\"player-014\"]}},\"encounterAttempt\":1,\"encounterIndex\":1,\"health\":3,\"hold\":\"player-013\",\"holdChoice\":null,\"machineState\":\"ready\",\"maxHealth\":5,\"mode\":\"campaign\",\"outcome\":null,\"pendingEvent\":null,\"pendingReward\":null,\"rewardHistory\":[{\"cardId\":null,\"createdInstanceId\":null,\"encounterIndex\":0,\"kind\":\"modifier\",\"modifierId\":\"spoils-of-war-v1\",\"offerId\":\"modifier\",\"targetInstanceId\":null}],\"rng\":{\"algorithm\":\"mulberry32\",\"seed\":6,\"state\":3144025756},\"ruleset\":{\"burn\":{\"decisiveWinningCard\":\"winner.wonPile\",\"eligibleScope\":\"all-losing-side-cards-in-resolved-contested-pile\",\"enabled\":true},\"id\":\"mvp-baseline-v2\"},\"runId\":\"fixture-campaign-modifiers\",\"status\":\"active\",\"turn\":45}"
+  },
+  "pendingEvent": null
+}

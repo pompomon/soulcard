@@ -69,7 +69,7 @@ function recoveryMessage(reason) {
     return 'This saved run was created by an unsupported app version and must be discarded.'
   }
   if (reason === 'incompatible-game-rules') {
-    return 'This saved run uses incompatible game rules and must be discarded.'
+    return 'This saved run uses game rules from a different app version and must be discarded.'
   }
   return 'This saved run is invalid and must be discarded before starting a new run.'
 }

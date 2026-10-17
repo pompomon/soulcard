@@ -1,8 +1,13 @@
 import {
   SAVE_SCHEMA_VERSION,
+  UnsupportedGameRulesVersionError,
   UnsupportedSaveVersionError,
   validateRunSave,
 } from './run-schema.js'
+
+// Schema 4 Classic saves carry over unchanged. Schema 4 Campaign saves use the
+// scripted rewards of campaign rules 3, which campaign rules 4 cannot replay.
+const SCHEMA_4 = 4
 
 function assertPlainObject(value, name) {
   if (
@@ -33,6 +38,37 @@ function deepFreeze(value) {
   return value
 }
 
+function dataEntries(value, name) {
+  return Reflect.ownKeys(value).map((key) => {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (
+      typeof key !== 'string'
+      || !descriptor.enumerable
+      || !Object.hasOwn(descriptor, 'value')
+    ) {
+      throw new TypeError(`${name} must contain only JSON-compatible data`)
+    }
+    return [key, descriptor.value]
+  })
+}
+
+function migrateSchema4(input) {
+  const entries = dataEntries(input, 'save')
+  const fields = Object.fromEntries(entries)
+  if (fields.runType === 'campaign') {
+    if (!Number.isSafeInteger(fields.gameRulesVersion)) {
+      throw new TypeError('gameRulesVersion must be a safe integer')
+    }
+    throw new UnsupportedGameRulesVersionError(fields.gameRulesVersion)
+  }
+  const migrated = Object.fromEntries(entries.map(([key, value]) => [
+    key,
+    key === 'saveSchemaVersion' ? SAVE_SCHEMA_VERSION : value,
+  ]))
+  validateRunSave(migrated)
+  return deepFreeze(cloneData(migrated))
+}
+
 export function migrateRunSave(input) {
   assertPlainObject(input, 'save')
   const descriptor = Object.getOwnPropertyDescriptor(input, 'saveSchemaVersion')
@@ -42,6 +78,7 @@ export function migrateRunSave(input) {
   if (!Number.isSafeInteger(descriptor.value) || descriptor.value < 1) {
     throw new TypeError('saveSchemaVersion must be a positive safe integer')
   }
+  if (descriptor.value === SCHEMA_4) return migrateSchema4(input)
   if (descriptor.value !== SAVE_SCHEMA_VERSION) {
     throw new UnsupportedSaveVersionError(descriptor.value)
   }
