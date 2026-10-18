@@ -9,7 +9,7 @@ support follows the adventure work as milestone 21.6 rather than blocking Campai
 | Status | Milestone | Depends on | Playable outcome |
 | --- | --- | --- | --- |
 | [x] | 21.1 Campaign Duel | 20 | Three retryable encounters with health, a persistent deck, and Hold |
-| [ ] | 21.2 Reward Drafts and Hold Upgrades | 21.1 | Build-changing rewards and the opponent-reveal Hold boon |
+| [x] | 21.2 Reward Drafts and Hold Upgrades | 21.1 | Build-changing rewards and the opponent-reveal Hold boon |
 | [ ] | 21.3 Branching Expedition | 21.2 | A route with combat, shops, and events |
 | [ ] | 21.4 Encounter Archetypes and Elite Ladder | 21.3 | Elites, rest nodes, and a boss campaign |
 | [ ] | 21.5 Seeded Procedural Campaign | 21.4 | A replayable generated roguelike campaign |
@@ -215,6 +215,20 @@ controls, completed presentations, and relevant console errors.
 - Tests cover information-boon reveal order and nullable candidates, all reward
   categories, Hold capture/replacement eligibility, modifier lifetime and hook-conflict
   rejection, replay, save/resume, and event fingerprints.
+
+**Completion evidence:** Campaign rules version 4 and save schema 5 replace the scripted
+rewards with seeded drafts drawn from the `campaign-reward-draft-v1` stream. Focused
+domain tests cover every reward category, deck limits, the modifier catalogue and hook
+conflicts, modifier lifetimes, the informed Hold choice, reward-history replay, and
+event fingerprints. Persistence tests cover save/resume and the schema-4 policy
+(Classic saves migrate unchanged; Campaign rules-3 saves are quarantined). HUD tests
+cover the reward, target, saving, and Run details overlays. The text-only browser
+fixture at `/tests/browser/milestone-21-2-rewards.html` restores a saved draft, checks
+described 44px offers, the target list without the held card, Back, a reward that is
+saved before the next encounter appears, the informed Hold choice, and Run details,
+while reporting one canvas and relevant console errors. Which modifier a draft offers
+depends on the run seed, so Hold Insight is not guaranteed in the first draft; the
+fixture restores a seeded draft that offers it.
 
 ## 21.3 Branching Expedition
 
