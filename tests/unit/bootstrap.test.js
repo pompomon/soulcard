@@ -283,9 +283,28 @@ test('Campaign starts a separately authored campaign run from the main menu', as
 
   assert.equal(app.activeScreen, 'game')
   assert.equal(app.runSnapshot.match.mode, 'campaign')
+  assert.equal(app.runSnapshot.match.machineState, 'awaitingRoute')
   assert.equal(byAction(root, 'hold').hidden, false)
   await waitFor(() => app.runSnapshot.saveStatus === 'saved')
   assert.deepEqual(saves, [campaign])
+  assert.equal(byAction(root, 'reveal').disabled, true)
+  const routeNode = (nodeId) => descendants(root).find(
+    (element) => element.tagName === 'BUTTON' && element.dataset.routeNode === nodeId,
+  )
+  await waitFor(() => routeNode('gate')?.disabled === false)
+  assert.equal(
+    descendants(root).filter((element) => (
+      element.tagName === 'BUTTON' && element.dataset.routeNode !== undefined
+    )).length,
+    1,
+  )
+  routeNode('gate').dispatch('click')
+  await waitFor(() => (
+    app.runSnapshot.match.machineState === 'ready'
+    && app.runSnapshot.saveStatus === 'saved'
+  ))
+  assert.equal(saves.length, 2)
+  assert.deepEqual(saves[1].journal, [{ type: 'route', nodeId: 'gate' }])
   assert.equal(byAction(root, 'reveal').disabled, false)
 
   byAction(root, 'reveal').dispatch('click')
@@ -300,7 +319,7 @@ test('Campaign starts a separately authored campaign run from the main menu', as
     app.runSnapshot.match.turn === 1
     && app.runSnapshot.saveStatus === 'saved'
   ))
-  assert.equal(saves.length, 3)
+  assert.equal(saves.length, 4)
   await app.destroy()
 })
 
@@ -353,7 +372,7 @@ test('Resume continues saved Campaign reward drafts and informed Hold choices', 
     return { app, root, saved, saves }
   }
 
-  const draft = await resume('campaign-save-reward-v5.json')
+  const draft = await resume('campaign-save-reward-v6.json')
   const mend = () => descendants(draft.root).find(
     (element) => element.dataset.rewardOffer === 'mend',
   )
@@ -361,19 +380,42 @@ test('Resume continues saved Campaign reward drafts and informed Hold choices', 
   assert.equal(draft.app.runSnapshot.match.machineState, 'awaitingReward')
   mend().dispatch('click')
   await waitFor(() => (
-    draft.app.runSnapshot.match.encounterIndex === 1
+    draft.app.runSnapshot.match.machineState === 'awaitingRoute'
     && draft.app.runSnapshot.saveStatus === 'saved'
   ))
   assert.equal(draft.saves.length, 1)
   assert.equal(draft.saves[0].encounterIndex, 1)
-  assert.equal(draft.saves[0].rewardHistory.at(-1).kind, 'mend')
+  assert.equal(draft.saves[0].journal.at(-1).kind, 'mend')
+  assert.equal(draft.saves[0].currency, draft.saved.currency + 3)
   assert.equal(
     draft.saves[0].health,
     Math.min(draft.saved.maxHealth, draft.saved.health + 1),
   )
   await draft.app.destroy()
 
-  const informed = await resume('campaign-save-informed-v5.json')
+  for (const [fixtureName, heading, dataKey] of [
+    ['campaign-save-route-v6.json', 'Route map · Stage 2/5', 'routeNode'],
+    ['campaign-save-shop-v6.json', 'Wayside Market', 'shopItem'],
+    ['campaign-save-event-v6.json', 'Crossroads Shrine', 'eventOption'],
+  ]) {
+    const boundary = await resume(fixtureName)
+    const title = () => descendants(boundary.root).find(
+      (element) => element.id === 'campaign-overlay-title',
+    )
+    await waitFor(() => title()?.textContent === heading && descendants(boundary.root).some(
+      (element) => (
+        element.tagName === 'BUTTON'
+        && element.dataset[dataKey] !== undefined
+        && element.disabled === false
+      ),
+    ))
+    assert.equal(boundary.app.runSnapshot.match.machineState, boundary.saved.machineState)
+    assert.equal(byAction(boundary.root, 'reveal').disabled, true)
+    assert.equal(boundary.saves.length, 0)
+    await boundary.app.destroy()
+  }
+
+  const informed = await resume('campaign-save-informed-v6.json')
   const normal = byAction(informed.root, 'campaign-normal')
   await waitFor(() => normal.hidden === false && normal.disabled === false)
   normal.dispatch('click')

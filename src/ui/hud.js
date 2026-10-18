@@ -8,22 +8,45 @@ import { createAutoRevealCoordinator } from '../app/auto-reveal-coordinator.js'
 import { createEventPlayer } from '../presentation/event-player.js'
 import { createInputController } from '../presentation/input.js'
 import { getCard } from '../domain/cards.js'
+import { getCampaignNodeEvent } from '../domain/campaign-content.js'
+import { deckEditRequiresTarget } from '../domain/campaign-deck.js'
 import {
   CAMPAIGN_HOLD_DECISION_STATES,
   getEligibleHoldTargets,
   isCampaignState,
 } from '../domain/campaign-machine.js'
-import { rewardRequiresTarget } from '../domain/campaign-rewards.js'
 import {
+  activeNodeId,
   campaignInspectView,
-  encounterProgressText,
+  eventTargetView,
+  eventView,
   informedChoiceLines,
   rewardDraftView,
   rewardTargetView,
+  routeMapView,
+  routeProgressText,
+  routeSummaryText,
+  shopTargetView,
+  shopView,
 } from './campaign-view.js'
 
 const ACTIVE_PRESENTATION_STATUSES = new Set(['queued', 'playing', 'paused'])
 const RENDER_CONTEXT_STATUSES = new Set(['ready', 'lost', 'restoring', 'failed'])
+// Campaign boundaries between encounters, each with its own overlay.
+const CAMPAIGN_NODE_STATES = Object.freeze(['awaitingRoute', 'awaitingShop', 'awaitingEvent'])
+const CAMPAIGN_INSPECT_STATES = Object.freeze(['ready', 'paused', ...CAMPAIGN_NODE_STATES])
+// The machine state at which each kind of deck-target picker is valid.
+const TARGET_PICKER_STATES = Object.freeze({
+  reward: 'awaitingReward',
+  shop: 'awaitingShop',
+  event: 'awaitingEvent',
+})
+const BOUNDARY_SAVE_FAILURES = Object.freeze({
+  awaitingReward: 'The reward draft could not be saved. Try again.',
+  awaitingRoute: 'The route map could not be saved. Try again.',
+  awaitingShop: 'The shop could not be saved. Try again.',
+  awaitingEvent: 'The event could not be saved. Try again.',
+})
 const NO_AUTO_REVEAL_COORDINATOR = Object.freeze({
   continueAfterPresentation: () => Promise.resolve(null),
   stop() {},
@@ -182,6 +205,12 @@ function comparisonText(match) {
       details: 'Start or resume a game to reveal cards.',
     }
   }
+  if (isCampaignState(match) && match.encounter === null) {
+    return {
+      result: 'Between encounters',
+      details: 'Choose your next step on the route.',
+    }
+  }
   if (event === null) {
     return {
       result: 'Ready for the first reveal',
@@ -324,7 +353,7 @@ export function createGameScreen({
     createMetric('Stage', 'stage'),
     createMetric('Source deck', 'source-count'),
     createMetric('Health', 'campaign-health'),
-    createMetric('Encounter', 'campaign-encounter'),
+    createMetric('Route', 'campaign-route'),
   )
   header.append(heading, matchMetrics)
 
@@ -442,10 +471,11 @@ export function createGameScreen({
   let overlayError = null
   let holdManagerOpen = false
   let inspectOpen = false
-  // Offer awaiting a deck target, and the reward draft held on screen until the
-  // selected reward's save succeeds.
-  let rewardOfferId = null
-  let rewardSave = null
+  // The reward offer, shop item, or event option awaiting a deck target, tied to the
+  // snapshot it was opened on. The boundary held on screen until a decision's save
+  // succeeds, so the next state is never presented before it is saved.
+  let pendingTarget = null
+  let decisionSave = null
   const handleResume = () => {
     if (overlayAction !== null) return
     overlayError = null
@@ -588,18 +618,17 @@ export function createGameScreen({
       overlayAction !== null
       || latestSnapshot?.saveStatus !== 'failed'
       || (
-        rewardSave === null
-        && machineState !== 'awaitingReward'
+        decisionSave === null
+        && BOUNDARY_SAVE_FAILURES[machineState] === undefined
         && !CAMPAIGN_HOLD_DECISION_STATES.includes(machineState)
       )
     ) {
       return
     }
-    const failureText = rewardSave !== null
-      ? 'The reward could not be saved. Try again.'
-      : machineState === 'awaitingReward'
-        ? 'The reward draft could not be saved. Try again.'
-        : 'The Hold choice could not be saved. Try again.'
+    const failureText = decisionSave !== null
+      ? `The ${decisionSave.noun} could not be saved. Try again.`
+      : BOUNDARY_SAVE_FAILURES[machineState]
+        ?? 'The Hold choice could not be saved. Try again.'
     overlayAction = 'campaign-save'
     overlayError = null
     renderHud()
@@ -681,26 +710,28 @@ export function createGameScreen({
         renderHud()
       })
   }
-  const rewardSelectable = () => (
+  const decisionSelectable = (machineState) => (
     overlayAction === null
-    && rewardSave === null
+    && decisionSave === null
     && latestSnapshot?.saveStatus === 'saved'
     && isCampaignState(latestSnapshot?.match)
-    && latestSnapshot.match.machineState === 'awaitingReward'
+    && latestSnapshot.match.machineState === machineState
   )
-  const commitReward = (offerId, targetInstanceId) => {
-    const draft = latestSnapshot.match
-    overlayAction = 'campaign-reward'
+  // Node decisions name the active node and the journal step they were offered at.
+  const nodeDecision = (match) => ({ nodeId: activeNodeId(match), step: match.journal.length })
+  const commitDecision = (noun, failureText, decide) => {
+    const boundary = latestSnapshot.match
+    overlayAction = 'campaign-decision'
     overlayError = null
-    rewardSave = { draft }
+    decisionSave = { boundary, noun }
     renderHud()
     let action
     try {
-      action = runController?.selectReward({ offerId, targetInstanceId })
+      action = decide(boundary)
     } catch {
       overlayAction = null
-      rewardSave = null
-      overlayError = 'The reward could not be selected. Try again.'
+      decisionSave = null
+      overlayError = failureText
       renderHud()
       return
     }
@@ -708,41 +739,129 @@ export function createGameScreen({
       .then(() => {
         if (destroyed) return
         overlayAction = null
-        rewardOfferId = null
+        pendingTarget = null
         renderHud()
       })
       .catch(() => {
         if (destroyed) return
         overlayAction = null
-        if (latestSnapshot?.match === draft) {
-          rewardSave = null
-          overlayError = 'The reward could not be selected. Try again.'
+        if (latestSnapshot?.match === boundary) {
+          decisionSave = null
+          overlayError = failureText
         } else {
-          overlayError = 'The reward could not be saved. Try again.'
+          overlayError = `The ${noun} could not be saved. Try again.`
         }
         renderHud()
       })
   }
+  const openTargetPicker = (kind, id) => {
+    pendingTarget = { kind, id, match: latestSnapshot.match }
+    overlayError = null
+    renderHud()
+  }
+  const commitReward = (offerId, targetInstanceId) => commitDecision(
+    'reward',
+    'The reward could not be selected. Try again.',
+    (boundary) => runController?.selectReward({
+      ...nodeDecision(boundary),
+      offerId,
+      targetInstanceId,
+    }),
+  )
+  const commitPurchase = (itemId, targetInstanceId) => commitDecision(
+    'purchase',
+    'The item could not be bought. Try again.',
+    (boundary) => runController?.purchaseShopItem({
+      ...nodeDecision(boundary),
+      itemId,
+      targetInstanceId,
+    }),
+  )
+  const commitEventOption = (optionId, targetInstanceId) => commitDecision(
+    'event choice',
+    'The event option could not be chosen. Try again.',
+    (boundary) => runController?.chooseEventOption({
+      ...nodeDecision(boundary),
+      optionId,
+      targetInstanceId,
+    }),
+  )
   const handleRewardOffer = (offerId) => {
-    if (!rewardSelectable()) return
+    if (!decisionSelectable('awaitingReward')) return
     const offer = latestSnapshot.match.pendingReward.offers
       .find((candidate) => candidate.offerId === offerId)
     if (offer === undefined) return
-    if (rewardRequiresTarget(offer.kind)) {
-      rewardOfferId = offerId
-      overlayError = null
-      renderHud()
+    if (deckEditRequiresTarget(offer.kind)) {
+      openTargetPicker('reward', offerId)
       return
     }
     commitReward(offerId, null)
   }
-  const handleRewardTarget = (instanceId) => {
-    if (!rewardSelectable() || rewardOfferId === null) return
-    commitReward(rewardOfferId, instanceId)
+  const handleChooseRoute = (nodeId) => {
+    if (!decisionSelectable('awaitingRoute')) return
+    commitDecision(
+      'route choice',
+      'The route could not be chosen. Try again.',
+      (boundary) => runController?.chooseRoute({ nodeId, step: boundary.journal.length }),
+    )
   }
-  const handleRewardBack = () => {
+  const handleShopItem = (itemId) => {
+    if (!decisionSelectable('awaitingShop')) return
+    const item = latestSnapshot.match.shop.items
+      .find((candidate) => candidate.itemId === itemId)
+    if (item === undefined || item.sold) return
+    if (deckEditRequiresTarget(item.kind)) {
+      openTargetPicker('shop', itemId)
+      return
+    }
+    commitPurchase(itemId, null)
+  }
+  const handleLeaveShop = () => {
+    if (!decisionSelectable('awaitingShop')) return
+    commitDecision(
+      'shop exit',
+      'The shop could not be left. Try again.',
+      (boundary) => runController?.leaveShop(nodeDecision(boundary)),
+    )
+  }
+  const handleEventOption = (optionId) => {
+    if (!decisionSelectable('awaitingEvent')) return
+    const match = latestSnapshot.match
+    const option = getCampaignNodeEvent(match.nodeEvent.eventId).options
+      .find((candidate) => candidate.id === optionId)
+    if (option === undefined) return
+    if (option.deckEdit !== null && deckEditRequiresTarget(option.deckEdit.kind)) {
+      openTargetPicker('event', optionId)
+      return
+    }
+    // Surrendering Hold always names the held card; no picker is needed.
+    commitEventOption(optionId, option.surrenderHold ? match.hold : null)
+  }
+  const handleDecisionTarget = (instanceId) => {
+    if (pendingTarget === null || !decisionSelectable(TARGET_PICKER_STATES[pendingTarget.kind])) {
+      return
+    }
+    const { kind, id } = pendingTarget
+    if (kind === 'reward') commitReward(id, instanceId)
+    else if (kind === 'shop') commitPurchase(id, instanceId)
+    else commitEventOption(id, instanceId)
+  }
+  const handleTargetBack = () => {
     if (overlayAction !== null) return
-    rewardOfferId = null
+    pendingTarget = null
+    overlayError = null
+    renderHud()
+  }
+  const handleOverlayInspect = () => {
+    const match = latestSnapshot?.match
+    if (
+      overlayAction !== null
+      || !isCampaignState(match)
+      || !CAMPAIGN_NODE_STATES.includes(match.machineState)
+    ) {
+      return
+    }
+    inspectOpen = true
     overlayError = null
     renderHud()
   }
@@ -768,9 +887,14 @@ export function createGameScreen({
     onCapture: handleCampaignCapture,
     onRetry: handleCampaignRetry,
     onChooseOffer: handleRewardOffer,
-    onChooseTarget: handleRewardTarget,
-    onBack: handleRewardBack,
+    onChooseTarget: handleDecisionTarget,
+    onBack: handleTargetBack,
     onClose: handleInspectClose,
+    onChooseRoute: handleChooseRoute,
+    onBuyItem: handleShopItem,
+    onLeaveShop: handleLeaveShop,
+    onChooseEventOption: handleEventOption,
+    onInspect: handleOverlayInspect,
     onMainMenu: handleEndMain,
     onRestart: handleRestart,
     onCancel: () => {
@@ -921,10 +1045,10 @@ export function createGameScreen({
     renderSaveWarning()
   }
 
-  // While a selected reward is saving, the HUD keeps showing the reward draft so the
-  // next encounter is never presented before its save succeeds.
+  // While a node decision is saving, the HUD keeps showing the boundary it was made at
+  // so the next state is never presented before its save succeeds.
   function displayedMatch() {
-    return rewardSave?.draft ?? latestSnapshot?.match
+    return decisionSave?.boundary ?? latestSnapshot?.match
   }
 
   function renderMetrics() {
@@ -934,7 +1058,7 @@ export function createGameScreen({
           stage: '—',
           'source-count': '—',
           'campaign-health': '—',
-          'campaign-encounter': '—',
+          'campaign-route': '—',
           'player-source-count': '—',
           'player-draw-count': '—',
           'player-won-count': '—',
@@ -944,6 +1068,21 @@ export function createGameScreen({
           'contested-count': '—',
           'burn-count': '—',
         }
+      : isCampaignState(match) && match.encounter === null
+        ? {
+            stage: '—',
+            'source-count': '—',
+            'campaign-health': `${match.health}/${match.maxHealth}`,
+            'campaign-route': routeProgressText(match),
+            'player-source-count': '—',
+            'player-draw-count': '—',
+            'player-won-count': '—',
+            'opponent-source-count': '—',
+            'opponent-draw-count': '—',
+            'opponent-won-count': '—',
+            'contested-count': '—',
+            'burn-count': '—',
+          }
       : isCampaignState(match)
         ? {
             stage: `P ${stageText(match.encounter.supplyMode.player)} · O ${stageText(match.encounter.supplyMode.opponent)}`,
@@ -952,7 +1091,7 @@ export function createGameScreen({
               + match.encounter.zones.opponentSourcePile.length
             ),
             'campaign-health': `${match.health}/${match.maxHealth}`,
-            'campaign-encounter': encounterProgressText(match),
+            'campaign-route': routeProgressText(match),
             'player-source-count': match.encounter.zones.playerSourcePile.length,
             'player-draw-count': match.encounter.zones.player.drawPile.length,
             'player-won-count': match.encounter.zones.player.wonPile.length,
@@ -966,7 +1105,7 @@ export function createGameScreen({
           stage: stageText(match.stage),
           'source-count': match.zones.sourceDeck.length,
           'campaign-health': '—',
-          'campaign-encounter': '—',
+          'campaign-route': '—',
           'player-source-count': '—',
           'player-draw-count': match.zones.player.drawPile.length,
           'player-won-count': match.zones.player.wonPile.length,
@@ -999,10 +1138,10 @@ export function createGameScreen({
       message = 'Game setup is not connected yet.'
     } else if (contextMessage !== null) {
       message = contextMessage
-    } else if (rewardSave !== null) {
+    } else if (decisionSave !== null) {
       message = snapshot.saveStatus === 'failed'
-        ? 'Reward save failed. Retry the save before the next encounter.'
-        : 'Saving your reward before the next encounter…'
+        ? `Saving your ${decisionSave.noun} failed. Retry the save to continue.`
+        : `Saving your ${decisionSave.noun} before continuing…`
     } else if (match.machineState === 'paused') {
       message = 'Game paused. Resume to continue.'
     } else if (snapshot.saveStatus === 'saving' && match.turn === 0) {
@@ -1031,9 +1170,15 @@ export function createGameScreen({
       message = 'Encounter ended. Retry to continue the campaign.'
     } else if (match.machineState === 'awaitingReward') {
       message = 'Encounter won. Choose a reward to continue.'
+    } else if (match.machineState === 'awaitingRoute') {
+      message = 'Choose your next stop on the route map.'
+    } else if (match.machineState === 'awaitingShop') {
+      message = 'Buy from the shop, or leave to continue.'
+    } else if (match.machineState === 'awaitingEvent') {
+      message = 'Choose an event option to continue.'
     } else if (isCampaignState(match) && match.status === 'ended') {
       message = match.outcome.result === 'victory'
-        ? 'Campaign complete. All encounters won.'
+        ? 'Campaign complete. The final encounter is won.'
         : 'Campaign ended when health reached zero.'
     } else if (match.status === 'ended') {
       message = terminalStatusText(match.outcome)
@@ -1114,14 +1259,21 @@ export function createGameScreen({
     )
   }
 
+  function targetPickerFor(kind, match) {
+    return pendingTarget?.kind === kind && pendingTarget.match === match
+      ? pendingTarget.id
+      : null
+  }
+
   function campaignOverlayState() {
     const match = latestSnapshot?.match
-    if (rewardSave !== null) {
+    if (decisionSave !== null) {
       return {
-        mode: 'reward-saving',
+        mode: 'decision-saving',
         targets: [],
         view: {
-          failed: match !== rewardSave.draft && latestSnapshot.saveStatus === 'failed',
+          noun: decisionSave.noun,
+          failed: match !== decisionSave.boundary && latestSnapshot.saveStatus === 'failed',
         },
       }
     }
@@ -1139,7 +1291,7 @@ export function createGameScreen({
       })
       return { mode: 'hold-capture', targets }
     }
-    if (inspectOpen && match.machineState === 'ready') {
+    if (inspectOpen && CAMPAIGN_INSPECT_STATES.includes(match.machineState)) {
       return { mode: 'inspect', targets: [], view: campaignInspectView(match) }
     }
     if (
@@ -1154,21 +1306,38 @@ export function createGameScreen({
           }
         : { mode: 'hold-choice', targets: [] }
     }
+    if (match.machineState === 'awaitingRoute') {
+      return { mode: 'route-map', targets: [], view: routeMapView(match) }
+    }
+    if (match.machineState === 'awaitingShop') {
+      const itemId = targetPickerFor('shop', match)
+      return itemId === null
+        ? { mode: 'shop', targets: [], view: shopView(match) }
+        : { mode: 'shop-target', targets: [], view: shopTargetView(match, itemId) }
+    }
+    if (match.machineState === 'awaitingEvent') {
+      const optionId = targetPickerFor('event', match)
+      return optionId === null
+        ? { mode: 'event', targets: [], view: eventView(match) }
+        : { mode: 'event-target', targets: [], view: eventTargetView(match, optionId) }
+    }
     if (
       ['awaitingRetry', 'awaitingReward', 'ended'].includes(match.machineState)
       && eventPresentationSettled(match)
     ) {
       if (match.machineState === 'awaitingReward') {
-        return rewardOfferId === null
+        const offerId = targetPickerFor('reward', match)
+        return offerId === null
           ? { mode: 'reward-draft', targets: [], view: rewardDraftView(match) }
           : {
               mode: 'reward-target',
               targets: [],
-              view: rewardTargetView(match, rewardOfferId),
+              view: rewardTargetView(match, offerId),
             }
       }
-      const mode = match.machineState === 'awaitingRetry' ? 'retry' : 'campaign-end'
-      return { mode, targets: [] }
+      return match.machineState === 'awaitingRetry'
+        ? { mode: 'retry', targets: [] }
+        : { mode: 'campaign-end', targets: [], view: { route: routeSummaryText(match) } }
     }
     return { mode: null, targets: [] }
   }
@@ -1565,19 +1734,17 @@ export function createGameScreen({
   const unsubscribeRun = runController?.subscribe((snapshot) => {
     latestSnapshot = snapshot
     const { match } = snapshot
-    if (rewardSave !== null && match?.runId !== rewardSave.draft.runId) {
-      rewardSave = null
+    if (decisionSave !== null && match?.runId !== decisionSave.boundary.runId) {
+      decisionSave = null
     } else if (
-      rewardSave !== null
-      && match !== rewardSave.draft
+      decisionSave !== null
+      && match !== decisionSave.boundary
       && snapshot.saveStatus === 'saved'
     ) {
-      rewardSave = null
+      decisionSave = null
     }
-    if (match?.machineState !== 'awaitingReward') rewardOfferId = null
-    if (match?.machineState !== 'ready' && match?.machineState !== 'paused') {
-      inspectOpen = false
-    }
+    if (pendingTarget !== null && match !== pendingTarget.match) pendingTarget = null
+    if (!CAMPAIGN_INSPECT_STATES.includes(match?.machineState)) inspectOpen = false
     // Keep failures visible through transient unsaved/saving states until a save succeeds.
     if (isSaveFailureStatus(snapshot.saveStatus)) {
       showSaveWarning(snapshot.saveReason)
@@ -1594,7 +1761,7 @@ export function createGameScreen({
 
     const saveSettled = snapshot.saveStatus === 'saved' || snapshot.saveStatus === 'failed'
     if (
-      rewardSave === null
+      decisionSave === null
       && match !== null
       && match !== undefined
       && (match.pendingEvent === null || saveSettled)

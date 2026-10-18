@@ -5,13 +5,18 @@ import * as THREE from 'three'
 import {
   chooseCampaignReveal,
   prepareCampaignReveal,
-  selectCampaignReward,
 } from '../../src/domain/campaign-machine.js'
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { restoreRunSave } from '../../src/persistence/run-schema.js'
 import { mountBattlefield } from '../../src/presentation/battlefield.js'
 import { createEventTimeline } from '../../src/presentation/event-player.js'
+import {
+  claimReward,
+  modifiersFixtureRun,
+  passThrough,
+  winEncounter,
+} from '../fixtures/campaign-route.js'
 
 class FakeStyle {
   constructor(values = {}) {
@@ -1319,11 +1324,11 @@ test('campaign informed Hold choices render both peeked top cards face-up', () =
   })
   windowObject.flushFrames()
 
-  const draft = restoreRunSave(JSON.parse(readFileSync(
-    new URL('../fixtures/campaign-save-reward-v5.json', import.meta.url),
+  const map = restoreRunSave(JSON.parse(readFileSync(
+    new URL('../fixtures/campaign-save-route-v6.json', import.meta.url),
     'utf8',
   )))
-  const ready = selectCampaignReward(draft, { offerId: 'modifier', targetInstanceId: null })
+  const ready = passThrough(map, 'shrine', 'court')
   const informed = prepareCampaignReveal(ready).match
   assert.equal(informed.machineState, 'awaitingInformedHoldChoice')
   const { candidate, opponentCandidate } = informed.holdChoice
@@ -1357,6 +1362,56 @@ test('campaign informed Hold choices render both peeked top cards face-up', () =
     [...faces('playerSourcePile'), ...faces('opponentSourcePile')]
       .every((name) => name.endsWith(':back')),
   )
+
+  handle.teardown()
+})
+
+test('campaign boundaries between encounters render only the held card without deck input', () => {
+  const host = createHost(768, 1024)
+  const windowObject = createWindow({ width: 768, height: 1024 })
+  const observer = createObserverHarness()
+  const renderer = new FakeRenderer(host, {})
+  let activations = 0
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => renderer,
+    textureCacheFactory: () => createTextureCacheHarness().cache,
+    onDeckActivate() {
+      activations += 1
+    },
+  })
+  windowObject.flushFrames()
+
+  const fight = modifiersFixtureRun()
+  const map = claimReward(winEncounter(fight), 'mend')
+  assert.equal(map.machineState, 'awaitingRoute')
+  assert.equal(map.encounter, null)
+  assert.equal(map.hold, fight.hold)
+  const heldCardId = map.cards.find(({ instanceId }) => instanceId === map.hold).cardId
+  const cardNames = () => {
+    const names = []
+    renderer.scene.traverse((object) => {
+      if (object.name.startsWith('battlefield-card:')) names.push(object.name)
+    })
+    return names
+  }
+
+  handle.syncSnapshot(fight)
+  assert.ok(cardNames().length > 1)
+  assert.equal(handle.getDeckInputState().activeZone, 'playerSourcePile')
+
+  handle.syncSnapshot(map)
+  assert.deepEqual(cardNames(), [`battlefield-card:${heldCardId}:front`])
+  assert.equal(host.dataset.presentationPhase, 'snapshot')
+  assert.deepEqual(handle.getDeckInputState(), { activeZone: null, enabled: false, busy: false })
+
+  handle.setDeckInputState({ enabled: true, busy: false })
+  const canvas = renderer.domElement
+  canvas.dispatch('pointerdown', { clientX: 384, clientY: 900, pointerId: 3 })
+  canvas.dispatch('pointerup', { clientX: 384, clientY: 900, pointerId: 3 })
+  canvas.dispatch('click', { clientX: 384, clientY: 900, detail: 1 })
+  assert.equal(activations, 0)
 
   handle.teardown()
 })

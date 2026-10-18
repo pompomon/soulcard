@@ -102,9 +102,20 @@ function assertInputController(controller) {
   }
 }
 
+// Between Campaign encounters there are no fight zones; only the held card remains.
+const NO_ENCOUNTER_ZONES = Object.freeze({
+  playerSourcePile: Object.freeze([]),
+  opponentSourcePile: Object.freeze([]),
+  player: Object.freeze({ drawPile: Object.freeze([]), wonPile: Object.freeze([]) }),
+  opponent: Object.freeze({ drawPile: Object.freeze([]), wonPile: Object.freeze([]) }),
+  contestedPile: Object.freeze([]),
+  burnPile: Object.freeze([]),
+})
+
 function actionableDeckZone(match) {
   if (match?.status !== 'active') return null
   if (isCampaignState(match)) {
+    if (match.encounter === null) return null
     if (
       match.encounter.supplyMode.player === 'source'
       && match.encounter.zones.playerSourcePile.length > 0
@@ -742,7 +753,9 @@ export function mountBattlefield(host, {
   function renderSnapshotCards(match, excluded = new Set()) {
     for (const placeholder of placeholderMeshes.values()) placeholder.visible = false
     activeDeckZoneId = actionableDeckZone(match)
-    const zones = isCampaignState(match) ? match.encounter.zones : match.zones
+    const zones = isCampaignState(match)
+      ? match.encounter?.zones ?? NO_ENCOUNTER_ZONES
+      : match.zones
     const peeked = informedPeekIdentities(match)
     const topCard = (pile) => {
       const identity = firstVisibleCard(pile, excluded)

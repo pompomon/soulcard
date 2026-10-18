@@ -2,11 +2,18 @@ import { compareCards, isCardId } from './cards.js'
 import {
   CAMPAIGN_CARD_COPY_LIMIT,
   CAMPAIGN_DECK_SIZE_LIMITS,
-  CAMPAIGN_ENCOUNTERS,
-  CAMPAIGN_MEND_HEALTH,
-  CAMPAIGN_STARTING_HEALTH,
-  getCampaignEncounter,
+  getCampaignFight,
+  getCampaignNodeEvent,
 } from './campaign-content.js'
+import {
+  DECK_EDIT_KINDS,
+  applyDeckEditToLayout,
+  collectDeckEditTargets,
+  countCardCopies,
+  deckEditCreatesInstance,
+  deckEditRequiresTarget,
+  playerInstanceId,
+} from './campaign-deck.js'
 import {
   CAMPAIGN_EVENT_VERSION,
   createCampaignClashDrawnEvent,
@@ -14,31 +21,30 @@ import {
   validateCampaignEvent,
 } from './campaign-events.js'
 import {
+  applyJournalEntry,
+  assertCampaignJournalShape,
+  replayCampaignJournal,
+} from './campaign-journal.js'
+import {
+  CAMPAIGN_MAP,
+  completeRouteNode,
+  createInitialRouteNodes,
+  getCampaignMapNode,
+  isCampaignMapNodeId,
+  isFinalCampaignNode,
+} from './campaign-map.js'
+import {
   assertDistinctModifierHooks,
   contestCardBurns,
-  createModifierRecord,
   createStartingModifierRecords,
-  expireEncounterModifiers,
-  getCampaignModifier,
   hasInformedHoldChoice,
   isCampaignModifierId,
   maximumHealthFor,
   narrowHoldTargets,
 } from './campaign-modifiers.js'
-import {
-  REWARD_HISTORY_KEYS,
-  REWARD_KINDS,
-  applyRewardToPlayerCards,
-  compareCardsForDisplay,
-  countCardCopies,
-  createStarterPlayerCards,
-  generateRewardDraft,
-  isRewardTargetEligible,
-  playerInstanceId,
-  replayRewardHistory,
-  rewardCreatesInstance,
-  rewardRequiresTarget,
-} from './campaign-rewards.js'
+import { eventOptionBlocker } from './campaign-node-events.js'
+import { REWARD_OFFER_KEYS, generateRewardDraft } from './campaign-rewards.js'
+import { SHOP_ITEM_KEYS, shopItemBlocker } from './campaign-shop.js'
 import { createRng, restoreRng, shuffle } from './rng.js'
 import {
   BASELINE_RULESET,
@@ -46,17 +52,23 @@ import {
   validateRuleset,
 } from './ruleset.js'
 
-export const CAMPAIGN_VERSION = 2
-export const CAMPAIGN_GAME_RULES_VERSION = 4
+export const CAMPAIGN_VERSION = 3
+export const CAMPAIGN_GAME_RULES_VERSION = 5
 export const HOLD_POSITION = 'holdPosition'
 export const CAMPAIGN_HOLD_DECISION_STATES = Object.freeze([
   'awaitingHoldChoice',
   'awaitingInformedHoldChoice',
 ])
+// Saved boundaries between fights: the route map, an open shop, and an open event.
+export const CAMPAIGN_NODE_DECISION_STATES = Object.freeze([
+  'awaitingRoute',
+  'awaitingShop',
+  'awaitingEvent',
+])
 
 const SIDES = Object.freeze(['player', 'opponent'])
 const SUPPLY_MODES = Object.freeze(['source', 'personal'])
-const MACHINE_STATES = Object.freeze([
+const FIGHT_STATES = Object.freeze([
   'ready',
   'awaitingHoldChoice',
   'awaitingInformedHoldChoice',
@@ -65,6 +77,12 @@ const MACHINE_STATES = Object.freeze([
   'paused',
   'ended',
 ])
+const MACHINE_STATES = Object.freeze([...FIGHT_STATES, ...CAMPAIGN_NODE_DECISION_STATES])
+const STATE_BY_PHASE = Object.freeze({
+  route: 'awaitingRoute',
+  shop: 'awaitingShop',
+  event: 'awaitingEvent',
+})
 const CARD_OWNERS = Object.freeze(['player', 'opponent'])
 const CAMPAIGN_KEYS = Object.freeze([
   'mode',
@@ -78,8 +96,10 @@ const CAMPAIGN_KEYS = Object.freeze([
   'outcome',
   'health',
   'maxHealth',
+  'currency',
   'encounterIndex',
   'encounterAttempt',
+  'route',
   'cards',
   'deckLayout',
   'hold',
@@ -87,12 +107,13 @@ const CAMPAIGN_KEYS = Object.freeze([
   'encounter',
   'holdChoice',
   'pendingReward',
-  'rewardHistory',
+  'shop',
+  'nodeEvent',
+  'journal',
   'pendingEvent',
   'stateFingerprint',
 ])
-const MODIFIER_RECORD_KEYS = Object.freeze(['id', 'lifetime', 'grantedAtEncounterIndex'])
-const REWARD_OFFER_KEYS = Object.freeze(['offerId', 'kind', 'cardId', 'modifierId'])
+const MODIFIER_RECORD_KEYS = Object.freeze(['id', 'lifetime', 'grantedAtNodeId'])
 const PLAIN_HOLD_CHOICE_KEYS = Object.freeze(['from', 'candidate'])
 const INFORMED_HOLD_CHOICE_KEYS = Object.freeze([
   'from',
@@ -246,33 +267,6 @@ function assertNullableIdentifier(value, name) {
   if (value !== null) assertIdentifier(value, name)
 }
 
-function assertRewardHistory(run) {
-  assertDenseArray(run.rewardHistory, 'campaign.rewardHistory')
-  if (run.rewardHistory.length !== run.encounterIndex) {
-    throw new Error('Campaign reward history must record one entry per completed encounter')
-  }
-  run.rewardHistory.forEach((entry, index) => {
-    const name = `campaign.rewardHistory[${index}]`
-    assertPlainObject(entry, name)
-    assertExactKeys(entry, REWARD_HISTORY_KEYS, name)
-    if (!Number.isSafeInteger(entry.encounterIndex)) {
-      throw new TypeError(`${name}.encounterIndex must be a safe integer`)
-    }
-    assertIdentifier(entry.offerId, `${name}.offerId`)
-    if (!REWARD_KINDS.includes(entry.kind)) {
-      throw new TypeError(`${name}.kind must be a known reward kind`)
-    }
-    for (const key of ['cardId', 'modifierId', 'targetInstanceId', 'createdInstanceId']) {
-      assertNullableIdentifier(entry[key], `${name}.${key}`)
-    }
-  })
-  return replayRewardHistory({
-    seed: run.rng.seed,
-    ruleset: run.ruleset,
-    history: run.rewardHistory,
-  })
-}
-
 function assertActiveModifiers(run, expected) {
   assertDenseArray(run.activeModifiers, 'campaign.activeModifiers')
   run.activeModifiers.forEach((record, index) => {
@@ -288,7 +282,7 @@ function assertActiveModifiers(run, expected) {
     run.activeModifiers,
     expected,
     'campaign.activeModifiers',
-    'the modifiers implied by reward history',
+    'the modifiers implied by the journal',
   )
 }
 
@@ -305,7 +299,7 @@ function assertDeckLimits(playerCards) {
   }
 }
 
-function assertCardRecords(run, expectedPlayerCards) {
+function assertCardRecords(run, expectedPlayerCards, fight) {
   assertDenseArray(run.cards, 'campaign.cards')
   const instances = new Map()
   for (let index = 0; index < run.cards.length; index += 1) {
@@ -327,7 +321,9 @@ function assertCardRecords(run, expectedPlayerCards) {
   }
   const expected = [
     ...expectedPlayerCards,
-    ...createOpponentCards(run.encounterIndex, run.encounterAttempt),
+    ...(fight === null
+      ? []
+      : createOpponentCards(run.encounterIndex, run.encounterAttempt, fight)),
   ]
   if (
     run.cards.length !== expected.length
@@ -337,7 +333,7 @@ function assertCardRecords(run, expectedPlayerCards) {
       || card.campaignOwner !== expected[index].campaignOwner
     ))
   ) {
-    throw new Error('Campaign card instances must match the authored encounter content and reward history')
+    throw new Error('Campaign card instances must match the authored encounter content and journal')
   }
   return instances
 }
@@ -444,8 +440,7 @@ function hasRegularSupply(zones, side) {
   )
 }
 
-function assertEncounterShape(run) {
-  const definition = getCampaignEncounter(run.encounterIndex)
+function assertEncounterShape(run, definition) {
   assertPlainObject(run.encounter, 'campaign.encounter')
   assertExactKeys(run.encounter, ENCOUNTER_KEYS, 'campaign.encounter')
   if (
@@ -768,7 +763,7 @@ function assertPendingEvent(run, instances) {
   }
 }
 
-function assertCampaignOutcome(run) {
+function assertCampaignOutcome(run, replay) {
   if (run.status === 'active') {
     if (run.machineState === 'ended' || run.outcome !== null || run.health <= 0) {
       throw new Error('An active campaign must retain positive health and no outcome')
@@ -783,7 +778,7 @@ function assertCampaignOutcome(run) {
   if (run.outcome.result === 'victory') {
     if (
       run.outcome.reason !== 'campaignCompleted'
-      || run.encounterIndex !== CAMPAIGN_ENCOUNTERS.length - 1
+      || !isFinalCampaignNode(replay.activeNodeId)
       || run.encounter.outcome?.winner !== 'player'
       || run.health <= 0
     ) {
@@ -798,7 +793,7 @@ function assertCampaignOutcome(run) {
   }
 }
 
-function assertEncounterTransition(run) {
+function assertEncounterTransition(run, replay) {
   const outcome = run.encounter.outcome
   const playerWon = outcome?.result === 'win' && outcome.winner === 'player'
   if (['ready', 'paused', ...CAMPAIGN_HOLD_DECISION_STATES].includes(run.machineState)) {
@@ -809,7 +804,7 @@ function assertEncounterTransition(run) {
     if (!playerWon) {
       throw new Error('awaitingReward requires a player encounter win')
     }
-    if (run.encounterIndex >= CAMPAIGN_ENCOUNTERS.length - 1) {
+    if (isFinalCampaignNode(replay.activeNodeId)) {
       throw new Error('The final campaign encounter cannot open a reward draft')
     }
   } else if (run.machineState === 'awaitingRetry') {
@@ -867,7 +862,91 @@ export function isCampaignState(value) {
   )
 }
 
-export function validateCampaignState(run) {
+function assertNoEncounter(run) {
+  for (const key of ['encounter', 'holdChoice', 'pendingReward', 'pendingEvent']) {
+    if (run[key] !== null) {
+      throw new Error(`campaign.${key} must be empty away from a fight`)
+    }
+  }
+  if (run.status !== 'active' || run.outcome !== null) {
+    throw new Error('A campaign route boundary must remain active')
+  }
+}
+
+function expectedRouteNodes(run, replay) {
+  const victory = run.status === 'ended' && run.outcome.result === 'victory'
+  return victory
+    ? completeRouteNode(replay.routeNodes, replay.activeNodeId)
+    : replay.routeNodes
+}
+
+function assertRoute(run, replay) {
+  assertPlainObject(run.route, 'campaign.route')
+  assertExactKeys(run.route, ['mapId', 'nodes'], 'campaign.route')
+  if (run.route.mapId !== CAMPAIGN_MAP.id) {
+    throw new Error('campaign.route.mapId must name the authored campaign map')
+  }
+  assertFixedData(
+    run.route.nodes,
+    expectedRouteNodes(run, replay),
+    'campaign.route.nodes',
+    'the route implied by the journal',
+  )
+}
+
+function assertShop(run, replay) {
+  if (run.machineState !== 'awaitingShop') {
+    if (run.shop !== null) {
+      throw new Error('Shop stock is allowed only while a shop is open')
+    }
+    return
+  }
+  assertPlainObject(run.shop, 'campaign.shop')
+  assertExactKeys(run.shop, ['nodeId', 'items'], 'campaign.shop')
+  assertDenseArray(run.shop.items, 'campaign.shop.items')
+  run.shop.items.forEach((item, index) => {
+    const name = `campaign.shop.items[${index}]`
+    assertPlainObject(item, name)
+    assertExactKeys(item, SHOP_ITEM_KEYS, name)
+  })
+  assertFixedData(
+    run.shop,
+    { nodeId: replay.activeNodeId, items: replay.shopItems },
+    'campaign.shop',
+    'the regenerated shop stock',
+  )
+}
+
+function assertNodeEvent(run, replay) {
+  if (run.machineState !== 'awaitingEvent') {
+    if (run.nodeEvent !== null) {
+      throw new Error('A node event is allowed only while an event is open')
+    }
+    return
+  }
+  assertPlainObject(run.nodeEvent, 'campaign.nodeEvent')
+  assertFixedData(
+    run.nodeEvent,
+    {
+      nodeId: replay.activeNodeId,
+      eventId: getCampaignMapNode(replay.activeNodeId).contentId,
+    },
+    'campaign.nodeEvent',
+    'the active route node',
+  )
+}
+
+// A lost or drawn fight costs its damage once; the journal records that loss only when
+// the player retries, so a pending retry or a defeat still owes it.
+function expectedHealth(run, replay, fight) {
+  const outcome = run.encounter?.outcome ?? null
+  const pendingLoss = fight !== null
+    && outcome !== null
+    && !(outcome.result === 'win' && outcome.winner === 'player')
+  return pendingLoss ? Math.max(0, replay.health - fight.damage) : replay.health
+}
+
+function inspectCampaignState(run) {
   assertPlainObject(run, 'campaign')
   assertExactKeys(run, CAMPAIGN_KEYS, 'campaign')
   if (run.mode !== 'campaign' || run.campaignVersion !== CAMPAIGN_VERSION) {
@@ -892,41 +971,83 @@ export function validateCampaignState(run) {
   ) {
     throw new TypeError('Campaign health must be an integer within its fixed maximum')
   }
+  if (!Number.isSafeInteger(run.currency) || run.currency < 0) {
+    throw new TypeError('Campaign coins must be a nonnegative safe integer')
+  }
   if (
     !Number.isSafeInteger(run.encounterIndex)
     || run.encounterIndex < 0
-    || run.encounterIndex >= CAMPAIGN_ENCOUNTERS.length
     || !Number.isSafeInteger(run.encounterAttempt)
     || run.encounterAttempt < 1
   ) {
     throw new TypeError('Campaign encounter position is invalid')
   }
-  const replay = assertRewardHistory(run)
+  assertCampaignJournalShape(run.journal)
+  const replay = replayCampaignJournal({
+    seed: run.rng.seed,
+    ruleset: run.ruleset,
+    journal: run.journal,
+  })
+  const expectedState = replay.phase === 'fight' ? null : STATE_BY_PHASE[replay.phase]
+  if (
+    expectedState === null
+      ? !FIGHT_STATES.includes(run.machineState)
+      : run.machineState !== expectedState
+  ) {
+    throw new Error('Campaign machine state must match the route position implied by the journal')
+  }
+  if (
+    run.encounterIndex !== replay.encounterIndex
+    || run.encounterAttempt !== replay.encounterAttempt
+  ) {
+    throw new Error('Campaign encounter position must match the journal')
+  }
+  if (run.currency !== replay.currency) {
+    throw new Error('Campaign coins must match the journal')
+  }
   assertActiveModifiers(run, replay.activeModifiers)
   if (run.maxHealth !== maximumHealthFor(run.activeModifiers)) {
     throw new TypeError('Campaign health must be an integer within its fixed maximum')
   }
   assertDeckLimits(replay.playerCards)
-  const instances = assertCardRecords(run, replay.playerCards)
-  assertEncounterShape(run)
-  collectEncounterInstances(run, instances)
+  const fight = replay.phase === 'fight'
+    ? getCampaignFight(getCampaignMapNode(replay.activeNodeId).contentId)
+    : null
+  const instances = assertCardRecords(run, replay.playerCards, fight)
+  if (fight === null) {
+    assertNoEncounter(run)
+  } else {
+    assertEncounterShape(run, fight)
+    collectEncounterInstances(run, instances)
+  }
   assertDeckLayout(run, instances)
   assertHoldChoice(run)
   assertPendingReward(run, replay)
-  assertCampaignOutcome(run)
-  assertEncounterTransition(run)
-  assertPendingEvent(run, instances)
+  assertShop(run, replay)
+  assertNodeEvent(run, replay)
+  assertCampaignOutcome(run, replay)
+  if (fight !== null) assertEncounterTransition(run, replay)
+  assertRoute(run, replay)
+  if (fight !== null) assertPendingEvent(run, instances)
+  if (run.health !== expectedHealth(run, replay, fight)) {
+    throw new Error('Campaign health must match the journal and the current fight')
+  }
   if (typeof run.stateFingerprint !== 'string' || run.stateFingerprint.length === 0) {
     throw new TypeError('campaign.stateFingerprint must be a nonempty string')
   }
   if (run.stateFingerprint !== createCampaignStateFingerprint(run)) {
     throw new Error('Campaign fingerprint must bind the exact stable state')
   }
+  return replay
+}
+
+export function validateCampaignState(run) {
+  inspectCampaignState(run)
   return run
 }
 
-function createOpponentCards(encounterIndex, encounterAttempt) {
-  return getCampaignEncounter(encounterIndex).opponentCardIds.map((cardId, index) => ({
+function createOpponentCards(encounterIndex, encounterAttempt, fight) {
+  return fight.opponentCardIds.map((cardId, index) => ({
     instanceId: [
       'opponent',
       String(encounterIndex + 1),
@@ -950,10 +1071,9 @@ function createEmptyZones(playerSourcePile, opponentSourcePile) {
   }
 }
 
-function setUpEncounter(run, rng) {
+function setUpEncounter(run, rng, fight) {
   assertDistinctModifierHooks(run.activeModifiers)
-  const definition = getCampaignEncounter(run.encounterIndex)
-  const opponentCards = createOpponentCards(run.encounterIndex, run.encounterAttempt)
+  const opponentCards = createOpponentCards(run.encounterIndex, run.encounterAttempt, fight)
   run.cards = [
     ...run.cards.filter(({ campaignOwner }) => campaignOwner === 'player'),
     ...opponentCards,
@@ -961,9 +1081,9 @@ function setUpEncounter(run, rng) {
   const playerInput = run.deckLayout.filter((entry) => entry !== HOLD_POSITION)
   const opponentInput = opponentCards.map(({ instanceId }) => instanceId)
   run.encounter = {
-    id: definition.id,
-    name: definition.name,
-    damage: definition.damage,
+    id: fight.id,
+    name: fight.name,
+    damage: fight.damage,
     supplyMode: { player: 'source', opponent: 'source' },
     zones: createEmptyZones(
       shuffle(playerInput, rng),
@@ -981,13 +1101,19 @@ function setUpEncounter(run, rng) {
   refreshFingerprint(run)
 }
 
+// A new run opens on the route map with only the start node available. Choosing the route
+// never draws from the run RNG, so the first fight shuffles exactly as before routes.
 export function createCampaignRun(options) {
   assertPlainObject(options, 'options')
   assertExactKeys(options, ['runId', 'seed', 'ruleset'], 'options')
   assertIdentifier(options.runId, 'options.runId')
   assertCampaignRuleset(options.ruleset)
   const rng = createRng(options.seed)
-  const cards = createStarterPlayerCards()
+  const replay = replayCampaignJournal({
+    seed: rng.snapshot().seed,
+    ruleset: options.ruleset,
+    journal: [],
+  })
   const activeModifiers = createStartingModifierRecords()
   const run = {
     mode: 'campaign',
@@ -995,26 +1121,30 @@ export function createCampaignRun(options) {
     runId: options.runId,
     ruleset: cloneData(options.ruleset),
     rng: rng.snapshot(),
-    machineState: 'ready',
+    machineState: 'awaitingRoute',
     turn: 0,
     status: 'active',
     outcome: null,
-    health: CAMPAIGN_STARTING_HEALTH,
+    health: replay.health,
     maxHealth: maximumHealthFor(activeModifiers),
+    currency: replay.currency,
     encounterIndex: 0,
     encounterAttempt: 1,
-    cards,
-    deckLayout: cards.map(({ instanceId }) => instanceId),
+    route: { mapId: CAMPAIGN_MAP.id, nodes: createInitialRouteNodes() },
+    cards: cloneData(replay.playerCards),
+    deckLayout: replay.playerCards.map(({ instanceId }) => instanceId),
     hold: null,
     activeModifiers,
     encounter: null,
     holdChoice: null,
     pendingReward: null,
-    rewardHistory: [],
+    shop: null,
+    nodeEvent: null,
+    journal: [],
     pendingEvent: null,
     stateFingerprint: 'pending',
   }
-  setUpEncounter(run, rng)
+  refreshFingerprint(run)
   validateCampaignState(run)
   return deepFreeze(run)
 }
@@ -1120,14 +1250,20 @@ function encounterWinningOutcome(winner) {
   }
 }
 
+function activeRouteNodeId(run) {
+  return run.route.nodes.find(({ state }) => state === 'active')?.id ?? null
+}
+
 function applyTerminalTransition(run, encounterOutcome) {
   run.encounter.outcome = encounterOutcome
   if (encounterOutcome.result === 'win' && encounterOutcome.winner === 'player') {
-    if (run.encounterIndex === CAMPAIGN_ENCOUNTERS.length - 1) {
+    const nodeId = activeRouteNodeId(run)
+    if (isFinalCampaignNode(nodeId)) {
       run.machineState = 'ended'
       run.status = 'ended'
       run.outcome = { result: 'victory', reason: 'campaignCompleted' }
       run.pendingReward = null
+      run.route.nodes = completeRouteNode(run.route.nodes, nodeId)
     } else {
       run.machineState = 'awaitingReward'
       run.pendingReward = createRewardDraft(run, playerCardRecords(run), run.activeModifiers)
@@ -1395,28 +1531,129 @@ export function captureCampaignHold(input, instanceId) {
   return deepFreeze(run)
 }
 
-function tearDownEncounter(run) {
-  validateCampaignState(run)
-  run.cards = run.cards.filter(({ campaignOwner }) => campaignOwner === 'player')
+function liveDecisionContext(run) {
+  const instances = cardMap(run)
+  return {
+    health: run.health,
+    currency: run.currency,
+    ruleset: run.ruleset,
+    activeModifiers: run.activeModifiers,
+    playerCards: playerCardRecords(run),
+    targetCandidates: run.deckLayout
+      .filter((entry) => entry !== HOLD_POSITION)
+      .map((instanceId) => instances.get(instanceId)),
+    holdOccupied: run.hold !== null,
+  }
+}
+
+// Eligible deck-layout targets for a deck edit, sorted for display. The Hold placeholder
+// and the held card are never targets; copy limits still count the held card.
+function collectLayoutTargets(run, kind) {
+  const context = liveDecisionContext(run)
+  return collectDeckEditTargets(kind, context.playerCards, context.targetCandidates)
+}
+
+function assertDeckEditTarget(run, kind, targetInstanceId, noun) {
+  if (deckEditRequiresTarget(kind)) {
+    if (!collectLayoutTargets(run, kind).some(({ instanceId }) => (
+      instanceId === targetInstanceId
+    ))) {
+      throw new Error(`${noun} target must be an eligible card in the campaign deck layout`)
+    }
+  } else if (targetInstanceId !== null) {
+    throw new Error(`This ${noun.toLowerCase()} does not take a target`)
+  }
+}
+
+function createdInstanceFor(replay, kind) {
+  return deckEditCreatesInstance(kind) ? playerInstanceId(replay.issuedCount + 1) : null
+}
+
+// Node decisions name the node they act on and the journal length at which they were
+// offered. A stale step, another node, or a different boundary is refused, so a decision
+// replayed after a reload cannot apply twice.
+function assertNodeDecision(input, decision, keys) {
+  assertPlainObject(decision, 'decision')
+  assertExactKeys(decision, keys, 'decision')
+  assertIdentifier(decision.nodeId, 'decision.nodeId')
+  if (!Number.isSafeInteger(decision.step) || decision.step < 0) {
+    throw new TypeError('decision.step must be a nonnegative safe integer')
+  }
+  for (const key of ['offerId', 'itemId', 'optionId']) {
+    if (keys.includes(key)) assertIdentifier(decision[key], `decision.${key}`)
+  }
+  if (keys.includes('targetInstanceId')) {
+    assertNullableIdentifier(decision.targetInstanceId, 'decision.targetInstanceId')
+  }
+  if (!isCampaignMapNodeId(decision.nodeId)) {
+    throw new Error(`Route node ${decision.nodeId} is not part of the campaign map`)
+  }
+  if (input.machineState !== 'awaitingRoute' && activeRouteNodeId(input) !== decision.nodeId) {
+    throw new Error(`Route node ${decision.nodeId} is not the active node`)
+  }
+  if (decision.step !== input.journal.length) {
+    throw new Error(`Campaign decision step ${decision.step} is stale; the journal is at step ${input.journal.length}`)
+  }
+}
+
+// Applies one journaled decision through the same replay step used for validation, then
+// mirrors the replay into the saved boundary. Deck-layout and Hold changes are applied by
+// the caller because the journal does not track Hold.
+function commitNodeDecision(input, replay, entry, updateLayout = () => {}) {
+  const run = cloneData(input)
+  applyJournalEntry(replay, entry, run.journal.length)
+  run.journal.push(entry)
+  updateLayout(run)
+  run.cards = cloneData(replay.playerCards)
+  run.activeModifiers = cloneData(replay.activeModifiers)
+  run.maxHealth = maximumHealthFor(run.activeModifiers)
+  run.health = replay.health
+  run.currency = replay.currency
+  run.encounterIndex = replay.encounterIndex
+  run.encounterAttempt = replay.encounterAttempt
+  run.route = { mapId: CAMPAIGN_MAP.id, nodes: cloneData(replay.routeNodes) }
   run.encounter = null
   run.holdChoice = null
+  run.pendingReward = null
   run.pendingEvent = null
+  run.shop = replay.phase === 'shop'
+    ? { nodeId: replay.activeNodeId, items: cloneData(replay.shopItems) }
+    : null
+  run.nodeEvent = replay.phase === 'event'
+    ? {
+        nodeId: replay.activeNodeId,
+        eventId: getCampaignMapNode(replay.activeNodeId).contentId,
+      }
+    : null
+  if (replay.phase === 'fight') {
+    setUpEncounter(
+      run,
+      restoreRng(run.rng),
+      getCampaignFight(getCampaignMapNode(replay.activeNodeId).contentId),
+    )
+  } else {
+    run.machineState = STATE_BY_PHASE[replay.phase]
+    refreshFingerprint(run)
+  }
+  validateCampaignState(run)
+  return deepFreeze(run)
+}
+
+export function chooseCampaignRoute(input, decision) {
+  const replay = inspectCampaignState(input)
+  if (input.machineState !== 'awaitingRoute') {
+    throw new Error('Campaign is not on the route map')
+  }
+  assertNodeDecision(input, decision, ['nodeId', 'step'])
+  const state = input.route.nodes.find(({ id }) => id === decision.nodeId).state
+  if (state !== 'available') {
+    throw new Error(`Route node ${decision.nodeId} is ${state}, not available`)
+  }
+  return commitNodeDecision(input, replay, { type: 'route', nodeId: decision.nodeId })
 }
 
 function findPendingOffer(run, offerId) {
   return run.pendingReward.offers.find((offer) => offer.offerId === offerId)
-}
-
-function collectRewardTargets(run, offer) {
-  if (!rewardRequiresTarget(offer.kind)) return []
-  const instances = cardMap(run)
-  const copies = countCardCopies(playerCardRecords(run).map(({ cardId }) => cardId))
-  return run.deckLayout
-    .filter((entry) => entry !== HOLD_POSITION)
-    .map((instanceId) => instances.get(instanceId))
-    .filter(({ cardId }) => isRewardTargetEligible(offer.kind, cardId, copies))
-    .map(({ instanceId, cardId }) => Object.freeze({ instanceId, cardId }))
-    .sort(compareCardsForDisplay)
 }
 
 // Eligible deck-layout targets for a pending offer, sorted for display. The Hold
@@ -1428,107 +1665,243 @@ export function getCampaignRewardTargets(input, offerId) {
   if (offer === undefined) {
     throw new Error('Reward offer is not part of the pending draft')
   }
-  return Object.freeze(collectRewardTargets(input, offer))
+  return Object.freeze(collectLayoutTargets(input, offer.kind))
 }
 
-function applyRewardToLayout(run, offer, targetInstanceId, createdInstanceId) {
-  if (offer.kind === 'add' || offer.kind === 'duplicate') {
-    run.deckLayout.push(createdInstanceId)
-    return
-  }
-  if (offer.kind === 'remove' || offer.kind === 'replace') {
-    const index = run.deckLayout.indexOf(targetInstanceId)
-    if (index < 0) {
-      throw new Error('Reward target must occupy its campaign layout position')
-    }
-    if (offer.kind === 'remove') {
-      run.deckLayout.splice(index, 1)
-    } else {
-      run.deckLayout[index] = createdInstanceId
-    }
-  }
-}
-
-export function selectCampaignReward(input, selection) {
+// Every offer of the pending draft with the reason it cannot be chosen now, or null.
+export function getCampaignRewardOffers(input) {
   validateCampaignState(input)
+  if (input.machineState !== 'awaitingReward') return Object.freeze([])
+  return Object.freeze(input.pendingReward.offers.map((offer) => Object.freeze({
+    ...offer,
+    blocker: deckEditRequiresTarget(offer.kind)
+      && collectLayoutTargets(input, offer.kind).length === 0
+      ? 'no-eligible-card'
+      : null,
+  })))
+}
+
+// Claiming a reward ends the fight: encounter-lifetime modifiers expire, the reward and
+// the fight bounty apply, and the run returns to the route map.
+export function selectCampaignReward(input, selection) {
+  const replay = inspectCampaignState(input)
   if (input.machineState !== 'awaitingReward') {
     throw new Error('Campaign has no reward draft to select from')
   }
-  assertPlainObject(selection, 'selection')
-  assertExactKeys(selection, ['offerId', 'targetInstanceId'], 'selection')
-  assertIdentifier(selection.offerId, 'selection.offerId')
-  assertNullableIdentifier(selection.targetInstanceId, 'selection.targetInstanceId')
+  assertNodeDecision(input, selection, ['nodeId', 'step', 'offerId', 'targetInstanceId'])
   const offer = findPendingOffer(input, selection.offerId)
   if (offer === undefined) {
     throw new Error('Reward offer is not part of the pending draft')
   }
-  if (rewardRequiresTarget(offer.kind)) {
-    if (!collectRewardTargets(input, offer).some(({ instanceId }) => (
-      instanceId === selection.targetInstanceId
-    ))) {
-      throw new Error('Reward target must be an eligible card in the campaign deck layout')
-    }
-  } else if (selection.targetInstanceId !== null) {
-    throw new Error('This reward does not take a target')
-  }
-
-  const run = cloneData(input)
-  const reward = cloneData(offer)
+  assertDeckEditTarget(input, offer.kind, selection.targetInstanceId, 'Reward')
   const { targetInstanceId } = selection
-  const createdInstanceId = rewardCreatesInstance(reward.kind)
-    ? playerInstanceId(replayRewardHistory({
-        seed: run.rng.seed,
-        ruleset: run.ruleset,
-        history: run.rewardHistory,
-      }).issuedCount + 1)
-    : null
-  tearDownEncounter(run)
-  run.activeModifiers = expireEncounterModifiers(run.activeModifiers)
-  run.cards = applyRewardToPlayerCards(run.cards, reward, targetInstanceId, createdInstanceId)
-  applyRewardToLayout(run, reward, targetInstanceId, createdInstanceId)
-  run.rewardHistory.push({
-    encounterIndex: run.encounterIndex,
-    offerId: reward.offerId,
-    kind: reward.kind,
-    cardId: reward.cardId,
-    modifierId: reward.modifierId,
+  const createdInstanceId = createdInstanceFor(replay, offer.kind)
+  return commitNodeDecision(input, replay, {
+    type: 'reward',
+    nodeId: selection.nodeId,
+    offerId: offer.offerId,
+    kind: offer.kind,
+    cardId: offer.cardId,
+    modifierId: offer.modifierId,
     targetInstanceId,
     createdInstanceId,
+  }, (run) => {
+    if (DECK_EDIT_KINDS.includes(offer.kind)) {
+      run.deckLayout = applyDeckEditToLayout(
+        run.deckLayout,
+        offer,
+        targetInstanceId,
+        createdInstanceId,
+      )
+    }
   })
-  let restoredHealth = 0
-  if (reward.kind === 'modifier') {
-    run.activeModifiers.push(createModifierRecord(reward.modifierId, run.encounterIndex))
-    assertDistinctModifierHooks(run.activeModifiers)
-    restoredHealth = getCampaignModifier(reward.modifierId).healthOnGain
-  } else if (reward.kind === 'mend') {
-    restoredHealth = CAMPAIGN_MEND_HEALTH
-  }
-  run.maxHealth = maximumHealthFor(run.activeModifiers)
-  run.health = Math.min(run.maxHealth, run.health + restoredHealth)
-  run.pendingReward = null
-  run.encounterIndex += 1
-  run.encounterAttempt = 1
-  const rng = restoreRng(run.rng)
-  setUpEncounter(run, rng)
-  validateCampaignState(run)
-  return deepFreeze(run)
 }
 
-export function retryCampaignEncounter(input) {
+function shopItemsWithBlockers(run) {
+  const context = liveDecisionContext(run)
+  return run.shop.items.map((item) => Object.freeze({
+    ...item,
+    blocker: shopItemBlocker(item, context),
+  }))
+}
+
+// Every item of the open shop with the reason it cannot be bought now, or null.
+export function getCampaignShopOffers(input) {
   validateCampaignState(input)
+  if (input.machineState !== 'awaitingShop') return Object.freeze([])
+  return Object.freeze(shopItemsWithBlockers(input))
+}
+
+function findShopItem(run, itemId) {
+  const item = run.shop.items.find((candidate) => candidate.itemId === itemId)
+  if (item === undefined) {
+    throw new Error('Shop item is not part of the open shop')
+  }
+  return item
+}
+
+export function getCampaignShopTargets(input, itemId) {
+  validateCampaignState(input)
+  if (input.machineState !== 'awaitingShop') return Object.freeze([])
+  const item = findShopItem(input, itemId)
+  if (item.kind === 'modifier') return Object.freeze([])
+  return Object.freeze(collectLayoutTargets(input, item.kind))
+}
+
+export function purchaseCampaignShopItem(input, decision) {
+  const replay = inspectCampaignState(input)
+  if (input.machineState !== 'awaitingShop') {
+    throw new Error('Campaign is not at a shop')
+  }
+  assertNodeDecision(input, decision, ['nodeId', 'step', 'itemId', 'targetInstanceId'])
+  const item = findShopItem(input, decision.itemId)
+  const blocker = shopItemBlocker(item, liveDecisionContext(input))
+  if (blocker !== null) {
+    throw new Error(`Shop item ${item.itemId} is unavailable: ${blocker}`)
+  }
+  const deckEdit = item.kind !== 'modifier'
+  if (deckEdit) {
+    assertDeckEditTarget(input, item.kind, decision.targetInstanceId, 'Shop item')
+  } else if (decision.targetInstanceId !== null) {
+    throw new Error('This shop item does not take a target')
+  }
+  const { targetInstanceId } = decision
+  const createdInstanceId = deckEdit ? createdInstanceFor(replay, item.kind) : null
+  return commitNodeDecision(input, replay, {
+    type: 'purchase',
+    nodeId: decision.nodeId,
+    itemId: item.itemId,
+    kind: item.kind,
+    cardId: item.cardId,
+    modifierId: item.modifierId,
+    price: item.price,
+    targetInstanceId,
+    createdInstanceId,
+  }, (run) => {
+    if (deckEdit) {
+      run.deckLayout = applyDeckEditToLayout(
+        run.deckLayout,
+        item,
+        targetInstanceId,
+        createdInstanceId,
+      )
+    }
+  })
+}
+
+export function leaveCampaignShop(input, decision) {
+  const replay = inspectCampaignState(input)
+  if (input.machineState !== 'awaitingShop') {
+    throw new Error('Campaign is not at a shop')
+  }
+  assertNodeDecision(input, decision, ['nodeId', 'step'])
+  return commitNodeDecision(input, replay, { type: 'leaveShop', nodeId: decision.nodeId })
+}
+
+function eventOptionsWithBlockers(run) {
+  const context = liveDecisionContext(run)
+  return getCampaignNodeEvent(run.nodeEvent.eventId).options.map((option) => {
+    const { id, ...effects } = option
+    return Object.freeze({
+      optionId: id,
+      ...effects,
+      blocker: eventOptionBlocker(option, context),
+    })
+  })
+}
+
+// Every option of the open event with the reason it cannot be chosen now, or null.
+export function getCampaignEventOptions(input) {
+  validateCampaignState(input)
+  if (input.machineState !== 'awaitingEvent') return Object.freeze([])
+  return Object.freeze(eventOptionsWithBlockers(input))
+}
+
+function findEventOption(run, optionId) {
+  const option = getCampaignNodeEvent(run.nodeEvent.eventId).options
+    .find((candidate) => candidate.id === optionId)
+  if (option === undefined) {
+    throw new Error('Event option is not part of the open event')
+  }
+  return option
+}
+
+// Deck-edit targets for an event option. Surrendering Hold always names the held card.
+export function getCampaignEventTargets(input, optionId) {
+  validateCampaignState(input)
+  if (input.machineState !== 'awaitingEvent') return Object.freeze([])
+  const option = findEventOption(input, optionId)
+  if (option.surrenderHold) {
+    if (input.hold === null) return Object.freeze([])
+    return Object.freeze([Object.freeze({
+      instanceId: input.hold,
+      cardId: cardMap(input).get(input.hold).cardId,
+    })])
+  }
+  if (option.deckEdit === null) return Object.freeze([])
+  return Object.freeze(collectLayoutTargets(input, option.deckEdit.kind))
+}
+
+export function chooseCampaignEventOption(input, decision) {
+  const replay = inspectCampaignState(input)
+  if (input.machineState !== 'awaitingEvent') {
+    throw new Error('Campaign is not at an event')
+  }
+  assertNodeDecision(input, decision, ['nodeId', 'step', 'optionId', 'targetInstanceId'])
+  const option = findEventOption(input, decision.optionId)
+  const blocker = eventOptionBlocker(option, liveDecisionContext(input))
+  if (blocker !== null) {
+    throw new Error(`Event option ${option.id} is unavailable: ${blocker}`)
+  }
+  const { targetInstanceId } = decision
+  if (option.surrenderHold) {
+    if (targetInstanceId !== input.hold) {
+      throw new Error('Surrendering Hold must name the held card')
+    }
+  } else if (option.deckEdit !== null) {
+    assertDeckEditTarget(input, option.deckEdit.kind, targetInstanceId, 'Event')
+  } else if (targetInstanceId !== null) {
+    throw new Error('This event option does not take a target')
+  }
+  const createdInstanceId = option.deckEdit === null
+    ? null
+    : createdInstanceFor(replay, option.deckEdit.kind)
+  return commitNodeDecision(input, replay, {
+    type: 'event',
+    nodeId: decision.nodeId,
+    optionId: option.id,
+    targetInstanceId,
+    createdInstanceId,
+  }, (run) => {
+    if (option.surrenderHold) {
+      run.deckLayout = run.deckLayout.filter((entry) => entry !== HOLD_POSITION)
+      run.hold = null
+    }
+    if (option.deckEdit !== null) {
+      run.deckLayout = applyDeckEditToLayout(
+        run.deckLayout,
+        option.deckEdit,
+        option.surrenderHold ? null : targetInstanceId,
+        createdInstanceId,
+      )
+    }
+  })
+}
+
+// A retry replays the active fight node with fresh setup shuffles. The journal records it
+// so replay can account for the health the lost attempt cost.
+export function retryCampaignEncounter(input) {
+  const replay = inspectCampaignState(input)
   if (input.machineState !== 'awaitingRetry') {
     throw new Error('Campaign is not awaiting an encounter retry')
   }
   if (!Number.isSafeInteger(input.encounterAttempt + 1)) {
     throw new RangeError('Campaign encounter attempt limit reached')
   }
-  const run = cloneData(input)
-  tearDownEncounter(run)
-  run.encounterAttempt += 1
-  const rng = restoreRng(run.rng)
-  setUpEncounter(run, rng)
-  validateCampaignState(run)
-  return deepFreeze(run)
+  return commitNodeDecision(input, replay, {
+    type: 'retry',
+    nodeId: activeRouteNodeId(input),
+  })
 }
 
 export function pauseCampaign(input) {

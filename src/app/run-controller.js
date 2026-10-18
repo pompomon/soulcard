@@ -2,8 +2,12 @@ import { revealOrContinue as resolveClash } from '../domain/match-machine.js'
 import {
   CAMPAIGN_HOLD_DECISION_STATES,
   captureCampaignHold,
+  chooseCampaignEventOption,
   chooseCampaignReveal,
+  chooseCampaignRoute,
+  leaveCampaignShop,
   prepareCampaignReveal,
+  purchaseCampaignShopItem,
   retryCampaignEncounter,
   selectCampaignReward,
 } from '../domain/campaign-machine.js'
@@ -479,21 +483,58 @@ export function createRunController({
     }))
   }
 
-  function selectReward(selection) {
+  // Node decisions apply only to a saved boundary, so a reload always restores the state
+  // the decision was offered from and the journal step refuses a repeated decision.
+  function applyNodeDecision(unsavedMessage, decide) {
     assertActive()
     if (match === null || !isCampaignState(match)) {
       throw new Error('No active campaign is available')
     }
     if (saveStatus !== 'saved') {
-      throw new Error('The Campaign reward draft must be saved before a reward can be selected')
+      throw new Error(unsavedMessage)
     }
-    const nextMatch = selectCampaignReward(match, selection)
+    const nextMatch = decide(match)
     markMatch(nextMatch)
     const save = queueSave(nextMatch)
     return save.then((saveResult) => Object.freeze({
       match: nextMatch,
       save: saveResult,
     }))
+  }
+
+  function selectReward(selection) {
+    return applyNodeDecision(
+      'The Campaign reward draft must be saved before a reward can be selected',
+      (current) => selectCampaignReward(current, selection),
+    )
+  }
+
+  function chooseRoute(selection) {
+    return applyNodeDecision(
+      'The Campaign route map must be saved before a route can be chosen',
+      (current) => chooseCampaignRoute(current, selection),
+    )
+  }
+
+  function purchaseShopItem(selection) {
+    return applyNodeDecision(
+      'The Campaign shop must be saved before an item can be bought',
+      (current) => purchaseCampaignShopItem(current, selection),
+    )
+  }
+
+  function leaveShop(selection) {
+    return applyNodeDecision(
+      'The Campaign shop must be saved before it can be left',
+      (current) => leaveCampaignShop(current, selection),
+    )
+  }
+
+  function chooseEventOption(selection) {
+    return applyNodeDecision(
+      'The Campaign event must be saved before an option can be chosen',
+      (current) => chooseCampaignEventOption(current, selection),
+    )
   }
 
   function pause() {
@@ -577,6 +618,10 @@ export function createRunController({
     captureHold,
     retryEncounter,
     selectReward,
+    chooseRoute,
+    purchaseShopItem,
+    leaveShop,
+    chooseEventOption,
     pause,
     resume,
     saveStable,

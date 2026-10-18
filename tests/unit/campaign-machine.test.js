@@ -9,16 +9,23 @@ import {
   getEligibleHoldTargets,
   prepareCampaignReveal,
   retryCampaignEncounter,
-  selectCampaignReward,
   validateCampaignState,
 } from '../../src/domain/campaign-machine.js'
 import {
-  CAMPAIGN_ENCOUNTERS,
   CAMPAIGN_STARTER_CARD_IDS,
+  getCampaignFight,
 } from '../../src/domain/campaign-content.js'
 import { CAMPAIGN_EVENT_VERSION } from '../../src/domain/campaign-events.js'
 import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
 import { createRng, restoreRng, shuffle } from '../../src/domain/rng.js'
+import {
+  activeNodeId,
+  chooseRoute,
+  claimReward,
+  passThrough,
+  routeStates,
+  startCampaign,
+} from '../fixtures/campaign-route.js'
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value))
@@ -98,15 +105,46 @@ function loseEncounter(input) {
 }
 
 function firstDraft(seed, ruleset = BASELINE_RULESET) {
-  return clone(winEncounter(createCampaignRun({
+  return clone(winEncounter(startCampaign({
     runId: 'campaign-draft-source',
     seed,
     ruleset,
   })).pendingReward)
 }
 
-test('campaign setup uses authored decks and player-then-opponent shuffle order', () => {
+test('a new campaign opens on the route map without drawing RNG', () => {
   const run = createCampaignRun({
+    runId: 'campaign-map-start',
+    seed: 12345,
+    ruleset: BASELINE_RULESET,
+  })
+  assert.equal(run.machineState, 'awaitingRoute')
+  assert.equal(run.status, 'active')
+  assert.deepEqual(run.rng, createRng(12345).snapshot())
+  assert.deepEqual(routeStates(run), {
+    gate: 'available',
+    market: 'locked',
+    shrine: 'locked',
+    court: 'locked',
+    watch: 'locked',
+    bazaar: 'locked',
+    vault: 'locked',
+    finale: 'locked',
+  })
+  assert.equal(run.route.mapId, 'expedition-v1')
+  assert.equal(run.currency, 0)
+  assert.deepEqual(run.journal, [])
+  assert.equal(run.encounter, null)
+  assert.equal(run.shop, null)
+  assert.equal(run.nodeEvent, null)
+  assert.equal(run.cards.length, CAMPAIGN_STARTER_CARD_IDS.length)
+  assert.ok(run.cards.every(({ campaignOwner }) => campaignOwner === 'player'))
+  assert.deepEqual(run.deckLayout, run.cards.map(({ instanceId }) => instanceId))
+  assert.equal(run.turn, 0)
+})
+
+test('campaign setup uses authored decks and player-then-opponent shuffle order', () => {
+  const run = startCampaign({
     runId: 'campaign-setup',
     seed: 12345,
     ruleset: BASELINE_RULESET,
@@ -119,7 +157,7 @@ test('campaign setup uses authored decks and player-then-opponent shuffle order'
     rng,
   )
   const expectedOpponent = shuffle(
-    CAMPAIGN_ENCOUNTERS[0].opponentCardIds.map((_, index) => (
+    getCampaignFight('suit-opposition').opponentCardIds.map((_, index) => (
       `opponent-1-1-${String(index + 1).padStart(3, '0')}`
     )),
     rng,
@@ -133,14 +171,16 @@ test('campaign setup uses authored decks and player-then-opponent shuffle order'
   assert.deepEqual(run.activeModifiers, [{
     id: 'vitality-cap-v1',
     lifetime: 'campaign',
-    grantedAtEncounterIndex: null,
+    grantedAtNodeId: null,
   }])
-  assert.deepEqual(run.rewardHistory, [])
+  assert.deepEqual(run.journal, [{ type: 'route', nodeId: 'gate' }])
+  assert.equal(activeNodeId(run), 'gate')
+  assert.equal(run.encounter.id, 'suit-opposition')
   assert.equal(run.pendingReward, null)
 })
 
 test('campaign validation enforces exact authored card instances', () => {
-  const run = createCampaignRun({
+  const run = startCampaign({
     runId: 'campaign-authored-cards',
     seed: 1,
     ruleset: BASELINE_RULESET,
@@ -180,7 +220,7 @@ test('campaign validation enforces exact authored card instances', () => {
 })
 
 test('campaign fixed structures reject accessors and hidden fields without invoking them', () => {
-  const run = createCampaignRun({
+  const run = startCampaign({
     runId: 'campaign-fixed-data',
     seed: 2,
     ruleset: BASELINE_RULESET,
@@ -239,11 +279,8 @@ test('campaign fixed structures reject accessors and hidden fields without invok
   assert.throws(() => validateCampaignState(offerAccessor), /JSON-compatible data/)
   assert.equal(invoked, false)
 
-  const historyAccessor = clone(selectCampaignReward(winEncounter(run), {
-    offerId: 'mend',
-    targetInstanceId: null,
-  }))
-  Object.defineProperty(historyAccessor.rewardHistory[0], 'offerId', {
+  const historyAccessor = clone(claimReward(winEncounter(run), 'mend'))
+  Object.defineProperty(historyAccessor.journal[1], 'offerId', {
     enumerable: true,
     get() {
       invoked = true
@@ -253,12 +290,9 @@ test('campaign fixed structures reject accessors and hidden fields without invok
   assert.throws(() => validateCampaignState(historyAccessor), /JSON-compatible data/)
   assert.equal(invoked, false)
 
-  const historyEntryAccessor = clone(selectCampaignReward(winEncounter(run), {
-    offerId: 'mend',
-    targetInstanceId: null,
-  }))
-  const entry = historyEntryAccessor.rewardHistory[0]
-  Object.defineProperty(historyEntryAccessor.rewardHistory, '0', {
+  const historyEntryAccessor = clone(claimReward(winEncounter(run), 'mend'))
+  const entry = historyEntryAccessor.journal[1]
+  Object.defineProperty(historyEntryAccessor.journal, '1', {
     enumerable: true,
     get() {
       invoked = true
@@ -270,7 +304,7 @@ test('campaign fixed structures reject accessors and hidden fields without invok
 })
 
 test('manual reveal persists a candidate-bound Hold choice before emitting an event', () => {
-  const run = createCampaignRun({
+  const run = startCampaign({
     runId: 'campaign-choice',
     seed: 1,
     ruleset: BASELINE_RULESET,
@@ -293,7 +327,7 @@ test('manual reveal persists a candidate-bound Hold choice before emitting an ev
 })
 
 test('independent supply modes permit mixed source and personal reveals', () => {
-  const run = mutableReady(createCampaignRun({
+  const run = mutableReady(startCampaign({
     runId: 'campaign-mixed',
     seed: 8,
     ruleset: NO_BURN_RULESET,
@@ -312,7 +346,7 @@ test('independent supply modes permit mixed source and personal reveals', () => 
 
 for (const supplyMode of ['source', 'personal']) {
   test(`${supplyMode} supply preparation uses player-first shuffle order`, () => {
-    const run = mutableReady(createCampaignRun({
+    const run = mutableReady(startCampaign({
       runId: `campaign-${supplyMode}-preparation`,
       seed: 13,
       ruleset: BASELINE_RULESET,
@@ -368,7 +402,7 @@ for (const supplyMode of ['source', 'personal']) {
 }
 
 test('campaign validation rejects contradictory supply modes', () => {
-  const initial = createCampaignRun({
+  const initial = startCampaign({
     runId: 'campaign-invalid-supply-mode',
     seed: 8,
     ruleset: BASELINE_RULESET,
@@ -396,7 +430,7 @@ test('campaign validation rejects contradictory supply modes', () => {
 })
 
 test('Hold-only decisions accept Hold and reject a missing normal candidate', () => {
-  const run = mutableReady(createCampaignRun({
+  const run = mutableReady(startCampaign({
     runId: 'campaign-hold-only',
     seed: 9,
     ruleset: BASELINE_RULESET,
@@ -453,7 +487,7 @@ test('Hold-only decisions accept Hold and reject a missing normal candidate', ()
 })
 
 test('Hold capture, replacement, and play preserve exact encounter and layout order', () => {
-  let run = createCampaignRun({
+  let run = startCampaign({
     runId: 'campaign-hold',
     seed: 3,
     ruleset: BASELINE_RULESET,
@@ -491,7 +525,7 @@ test('Hold capture, replacement, and play preserve exact encounter and layout or
 })
 
 test('Hold capture rejects source, opponent-controlled, and opponent-provenance cards', () => {
-  const run = createCampaignRun({
+  const run = startCampaign({
     runId: 'campaign-capture-reject',
     seed: 2,
     ruleset: BASELINE_RULESET,
@@ -522,7 +556,7 @@ test('Hold capture rejects source, opponent-controlled, and opponent-provenance 
 })
 
 test('burn settlement uses provenance-neutral control while retaining immutable owners', () => {
-  const run = createCampaignRun({
+  const run = startCampaign({
     runId: 'campaign-burn',
     seed: 3,
     ruleset: BASELINE_RULESET,
@@ -540,7 +574,7 @@ test('burn settlement uses provenance-neutral control while retaining immutable 
 })
 
 test('terminal draws retain tied contests and retry with player-first shuffle order', () => {
-  let run = mutableReady(createCampaignRun({
+  let run = mutableReady(startCampaign({
     runId: 'campaign-draw',
     seed: 11,
     ruleset: BASELINE_RULESET,
@@ -593,7 +627,7 @@ test('terminal draws retain tied contests and retry with player-first shuffle or
     control,
   )
   const expectedOpponent = shuffle(
-    CAMPAIGN_ENCOUNTERS[drawn.encounterIndex].opponentCardIds.map((_, index) => (
+    getCampaignFight('suit-opposition').opponentCardIds.map((_, index) => (
       `opponent-${drawn.encounterIndex + 1}-${drawn.encounterAttempt + 1}-${String(index + 1).padStart(3, '0')}`
     )),
     control,
@@ -601,6 +635,7 @@ test('terminal draws retain tied contests and retry with player-first shuffle or
   const retried = retryCampaignEncounter(drawn)
   assert.equal(retried.health, 2)
   assert.equal(retried.encounterAttempt, 2)
+  assert.deepEqual(retried.journal.at(-1), { type: 'retry', nodeId: 'gate' })
   assert.equal(retried.hold, held)
   assert.deepEqual(retried.deckLayout, drawn.deckLayout)
   assert.ok(!retried.encounter.zones.playerSourcePile.includes(held))
@@ -610,7 +645,7 @@ test('terminal draws retain tied contests and retry with player-first shuffle or
 })
 
 test('campaign validation binds transition states to their encounter outcomes', () => {
-  const awaitingReward = clone(loseEncounter(createCampaignRun({
+  const awaitingReward = clone(loseEncounter(startCampaign({
     runId: 'campaign-invalid-reward-outcome',
     seed: 4,
     ruleset: BASELINE_RULESET,
@@ -623,7 +658,7 @@ test('campaign validation binds transition states to their encounter outcomes', 
     /awaitingReward requires a player encounter win/,
   )
 
-  const awaitingRetry = clone(winEncounter(createCampaignRun({
+  const awaitingRetry = clone(winEncounter(startCampaign({
     runId: 'campaign-invalid-retry-outcome',
     seed: 4,
     ruleset: BASELINE_RULESET,
@@ -638,7 +673,7 @@ test('campaign validation binds transition states to their encounter outcomes', 
 })
 
 test('campaign terminal outcomes require exhausted regular supply', () => {
-  const won = clone(winEncounter(createCampaignRun({
+  const won = clone(winEncounter(startCampaign({
     runId: 'campaign-invalid-win-supply',
     seed: 4,
     ruleset: BASELINE_RULESET,
@@ -659,7 +694,7 @@ test('campaign terminal outcomes require exhausted regular supply', () => {
     /loser must have no regular supply/,
   )
 
-  const drawInput = mutableReady(createCampaignRun({
+  const drawInput = mutableReady(startCampaign({
     runId: 'campaign-invalid-draw-supply',
     seed: 11,
     ruleset: BASELINE_RULESET,
@@ -690,7 +725,7 @@ test('campaign terminal outcomes require exhausted regular supply', () => {
 })
 
 test('campaign decision and terminal boundaries enforce their pending events', () => {
-  const terminal = clone(loseEncounter(createCampaignRun({
+  const terminal = clone(loseEncounter(startCampaign({
     runId: 'campaign-missing-terminal-event',
     seed: 5,
     ruleset: BASELINE_RULESET,
@@ -702,7 +737,7 @@ test('campaign decision and terminal boundaries enforce their pending events', (
     /terminal campaign transition requires its pending event/,
   )
 
-  const resolved = resolvePrepared(createCampaignRun({
+  const resolved = resolvePrepared(startCampaign({
     runId: 'campaign-choice-event',
     seed: 3,
     ruleset: BASELINE_RULESET,
@@ -716,7 +751,7 @@ test('campaign decision and terminal boundaries enforce their pending events', (
     /Hold choice boundary cannot retain a pending event/,
   )
 
-  const mismatch = clone(loseEncounter(createCampaignRun({
+  const mismatch = clone(loseEncounter(startCampaign({
     runId: 'campaign-event-outcome-mismatch',
     seed: 5,
     ruleset: BASELINE_RULESET,
@@ -739,7 +774,7 @@ test('campaign decision and terminal boundaries enforce their pending events', (
 })
 
 test('campaign settled transfers match the winner won-pile suffix', () => {
-  const settled = resolvePrepared(createCampaignRun({
+  const settled = resolvePrepared(startCampaign({
     runId: 'campaign-transfer-suffix',
     seed: 3,
     ruleset: NO_BURN_RULESET,
@@ -769,7 +804,7 @@ test('campaign settled transfers match the winner won-pile suffix', () => {
 })
 
 test('campaign settled events obey the active burn ruleset', () => {
-  const baseline = clone(resolvePrepared(createCampaignRun({
+  const baseline = clone(resolvePrepared(startCampaign({
     runId: 'campaign-baseline-settlement',
     seed: 3,
     ruleset: BASELINE_RULESET,
@@ -793,7 +828,7 @@ test('campaign settled events obey the active burn ruleset', () => {
     /settlement must match the active burn ruleset/,
   )
 
-  const noBurn = clone(resolvePrepared(createCampaignRun({
+  const noBurn = clone(resolvePrepared(startCampaign({
     runId: 'campaign-no-burn-settlement',
     seed: 3,
     ruleset: NO_BURN_RULESET,
@@ -817,7 +852,7 @@ test('campaign settled events obey the active burn ruleset', () => {
     /settlement must match the active burn ruleset/,
   )
 
-  const noBurnWithoutEvent = clone(createCampaignRun({
+  const noBurnWithoutEvent = clone(startCampaign({
     runId: 'campaign-no-burn-state',
     seed: 3,
     ruleset: NO_BURN_RULESET,
@@ -833,7 +868,7 @@ test('campaign settled events obey the active burn ruleset', () => {
 })
 
 test('campaign settled burns match the burn-pile suffix', () => {
-  const settled = clone(resolvePrepared(createCampaignRun({
+  const settled = clone(resolvePrepared(startCampaign({
     runId: 'campaign-burn-suffix',
     seed: 15,
     ruleset: BASELINE_RULESET,
@@ -849,7 +884,7 @@ test('campaign settled burns match the burn-pile suffix', () => {
 })
 
 test('campaign pending events bind terminal reveal parity and Hold availability', () => {
-  const forgedTerminal = clone(resolvePrepared(createCampaignRun({
+  const forgedTerminal = clone(resolvePrepared(startCampaign({
     runId: 'campaign-forged-terminal',
     seed: 3,
     ruleset: BASELINE_RULESET,
@@ -874,7 +909,7 @@ test('campaign pending events bind terminal reveal parity and Hold availability'
     /terminal inability/,
   )
 
-  const forgedNonterminal = clone(winEncounter(createCampaignRun({
+  const forgedNonterminal = clone(winEncounter(startCampaign({
     runId: 'campaign-forged-nonterminal',
     seed: 3,
     ruleset: BASELINE_RULESET,
@@ -889,7 +924,7 @@ test('campaign pending events bind terminal reveal parity and Hold availability'
     /complete reveal rounds/,
   )
 
-  let heldRun = resolvePrepared(createCampaignRun({
+  let heldRun = resolvePrepared(startCampaign({
     runId: 'campaign-hold-bypass',
     seed: 3,
     ruleset: BASELINE_RULESET,
@@ -954,7 +989,7 @@ test('campaign pending events bind terminal reveal parity and Hold availability'
 })
 
 test('encounter damage retries while positive and ends at zero health', () => {
-  let run = createCampaignRun({
+  let run = startCampaign({
     runId: 'campaign-health',
     seed: 6,
     ruleset: BASELINE_RULESET,
@@ -973,22 +1008,20 @@ test('encounter damage retries while positive and ends at zero health', () => {
 })
 
 test('final encounter deals two damage and the third win completes the campaign', () => {
-  let run = createCampaignRun({
+  let run = startCampaign({
     runId: 'campaign-final',
     seed: 7,
     ruleset: NO_BURN_RULESET,
   })
-  run = selectCampaignReward(winEncounter(run), {
-    offerId: 'new-card',
-    targetInstanceId: null,
-  })
-  run = selectCampaignReward(winEncounter(run), {
-    offerId: 'mend',
-    targetInstanceId: null,
-  })
+  run = claimReward(winEncounter(run), 'new-card')
+  assert.equal(run.machineState, 'awaitingRoute')
+  run = passThrough(run, 'shrine', 'court')
+  run = claimReward(winEncounter(run), 'mend')
+  run = passThrough(run, 'vault', 'finale')
   assert.equal(run.encounterIndex, 2)
   assert.equal(run.health, 4)
   assert.equal(run.encounter.damage, 2)
+  assert.equal(run.encounter.id, 'ace-assembly')
 
   const losing = loseEncounter(run)
   assert.equal(losing.health, 2)
@@ -999,6 +1032,9 @@ test('final encounter deals two damage and the third win completes the campaign'
     result: 'victory',
     reason: 'campaignCompleted',
   })
+  assert.equal(routeStates(victory).finale, 'completed')
+  assert.equal(activeNodeId(victory), null)
+  assert.equal(victory.pendingReward, null)
 
   const zeroHealthVictory = clone(victory)
   zeroHealthVictory.health = 0
@@ -1010,12 +1046,12 @@ test('final encounter deals two damage and the third win completes the campaign'
 })
 
 test('same seed and campaign choices replay exactly', () => {
-  let first = createCampaignRun({
+  let first = startCampaign({
     runId: 'campaign-replay',
     seed: 19,
     ruleset: BASELINE_RULESET,
   })
-  let second = createCampaignRun({
+  let second = startCampaign({
     runId: 'campaign-replay',
     seed: 19,
     ruleset: BASELINE_RULESET,

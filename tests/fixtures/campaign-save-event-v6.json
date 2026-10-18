@@ -1,0 +1,272 @@
+{
+  "saveSchemaVersion": 6,
+  "gameRulesVersion": 5,
+  "runType": "campaign",
+  "savedAt": "2026-09-25T04:00:00.000Z",
+  "runId": "fixture-campaign-event",
+  "rng": {
+    "algorithm": "mulberry32",
+    "seed": 48,
+    "state": 4095567453
+  },
+  "ruleset": {
+    "id": "mvp-baseline-v2",
+    "burn": {
+      "enabled": true,
+      "eligibleScope": "all-losing-side-cards-in-resolved-contested-pile",
+      "decisiveWinningCard": "winner.wonPile"
+    }
+  },
+  "match": {
+    "campaignVersion": 3,
+    "machineState": "awaitingEvent",
+    "turn": 44,
+    "status": "active",
+    "outcome": null,
+    "health": 3,
+    "maxHealth": 5,
+    "currency": 3,
+    "encounterIndex": 1,
+    "encounterAttempt": 1,
+    "route": {
+      "mapId": "expedition-v1",
+      "nodes": [
+        {
+          "id": "gate",
+          "state": "completed"
+        },
+        {
+          "id": "market",
+          "state": "bypassed"
+        },
+        {
+          "id": "shrine",
+          "state": "active"
+        },
+        {
+          "id": "court",
+          "state": "locked"
+        },
+        {
+          "id": "watch",
+          "state": "locked"
+        },
+        {
+          "id": "bazaar",
+          "state": "locked"
+        },
+        {
+          "id": "vault",
+          "state": "locked"
+        },
+        {
+          "id": "finale",
+          "state": "locked"
+        }
+      ]
+    },
+    "cards": [
+      {
+        "instanceId": "player-001",
+        "cardId": "c-2D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-002",
+        "cardId": "c-3D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-003",
+        "cardId": "c-4D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-004",
+        "cardId": "c-5D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-005",
+        "cardId": "c-6D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-006",
+        "cardId": "c-7D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-007",
+        "cardId": "c-8D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-008",
+        "cardId": "c-9D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-009",
+        "cardId": "c-10D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-010",
+        "cardId": "c-JD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-011",
+        "cardId": "c-QD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-012",
+        "cardId": "c-KD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-013",
+        "cardId": "c-AD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-014",
+        "cardId": "c-2H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-015",
+        "cardId": "c-3H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-016",
+        "cardId": "c-4H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-017",
+        "cardId": "c-5H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-018",
+        "cardId": "c-6H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-019",
+        "cardId": "c-7H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-020",
+        "cardId": "c-8H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-021",
+        "cardId": "c-9H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-022",
+        "cardId": "c-10H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-023",
+        "cardId": "c-JH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-024",
+        "cardId": "c-QH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-025",
+        "cardId": "c-KH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-026",
+        "cardId": "c-AH",
+        "campaignOwner": "player"
+      }
+    ],
+    "deckLayout": [
+      "player-001",
+      "player-002",
+      "player-003",
+      "player-004",
+      "player-005",
+      "player-006",
+      "player-007",
+      "player-008",
+      "player-009",
+      "player-010",
+      "player-011",
+      "player-012",
+      "player-013",
+      "player-014",
+      "player-015",
+      "player-016",
+      "player-017",
+      "player-018",
+      "player-019",
+      "player-020",
+      "player-021",
+      "player-022",
+      "player-023",
+      "player-024",
+      "player-025",
+      "player-026"
+    ],
+    "hold": null,
+    "activeModifiers": [
+      {
+        "id": "vitality-cap-v1",
+        "lifetime": "campaign",
+        "grantedAtNodeId": null
+      },
+      {
+        "id": "hold-insight-v1",
+        "lifetime": "campaign",
+        "grantedAtNodeId": "gate"
+      }
+    ],
+    "encounter": null,
+    "holdChoice": null,
+    "pendingReward": null,
+    "shop": null,
+    "nodeEvent": {
+      "nodeId": "shrine",
+      "eventId": "crossroads-shrine"
+    },
+    "journal": [
+      {
+        "type": "route",
+        "nodeId": "gate"
+      },
+      {
+        "type": "reward",
+        "nodeId": "gate",
+        "offerId": "modifier",
+        "kind": "modifier",
+        "cardId": null,
+        "modifierId": "hold-insight-v1",
+        "targetInstanceId": null,
+        "createdInstanceId": null
+      },
+      {
+        "type": "route",
+        "nodeId": "shrine"
+      }
+    ],
+    "stateFingerprint": "{\"activeModifiers\":[{\"grantedAtNodeId\":null,\"id\":\"vitality-cap-v1\",\"lifetime\":\"campaign\"},{\"grantedAtNodeId\":\"gate\",\"id\":\"hold-insight-v1\",\"lifetime\":\"campaign\"}],\"campaignVersion\":3,\"cards\":[{\"campaignOwner\":\"player\",\"cardId\":\"c-2D\",\"instanceId\":\"player-001\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3D\",\"instanceId\":\"player-002\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4D\",\"instanceId\":\"player-003\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5D\",\"instanceId\":\"player-004\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6D\",\"instanceId\":\"player-005\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7D\",\"instanceId\":\"player-006\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8D\",\"instanceId\":\"player-007\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9D\",\"instanceId\":\"player-008\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10D\",\"instanceId\":\"player-009\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JD\",\"instanceId\":\"player-010\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QD\",\"instanceId\":\"player-011\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KD\",\"instanceId\":\"player-012\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AD\",\"instanceId\":\"player-013\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-2H\",\"instanceId\":\"player-014\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3H\",\"instanceId\":\"player-015\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4H\",\"instanceId\":\"player-016\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5H\",\"instanceId\":\"player-017\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6H\",\"instanceId\":\"player-018\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7H\",\"instanceId\":\"player-019\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8H\",\"instanceId\":\"player-020\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9H\",\"instanceId\":\"player-021\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10H\",\"instanceId\":\"player-022\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JH\",\"instanceId\":\"player-023\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QH\",\"instanceId\":\"player-024\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KH\",\"instanceId\":\"player-025\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AH\",\"instanceId\":\"player-026\"}],\"currency\":3,\"deckLayout\":[\"player-001\",\"player-002\",\"player-003\",\"player-004\",\"player-005\",\"player-006\",\"player-007\",\"player-008\",\"player-009\",\"player-010\",\"player-011\",\"player-012\",\"player-013\",\"player-014\",\"player-015\",\"player-016\",\"player-017\",\"player-018\",\"player-019\",\"player-020\",\"player-021\",\"player-022\",\"player-023\",\"player-024\",\"player-025\",\"player-026\"],\"encounter\":null,\"encounterAttempt\":1,\"encounterIndex\":1,\"health\":3,\"hold\":null,\"holdChoice\":null,\"journal\":[{\"nodeId\":\"gate\",\"type\":\"route\"},{\"cardId\":null,\"createdInstanceId\":null,\"kind\":\"modifier\",\"modifierId\":\"hold-insight-v1\",\"nodeId\":\"gate\",\"offerId\":\"modifier\",\"targetInstanceId\":null,\"type\":\"reward\"},{\"nodeId\":\"shrine\",\"type\":\"route\"}],\"machineState\":\"awaitingEvent\",\"maxHealth\":5,\"mode\":\"campaign\",\"nodeEvent\":{\"eventId\":\"crossroads-shrine\",\"nodeId\":\"shrine\"},\"outcome\":null,\"pendingEvent\":null,\"pendingReward\":null,\"rng\":{\"algorithm\":\"mulberry32\",\"seed\":48,\"state\":4095567453},\"route\":{\"mapId\":\"expedition-v1\",\"nodes\":[{\"id\":\"gate\",\"state\":\"completed\"},{\"id\":\"market\",\"state\":\"bypassed\"},{\"id\":\"shrine\",\"state\":\"active\"},{\"id\":\"court\",\"state\":\"locked\"},{\"id\":\"watch\",\"state\":\"locked\"},{\"id\":\"bazaar\",\"state\":\"locked\"},{\"id\":\"vault\",\"state\":\"locked\"},{\"id\":\"finale\",\"state\":\"locked\"}]},\"ruleset\":{\"burn\":{\"decisiveWinningCard\":\"winner.wonPile\",\"eligibleScope\":\"all-losing-side-cards-in-resolved-contested-pile\",\"enabled\":true},\"id\":\"mvp-baseline-v2\"},\"runId\":\"fixture-campaign-event\",\"shop\":null,\"status\":\"active\",\"turn\":44}"
+  },
+  "pendingEvent": null
+}
