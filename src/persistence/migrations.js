@@ -5,9 +5,10 @@ import {
   validateRunSave,
 } from './run-schema.js'
 
-// Schema 4 Classic saves carry over unchanged. Schema 4 Campaign saves use the
-// scripted rewards of campaign rules 3, which campaign rules 4 cannot replay.
-const SCHEMA_4 = 4
+// Schema 4 and 5 Classic saves carry over unchanged. Their Campaign saves use the
+// scripted rewards of campaign rules 3 or the linear seeded drafts of campaign
+// rules 4, which the branching expedition of campaign rules 5 cannot replay.
+const CARRIED_SCHEMAS = Object.freeze([4, 5])
 
 function assertPlainObject(value, name) {
   if (
@@ -52,7 +53,7 @@ function dataEntries(value, name) {
   })
 }
 
-function migrateSchema4(input) {
+function migrateCarriedSchema(input) {
   const entries = dataEntries(input, 'save')
   const fields = Object.fromEntries(entries)
   if (fields.runType === 'campaign') {
@@ -78,7 +79,7 @@ export function migrateRunSave(input) {
   if (!Number.isSafeInteger(descriptor.value) || descriptor.value < 1) {
     throw new TypeError('saveSchemaVersion must be a positive safe integer')
   }
-  if (descriptor.value === SCHEMA_4) return migrateSchema4(input)
+  if (CARRIED_SCHEMAS.includes(descriptor.value)) return migrateCarriedSchema(input)
   if (descriptor.value !== SAVE_SCHEMA_VERSION) {
     throw new UnsupportedSaveVersionError(descriptor.value)
   }

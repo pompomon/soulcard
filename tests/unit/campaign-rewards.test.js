@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   CAMPAIGN_CARD_COPY_LIMIT,
   CAMPAIGN_DECK_SIZE_LIMITS,
-  CAMPAIGN_ENCOUNTERS,
+  CAMPAIGN_FIGHTS,
   CAMPAIGN_MEND_HEALTH,
   CAMPAIGN_REWARD_SLOTS,
   CAMPAIGN_STARTER_CARD_IDS,
@@ -17,16 +17,12 @@ import {
   narrowHoldTargets,
   validateModifierCatalogue,
 } from '../../src/domain/campaign-modifiers.js'
-import {
-  REWARD_DRAFT_STREAM,
-  createStarterPlayerCards,
-  generateRewardDraft,
-} from '../../src/domain/campaign-rewards.js'
+import { REWARD_DRAFT_STREAM, generateRewardDraft } from '../../src/domain/campaign-rewards.js'
+import { createStarterPlayerCards } from '../../src/domain/campaign-deck.js'
 import {
   HOLD_POSITION,
   captureCampaignHold,
   chooseCampaignReveal,
-  createCampaignRun,
   createCampaignStateFingerprint,
   getCampaignRewardTargets,
   getEligibleHoldTargets,
@@ -38,6 +34,7 @@ import {
 import { CARD_IDS, compareCards, getCard } from '../../src/domain/cards.js'
 import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
 import { createDerivedRng, restoreRng, shuffle } from '../../src/domain/rng.js'
+import { claimReward, passThrough, startCampaign } from '../fixtures/campaign-route.js'
 
 const DECISION_STATES = ['awaitingHoldChoice', 'awaitingInformedHoldChoice']
 
@@ -135,11 +132,26 @@ function loseEncounter(input) {
 }
 
 function start(seed, ruleset = BASELINE_RULESET, runId = `campaign-rewards-${seed}`) {
-  return createCampaignRun({ runId, seed, ruleset })
+  return startCampaign({ runId, seed, ruleset })
 }
 
+// Claims a reward, then walks the next stage's event and enters the following fight on the
+// court route, so the fights and their shuffles match the three 21.2 encounters.
 function pick(run, offerId, targetInstanceId = null) {
-  return selectCampaignReward(run, { offerId, targetInstanceId })
+  const claimed = claimReward(run, offerId, targetInstanceId)
+  return claimed.route.nodes.find(({ id }) => id === 'shrine').state === 'available'
+    ? passThrough(claimed, 'shrine', 'court')
+    : passThrough(claimed, 'vault', 'finale')
+}
+
+function rewardEntries(run) {
+  return run.journal.filter(({ type }) => type === 'reward')
+}
+
+function rewardEntryIndex(run, ordinal) {
+  return run.journal
+    .map((entry, index) => [entry, index])
+    .filter(([entry]) => entry.type === 'reward')[ordinal][1]
 }
 
 function offer(run, offerId) {
@@ -287,7 +299,7 @@ test('modifier pools keep ID order and filter without consuming randomness', (t)
   const patience = [...starting, {
     id: 'vow-of-patience-v1',
     lifetime: 'campaign',
-    grantedAtEncounterIndex: 0,
+    grantedAtNodeId: 'gate',
   }]
   assert.deepEqual(getDraftableModifierPool(patience, BASELINE_RULESET), [
     'hold-insight-v1',
@@ -297,7 +309,7 @@ test('modifier pools keep ID order and filter without consuming randomness', (t)
   const expiringSpoils = [...starting, {
     id: 'spoils-of-war-v1',
     lifetime: 'encounter',
-    grantedAtEncounterIndex: 0,
+    grantedAtNodeId: 'gate',
   }]
   assert.deepEqual(
     getDraftableModifierPool(expiringSpoils, BASELINE_RULESET),
@@ -438,11 +450,18 @@ test('winning drafts are bound to the event fingerprint and leave the main RNG u
 })
 
 test('every reward kind edits cards, layout, health, and history exactly', () => {
+  const claimed = claimReward(winEncounter(start(SEEDS.court)), 'new-card')
+  assert.equal(claimed.machineState, 'awaitingRoute')
+  assert.equal(claimed.encounter, null)
+  assert.equal(claimed.pendingReward, null)
+  assert.equal(claimed.currency, 3)
+  assert.equal(claimed.deckLayout.at(-1), 'player-027')
   const added = pick(winEncounter(start(SEEDS.court)), 'new-card')
   assert.equal(added.encounterIndex, 1)
   assert.equal(added.encounterAttempt, 1)
-  assert.deepEqual(added.rewardHistory, [{
-    encounterIndex: 0,
+  assert.deepEqual(rewardEntries(added), [{
+    type: 'reward',
+    nodeId: 'gate',
     offerId: 'new-card',
     kind: 'add',
     cardId: 'c-QC',
@@ -469,8 +488,8 @@ test('every reward kind edits cards, layout, health, and history exactly', () =>
   assert.ok(!removed.deckLayout.includes(removedId))
   assert.deepEqual(removed.deckLayout, removing.deckLayout.filter((id) => id !== removedId))
   assert.ok(!removed.cards.some(({ instanceId }) => instanceId === removedId))
-  assert.equal(removed.rewardHistory[0].createdInstanceId, null)
-  assert.equal(removed.rewardHistory[0].targetInstanceId, removedId)
+  assert.equal(rewardEntries(removed)[0].createdInstanceId, null)
+  assert.equal(rewardEntries(removed)[0].targetInstanceId, removedId)
   assert.ok(removedIndex >= 0)
 
   const duplicating = winEncounter(start(SEEDS.patience))
@@ -505,13 +524,12 @@ test('every reward kind edits cards, layout, health, and history exactly', () =>
   assert.deepEqual(vowed.activeModifiers.at(-1), {
     id: 'vow-of-the-court-v1',
     lifetime: 'campaign',
-    grantedAtEncounterIndex: 0,
+    grantedAtNodeId: 'gate',
   })
-  const capped = clone(winEncounter(start(SEEDS.court)))
-  capped.health = 5
-  refingerprint(capped)
-  assert.equal(pick(capped, 'mend').health, 5)
-  assert.equal(pick(capped, 'modifier').health, 5)
+  const capped = winEncounter(vowed)
+  assert.equal(capped.health, 5)
+  assert.equal(claimReward(capped, 'mend').health, 5)
+  assert.equal(claimReward(capped, 'modifier').health, 5)
 
   for (const run of [added, removed, duplicated, replaced, mended, vowed]) {
     const players = run.cards.filter(({ campaignOwner }) => campaignOwner === 'player')
@@ -533,8 +551,22 @@ test('reward selection validates offers and targets without invoking accessors',
   assert.throws(() => pick(won, 'new-card', 'player-001'), /does not take a target/)
   assert.throws(() => selectCampaignReward(won, { offerId: 'mend' }), /must contain only/)
   assert.throws(
-    () => selectCampaignReward(won, { offerId: 'mend', targetInstanceId: null, extra: 1 }),
+    () => selectCampaignReward(won, {
+      nodeId: 'gate',
+      step: won.journal.length,
+      offerId: 'mend',
+      targetInstanceId: null,
+      extra: 1,
+    }),
     /must contain only/,
+  )
+  assert.throws(
+    () => selectCampaignReward(won, { nodeId: 'gate', step: 0, offerId: 'mend', targetInstanceId: null }),
+    /stale/,
+  )
+  assert.throws(
+    () => selectCampaignReward(won, { nodeId: 'court', step: 1, offerId: 'mend', targetInstanceId: null }),
+    /not the active node/,
   )
   assert.throws(() => selectCampaignReward(won, null), /plain object/)
   assert.throws(() => getCampaignRewardTargets(won, 'missing'), /not part of the pending draft/)
@@ -542,7 +574,7 @@ test('reward selection validates offers and targets without invoking accessors',
   assert.deepEqual(getCampaignRewardTargets(start(SEEDS.patience), 'mend'), [])
 
   let invoked = false
-  const selection = { targetInstanceId: null }
+  const selection = { nodeId: 'gate', step: won.journal.length, targetInstanceId: null }
   Object.defineProperty(selection, 'offerId', {
     enumerable: true,
     get() {
@@ -596,7 +628,7 @@ test('new instance IDs continue after the highest issued ID and are never reused
   const removing = winEncounter(start(SEEDS.court))
   const removedId = getCampaignRewardTargets(removing, 'deck-edit')[0].instanceId
   const afterRemoval = pick(winEncounter(pick(removing, 'deck-edit', removedId)), 'new-card')
-  assert.equal(afterRemoval.rewardHistory[1].createdInstanceId, 'player-027')
+  assert.equal(rewardEntries(afterRemoval)[1].createdInstanceId, 'player-027')
   const removalIds = afterRemoval.cards
     .filter(({ campaignOwner }) => campaignOwner === 'player')
     .map(({ instanceId }) => instanceId)
@@ -607,14 +639,14 @@ test('new instance IDs continue after the highest issued ID and are never reused
   const replacing = winEncounter(start(SEEDS.replace))
   const replacedId = getCampaignRewardTargets(replacing, 'deck-edit')[0].instanceId
   const replaced = pick(replacing, 'deck-edit', replacedId)
-  assert.equal(replaced.rewardHistory[0].createdInstanceId, 'player-027')
+  assert.equal(rewardEntries(replaced)[0].createdInstanceId, 'player-027')
   const added = pick(winEncounter(replaced), 'new-card')
-  assert.equal(added.rewardHistory[1].createdInstanceId, 'player-028')
+  assert.equal(rewardEntries(added)[1].createdInstanceId, 'player-028')
   assert.ok(!added.cards.some(({ instanceId }) => instanceId === replacedId))
 
   for (const createdInstanceId of ['player-026', 'player-028', 'player-27']) {
     const forged = clone(replaced)
-    forged.rewardHistory[0].createdInstanceId = createdInstanceId
+    forged.journal[rewardEntryIndex(forged, 0)].createdInstanceId = createdInstanceId
     refingerprint(forged)
     assert.throws(() => validateCampaignState(forged), /next player instance ID|identifier/)
   }
@@ -625,7 +657,7 @@ test('same seed and reward choices replay a full campaign exactly', () => {
     const states = []
     const drafts = []
     let run = start(SEEDS.replace, BASELINE_RULESET, 'campaign-full-replay')
-    for (let encounter = 0; encounter < CAMPAIGN_ENCOUNTERS.length; encounter += 1) {
+    for (let encounter = 0; encounter < 3; encounter += 1) {
       for (let step = 0; step < 400 && run.machineState === 'ready'; step += 1) {
         const resolved = resolvePrepared(run)
         states.push(resolved)
@@ -651,14 +683,14 @@ test('same seed and reward choices replay a full campaign exactly', () => {
   const first = play()
   const second = play()
   assert.deepEqual(second, first)
-  assert.equal(first.run.rewardHistory.length, first.run.encounterIndex)
+  assert.equal(rewardEntries(first.run).length, first.run.encounterIndex)
   const roundTrip = clone(first.run)
   assert.deepEqual(validateCampaignState(roundTrip), clone(first.run))
 
-  assert.equal(first.drafts.length, first.run.rewardHistory.length)
+  assert.equal(first.drafts.length, rewardEntries(first.run).length)
   first.drafts.forEach((draftState, index) => {
     assert.equal(draftState.encounterIndex, index)
-    const history = first.run.rewardHistory[index]
+    const history = rewardEntries(first.run)[index]
     const chosen = draftState.pendingReward.offers
       .find(({ offerId }) => offerId === history.offerId)
     assert.deepEqual(
@@ -671,44 +703,46 @@ test('same seed and reward choices replay a full campaign exactly', () => {
       },
     )
     const forged = clone(first.run)
-    forged.rewardHistory[index].offerId = draftState.pendingReward.offers
+    forged.journal[rewardEntryIndex(forged, index)].offerId = draftState.pendingReward.offers
       .find(({ offerId }) => offerId !== history.offerId).offerId
     refingerprint(forged)
-    assert.throws(() => validateCampaignState(forged), /must match its regenerated draft/)
+    assert.throws(() => validateCampaignState(forged), /must match its regenerated reward draft/)
   })
 })
 
-test('reward history and active modifiers must match their replay exactly', () => {
+test('journaled rewards and active modifiers must match their replay exactly', () => {
   const run = pick(winEncounter(start(SEEDS.patience)), 'modifier')
   assert.deepEqual(run.activeModifiers.map(({ id }) => id), [
     'vitality-cap-v1',
     'vow-of-patience-v1',
   ])
   const mutations = [
-    [(state) => { state.rewardHistory = [] }, /one entry per completed encounter/],
-    [(state) => { state.rewardHistory[0].encounterIndex = 1 }, /completed encounter order/],
-    [(state) => { state.rewardHistory[0].kind = 'mend' }, /regenerated draft/],
-    [(state) => { state.rewardHistory[0].kind = 'unknown' }, /known reward kind/],
-    [(state) => { state.rewardHistory[0].modifierId = 'hold-insight-v1' }, /regenerated draft/],
-    [(state) => { state.rewardHistory[0].targetInstanceId = 'player-001' }, /must not record a target/],
-    [(state) => { state.rewardHistory[0].createdInstanceId = 'player-027' }, /next player instance ID/],
-    [(state) => { delete state.rewardHistory[0].cardId }, /must contain only/],
+    [(state) => { state.journal = [] }, /route position implied by the journal/],
+    [(state) => { state.journal[1].nodeId = 'court' }, /must act on the active fight node/],
+    [(state) => { state.journal[1].kind = 'mend' }, /regenerated reward draft/],
+    [(state) => { state.journal[1].kind = 'unknown' }, /known reward kind/],
+    [(state) => { state.journal[1].modifierId = 'hold-insight-v1' }, /regenerated reward draft/],
+    [(state) => { state.journal[1].targetInstanceId = 'player-001' }, /must not record a target/],
+    [(state) => { state.journal[1].createdInstanceId = 'player-027' }, /must not record a target or created card/],
+    [(state) => { delete state.journal[1].cardId }, /must contain only/],
+    [(state) => { state.journal.splice(1, 1) }, /away from the route map/],
     [(state) => { state.activeModifiers.pop() }, /activeModifiers/],
     [(state) => { state.activeModifiers.reverse() }, /activeModifiers/],
     [(state) => { state.activeModifiers[1].lifetime = 'encounter' }, /activeModifiers/],
-    [(state) => { state.activeModifiers[1].grantedAtEncounterIndex = 1 }, /activeModifiers/],
+    [(state) => { state.activeModifiers[1].grantedAtNodeId = 'court' }, /activeModifiers/],
+    [(state) => { state.activeModifiers[1].grantedAtNodeId = null }, /activeModifiers/],
     [(state) => { state.activeModifiers[1].id = 'vow-of-unknown-v1' }, /catalogue modifier/],
     [(state) => {
       state.activeModifiers.push({
         id: 'vow-of-the-court-v1',
         lifetime: 'campaign',
-        grantedAtEncounterIndex: 0,
+        grantedAtNodeId: 'gate',
       })
     }, /both modify holdCaptureEligibility/],
     [(state) => { state.maxHealth = 6 }, /fixed maximum/],
     [(state) => {
       state.cards.find(({ instanceId }) => instanceId === 'player-001').cardId = 'c-AS'
-    }, /reward history/],
+    }, /authored encounter content and journal/],
   ]
   for (const [mutate, message] of mutations) {
     const forged = clone(run)
@@ -729,7 +763,7 @@ test('encounter modifiers survive retries and reloads, then expire exactly once'
   let run = winEncounter(start(SEEDS.spoils))
   assert.equal(offer(run, 'modifier').modifierId, 'spoils-of-war-v1')
   run = pick(run, 'modifier')
-  const spoils = { id: 'spoils-of-war-v1', lifetime: 'encounter', grantedAtEncounterIndex: 0 }
+  const spoils = { id: 'spoils-of-war-v1', lifetime: 'encounter', grantedAtNodeId: 'gate' }
   assert.deepEqual(run.activeModifiers.at(-1), spoils)
 
   run = loseEncounter(run)
@@ -747,7 +781,7 @@ test('encounter modifiers survive retries and reloads, then expire exactly once'
   assert.deepEqual(mended.activeModifiers.map(({ id }) => id), ['vitality-cap-v1'])
   if (offer(run, 'modifier')?.modifierId === 'spoils-of-war-v1') {
     const renewed = pick(run, 'modifier')
-    assert.deepEqual(renewed.activeModifiers.at(-1), { ...spoils, grantedAtEncounterIndex: 1 })
+    assert.deepEqual(renewed.activeModifiers.at(-1), { ...spoils, grantedAtNodeId: 'court' })
   }
 
   const unexpired = clone(mended)
@@ -887,7 +921,7 @@ test('Hold vows only narrow eligible targets and keep the swap unchanged', () =>
     { instanceId: 'c', cardId: 'c-AH', zone: 'player.wonPile', index: 1 },
   ]
   for (const id of ['vow-of-constancy-v1', 'vow-of-patience-v1', 'vow-of-the-court-v1']) {
-    const records = [{ id, lifetime: 'campaign', grantedAtEncounterIndex: 0 }]
+    const records = [{ id, lifetime: 'campaign', grantedAtNodeId: 'gate' }]
     for (const held of [null, 'c-2D', 'c-7D', 'c-AD']) {
       const narrowed = narrowHoldTargets(records, targets, held)
       assert.ok(narrowed.every((target) => targets.includes(target)))
@@ -1093,5 +1127,5 @@ test('informed choices handle empty candidates, ties, and tampered peeks', () =>
 
 test('starter content remains the authored Diamonds and Hearts deck', () => {
   assert.deepEqual(starterCardIds(), [...CAMPAIGN_STARTER_CARD_IDS])
-  assert.ok(CAMPAIGN_ENCOUNTERS.every((encounter) => !Object.hasOwn(encounter, 'reward')))
+  assert.ok(CAMPAIGN_FIGHTS.every((fight) => !Object.hasOwn(fight, 'reward')))
 })

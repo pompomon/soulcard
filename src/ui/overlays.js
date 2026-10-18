@@ -244,6 +244,62 @@ function appendLineSection(host, title, lines, { ordered = false, emptyText = nu
   host.append(section)
 }
 
+// One labelled choice with its explanation. Unavailable entries stay visible as text so
+// every option, and why it cannot be taken, is announced.
+function appendChoice(host, { title, detail, idPrefix, id, dataKey, onChoose, enabled, asButton = true }) {
+  const item = document.createElement('div')
+  item.className = 'campaign-offer'
+  const detailText = document.createElement('p')
+  detailText.className = 'campaign-offer__detail'
+  detailText.id = `${idPrefix}-${id}-detail`
+  detailText.textContent = detail
+  if (asButton) {
+    const button = createButton(
+      title,
+      () => onChoose(id),
+      'game-button campaign-overlay__target campaign-offer__button',
+    )
+    button.dataset[dataKey] = id
+    button.disabled = !enabled
+    button.setAttribute('aria-describedby', detailText.id)
+    item.append(button, detailText)
+  } else {
+    const label = document.createElement('p')
+    label.className = 'campaign-offer__title'
+    label.dataset[dataKey] = id
+    label.textContent = title
+    item.append(label, detailText)
+  }
+  host.append(item)
+}
+
+function appendTargets(host, view, dataKey, onChooseTarget, enabled) {
+  for (const target of view.targets) {
+    const button = createButton(
+      target.label,
+      () => onChooseTarget(target.instanceId),
+      'game-button campaign-overlay__target',
+    )
+    button.dataset[dataKey] = target.instanceId
+    button.disabled = !enabled
+    host.append(button)
+  }
+}
+
+// Route, shop, and event boundaries offer Run details and, once saved, the main menu,
+// because the rest of the HUD is unavailable while their overlay is open.
+const NODE_MODES = new Set(['route-map', 'shop', 'event'])
+
+const TARGET_DATA_KEYS = Object.freeze({
+  'reward-target': 'rewardTarget',
+  'shop-target': 'shopTarget',
+  'event-target': 'eventTarget',
+})
+
+function capitalize(text) {
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`
+}
+
 function choiceDescription(match) {
   if (match.holdChoice.candidate === null) {
     return 'The prepared pile is empty. Reveal the held card to continue.'
@@ -263,6 +319,11 @@ export function createCampaignOverlay({
   onChooseTarget,
   onBack,
   onClose,
+  onChooseRoute,
+  onBuyItem,
+  onLeaveShop,
+  onChooseEventOption,
+  onInspect,
   onMainMenu,
   onRestart,
   onCancel,
@@ -277,6 +338,11 @@ export function createCampaignOverlay({
     onChooseTarget,
     onBack,
     onClose,
+    onChooseRoute,
+    onBuyItem,
+    onLeaveShop,
+    onChooseEventOption,
+    onInspect,
     onMainMenu,
     onRestart,
     onCancel,
@@ -315,8 +381,10 @@ export function createCampaignOverlay({
     hold: createButton('Reveal held card', onChooseHold),
     save: createButton('Retry save', onRetrySave, 'game-button game-button--primary'),
     retry: createButton('Retry encounter', onRetry, 'game-button game-button--primary'),
+    leave: createButton('Leave shop', onLeaveShop, 'game-button game-button--primary'),
     back: createButton('Back', onBack),
     close: createButton('Close', onClose, 'game-button game-button--primary'),
+    inspect: createButton('Run details', onInspect),
     main: createButton('Main Menu', onMainMenu, 'game-button game-button--primary'),
     restart: createButton('Restart Campaign', onRestart),
     cancel: createButton('Cancel', onCancel),
@@ -376,49 +444,104 @@ export function createCampaignOverlay({
     } else if (mode === 'reward-draft') {
       heading.textContent = 'Encounter won'
       description.textContent = boundarySaved
-        ? 'Choose one reward before the next encounter.'
+        ? view.description
         : 'Rewards can be chosen once this draft is saved.'
       for (const offer of view.offers) {
-        const item = document.createElement('div')
-        item.className = 'campaign-offer'
-        const button = createButton(
-          offer.title,
-          () => onChooseOffer(offer.offerId),
-          'game-button campaign-overlay__target campaign-offer__button',
-        )
-        button.dataset.rewardOffer = offer.offerId
-        button.disabled = options.busy || !boundarySaved || !offer.available
-        const detail = document.createElement('p')
-        detail.className = 'campaign-offer__detail'
-        detail.id = `campaign-offer-${offer.offerId}-detail`
-        detail.textContent = offer.detail
-        button.setAttribute('aria-describedby', detail.id)
-        item.append(button, detail)
-        choiceHost.append(item)
+        appendChoice(choiceHost, {
+          title: offer.title,
+          detail: offer.detail,
+          idPrefix: 'campaign-offer',
+          id: offer.offerId,
+          dataKey: 'rewardOffer',
+          onChoose: onChooseOffer,
+          enabled: !options.busy && boundarySaved && offer.available,
+        })
       }
       appendLineSection(detailHost, 'Active modifiers', view.modifiers)
       buttons.save.hidden = snapshot.saveStatus !== 'failed'
       buttons.save.disabled = options.busy
-    } else if (mode === 'reward-target') {
+    } else if (TARGET_DATA_KEYS[mode] !== undefined) {
       heading.textContent = view.heading
       description.textContent = view.description
-      for (const target of view.targets) {
-        const button = createButton(
-          target.label,
-          () => onChooseTarget(target.instanceId),
-          'game-button campaign-overlay__target',
-        )
-        button.dataset.rewardTarget = target.instanceId
-        button.disabled = options.busy || !boundarySaved
-        choiceHost.append(button)
-      }
+      appendTargets(
+        choiceHost,
+        view,
+        TARGET_DATA_KEYS[mode],
+        onChooseTarget,
+        !options.busy && boundarySaved,
+      )
       buttons.back.hidden = false
       buttons.back.disabled = options.busy
-    } else if (mode === 'reward-saving') {
-      heading.textContent = view.failed ? 'Reward not saved' : 'Saving reward'
+    } else if (mode === 'route-map') {
+      heading.textContent = view.title
+      description.textContent = boundarySaved
+        ? view.description
+        : 'Your route can be chosen once this map is saved.'
+      for (const node of view.nodes) {
+        appendChoice(choiceHost, {
+          title: node.title,
+          detail: node.detail,
+          idPrefix: 'campaign-route',
+          id: node.nodeId,
+          dataKey: 'routeNode',
+          onChoose: onChooseRoute,
+          enabled: !options.busy && boundarySaved,
+          asButton: node.available,
+        })
+      }
+      appendLineSection(detailHost, 'Expedition', view.summary)
+      appendLineSection(detailHost, 'Active modifiers', view.modifiers)
+    } else if (mode === 'shop') {
+      heading.textContent = view.title
+      description.textContent = boundarySaved
+        ? view.description
+        : 'Items can be bought once this shop is saved.'
+      if (view.soldOut) {
+        const soldOut = document.createElement('p')
+        soldOut.className = 'campaign-overlay__line'
+        soldOut.dataset.shopSoldOut = ''
+        soldOut.textContent = 'Out of stock. Everything here has been sold.'
+        choiceHost.append(soldOut)
+      }
+      for (const item of view.items) {
+        appendChoice(choiceHost, {
+          title: item.title,
+          detail: item.detail,
+          idPrefix: 'campaign-shop',
+          id: item.itemId,
+          dataKey: 'shopItem',
+          onChoose: onBuyItem,
+          enabled: !options.busy && boundarySaved && item.available,
+        })
+      }
+      appendLineSection(detailHost, 'Active modifiers', view.modifiers)
+      buttons.leave.hidden = false
+      buttons.leave.disabled = options.busy || !boundarySaved
+    } else if (mode === 'event') {
+      heading.textContent = view.title
+      description.textContent = boundarySaved
+        ? view.description
+        : 'An option can be chosen once this event is saved.'
+      for (const option of view.options) {
+        appendChoice(choiceHost, {
+          title: option.title,
+          detail: option.detail,
+          idPrefix: 'campaign-event',
+          id: option.optionId,
+          dataKey: 'eventOption',
+          onChoose: onChooseEventOption,
+          enabled: !options.busy && boundarySaved && option.available,
+        })
+      }
+      appendLineSection(detailHost, 'Expedition', view.summary)
+      appendLineSection(detailHost, 'Active modifiers', view.modifiers)
+    } else if (mode === 'decision-saving') {
+      heading.textContent = view.failed
+        ? `${capitalize(view.noun)} not saved`
+        : `Saving ${view.noun}`
       description.textContent = view.failed
-        ? 'Your reward is chosen but not saved. Retry the save to continue, or return to the main menu.'
-        : 'Saving your reward before the next encounter…'
+        ? `Your ${view.noun} is made but not saved. Retry the save to continue, or return to the main menu.`
+        : `Saving your ${view.noun} before continuing…`
       buttons.save.hidden = !view.failed
       buttons.save.disabled = options.busy
       buttons.main.hidden = !view.failed
@@ -426,22 +549,32 @@ export function createCampaignOverlay({
     } else if (mode === 'inspect') {
       heading.textContent = 'Run details'
       description.textContent = view.summary.join(' · ')
+      appendLineSection(detailHost, 'Route', view.route)
       appendLineSection(detailHost, 'Active modifiers', view.modifiers)
-      appendLineSection(detailHost, 'Reward history', view.history, {
+      appendLineSection(detailHost, 'Expedition log', view.log, {
         ordered: true,
-        emptyText: 'No rewards chosen yet.',
+        emptyText: 'No decisions recorded yet.',
       })
       buttons.close.hidden = false
       buttons.close.disabled = options.busy
     } else if (mode === 'campaign-end') {
       heading.textContent = match.outcome.result === 'victory' ? 'Campaign victory' : 'Campaign defeat'
       description.textContent = match.outcome.result === 'victory'
-        ? 'You defeated every campaign opponent.'
+        ? 'You won the final encounter of the expedition.'
         : 'Your health was depleted. Start a new campaign to try again.'
+      appendLineSection(detailHost, 'Expedition', [view.route])
       buttons.main.hidden = false
       buttons.restart.hidden = false
       buttons.main.disabled = options.busy
       buttons.restart.disabled = options.busy
+    }
+    if (NODE_MODES.has(mode)) {
+      buttons.inspect.hidden = false
+      buttons.inspect.disabled = options.busy
+      buttons.main.hidden = false
+      buttons.main.disabled = options.busy || !boundarySaved
+      buttons.save.hidden = snapshot.saveStatus !== 'failed'
+      buttons.save.disabled = options.busy
     }
   }
 

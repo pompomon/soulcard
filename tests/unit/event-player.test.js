@@ -7,7 +7,6 @@ import {
 import {
   captureCampaignHold,
   chooseCampaignReveal,
-  createCampaignRun,
   getEligibleHoldTargets,
   prepareCampaignReveal,
 } from '../../src/domain/campaign-machine.js'
@@ -18,6 +17,7 @@ import {
   createEventPlayer,
   createEventTimeline,
 } from '../../src/presentation/event-player.js'
+import { startCampaign } from '../fixtures/campaign-route.js'
 
 function transitionAt(seed, turn) {
   let match = createMatch({
@@ -467,7 +467,7 @@ test('turn-zero snapshots deduplicate and teardown cancels pending work idempote
 })
 
 test('same-turn Campaign Hold replacements synchronize distinct fingerprints', async () => {
-  let campaign = createCampaignRun({
+  let campaign = startCampaign({
     runId: 'event-player-hold-replacement',
     seed: 0,
     ruleset: BASELINE_RULESET,

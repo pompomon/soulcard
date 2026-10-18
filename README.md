@@ -22,7 +22,9 @@ Run `npm run dev`, open the reported local URL, and choose **Campaign** from Mai
 That native button is the manual entry point for the three-encounter Campaign Duel in
 the existing Game screen. The deterministic browser acceptance fixture is available at
 `/tests/browser/milestone-21-1-campaign.html`; it reports its canvas, semantic Hold
-choices, presentation states, and console errors as text.
+choices, presentation states, and console errors as text. The reward fixture at
+`/tests/browser/milestone-21-2-rewards.html` restores a saved reward draft and reports
+its offers, the saved reward, the informed Hold choice, and Run details as text.
 
 ## Texture cache ownership
 
@@ -104,10 +106,11 @@ that 2 beats Ace; 2 still loses to 3 through King.
 
 Campaign creates a separate three-encounter run in the same Game screen. It starts at
 3/5 health with all Diamonds and Hearts, then faces Spades/Clubs, Jacks/Queens/Kings,
-and four Aces for 1, 1, and 2 damage. The first reward adds new Spade- and Club-Ace
-instances; the second restores one health. Campaign card instances retain immutable
-player/opponent provenance, and the one-slot Hold action can capture only player-owned
-cards currently in the player's draw or won pile.
+and four Aces for 1, 1, and 2 damage. Each non-final win opens a seeded reward draft:
+a new card, a deck edit (duplicate, remove, or replace), a modifier, or Mend (+1
+health). Campaign card instances retain immutable player/opponent provenance, and the
+one-slot Hold action can capture only player-owned cards currently in the player's draw
+or won pile.
 
 The Settings screen persists a Turn burning preference independently from active runs.
 It selects the burn-enabled or burn-disabled ruleset only when starting or restarting a
@@ -118,9 +121,12 @@ still-restoring saved run requires confirmation.
 
 Main enables Resume only after a valid ready, paused, or completed run restores. Invalid
 or incompatible saves remain quarantined until explicitly discarded; unavailable storage
-is reported without blocking session-only play. Current saves use save schema version 4. Classic runs use game rules version 2 and
-Campaign runs use version 3; schema-version-1 through schema-version-3 records are
-deliberately quarantined and require explicit discard.
+is reported without blocking session-only play. Current saves use save schema version 5.
+Classic runs use game rules version 2 and Campaign runs use version 4. Schema-version-4
+Classic records carry over unchanged; schema-version-4 Campaign records use the
+scripted rewards of Campaign rules version 3 and are quarantined as incompatible.
+Schema-version-1 through schema-version-3 records are deliberately quarantined. Every
+quarantined record requires explicit discard.
 
 Pause remains an overlay inside Game. Resume continues the exact snapshot, Save & Main
 Menu navigates only after a successful stable save, and Restart Game requires confirmation

@@ -23,7 +23,7 @@ function allObjects(value) {
 }
 
 test('current schema saves are validated, cloned, and frozen', () => {
-  for (const name of ['run-save-v5.json', 'campaign-save-informed-v5.json']) {
+  for (const name of ['run-save-v6.json', 'campaign-save-informed-v6.json', 'campaign-save-shop-v6.json']) {
     const current = fixture(name)
     const migrated = migrateRunSave(current)
 
@@ -33,60 +33,70 @@ test('current schema saves are validated, cloned, and frozen', () => {
   }
 })
 
-test('schema 4 Classic saves carry over unchanged as schema 5', () => {
-  for (const name of ['run-save-v4.json', 'run-save-paused-v4.json', 'run-save-terminal-v4.json']) {
-    const legacy = fixture(name)
-    const before = clone(legacy)
-    const migrated = migrateRunSave(legacy)
+test('schema 4 and 5 Classic saves carry over unchanged as schema 6', () => {
+  for (const version of [4, 5]) {
+    for (const name of ['run-save', 'run-save-paused', 'run-save-terminal']) {
+      const legacy = fixture(`${name}-v${version}.json`)
+      const before = clone(legacy)
+      const migrated = migrateRunSave(legacy)
 
-    assert.deepEqual(migrated, fixture(name.replace('-v4.json', '-v5.json')))
-    assert.deepEqual(Object.keys(migrated), Object.keys(legacy))
-    assert.ok(allObjects(migrated).every(Object.isFrozen))
-    assert.deepEqual(legacy, before)
+      assert.deepEqual(migrated, fixture(`${name}-v6.json`))
+      assert.deepEqual(Object.keys(migrated), Object.keys(legacy))
+      assert.ok(allObjects(migrated).every(Object.isFrozen))
+      assert.deepEqual(legacy, before)
+    }
+    const name = `run-save-v${version}.json`
+    assert.throws(
+      () => migrateRunSave({ ...fixture(name), gameRulesVersion: 1 }),
+      UnsupportedGameRulesVersionError,
+    )
+    const corrupt = fixture(name)
+    corrupt.match.sourceDeck.pop()
+    assert.throws(() => migrateRunSave(corrupt), /must contain all 52 cards/)
+    assert.throws(
+      () => migrateRunSave({ ...fixture(name), extra: true }),
+      /save must contain only/,
+    )
   }
-  assert.throws(
-    () => migrateRunSave({ ...fixture('run-save-v4.json'), gameRulesVersion: 1 }),
-    UnsupportedGameRulesVersionError,
-  )
-  const corrupt = fixture('run-save-v4.json')
-  corrupt.match.sourceDeck.pop()
-  assert.throws(() => migrateRunSave(corrupt), /must contain all 52 cards/)
-  assert.throws(
-    () => migrateRunSave({ ...fixture('run-save-v4.json'), extra: true }),
-    /save must contain only/,
-  )
 })
 
-test('schema 4 Campaign saves are quarantined as incompatible game rules', () => {
-  const legacy = fixture('campaign-save-v4.json')
-  let invoked = false
-  Object.defineProperty(legacy.match, 'pendingReward', {
-    enumerable: true,
-    get() {
-      invoked = true
-      return null
-    },
-  })
-  assert.throws(
-    () => migrateRunSave(legacy),
-    (error) => error instanceof UnsupportedGameRulesVersionError && error.version === 3,
-  )
-  assert.equal(invoked, false)
-  assert.throws(
-    () => migrateRunSave({ ...fixture('campaign-save-v4.json'), gameRulesVersion: '3' }),
-    TypeError,
-  )
+test('schema 4 and 5 Campaign saves are quarantined as incompatible game rules', () => {
+  for (const [name, rulesVersion] of [
+    ['campaign-save-v4.json', 3],
+    ['campaign-save-reward-v5.json', 4],
+    ['campaign-save-informed-v5.json', 4],
+    ['campaign-save-modifiers-v5.json', 4],
+  ]) {
+    const legacy = fixture(name)
+    let invoked = false
+    Object.defineProperty(legacy.match, 'pendingReward', {
+      enumerable: true,
+      get() {
+        invoked = true
+        return null
+      },
+    })
+    assert.throws(
+      () => migrateRunSave(legacy),
+      (error) => error instanceof UnsupportedGameRulesVersionError && error.version === rulesVersion,
+    )
+    assert.equal(invoked, false, name)
+    assert.throws(
+      () => migrateRunSave({ ...fixture(name), gameRulesVersion: String(rulesVersion) }),
+      TypeError,
+    )
 
-  const runTypeAccessor = fixture('campaign-save-v4.json')
-  Object.defineProperty(runTypeAccessor, 'runType', {
-    enumerable: true,
-    get() {
-      invoked = true
-      return 'campaign'
-    },
-  })
-  assert.throws(() => migrateRunSave(runTypeAccessor), /JSON-compatible data/)
-  assert.equal(invoked, false)
+    const runTypeAccessor = fixture(name)
+    Object.defineProperty(runTypeAccessor, 'runType', {
+      enumerable: true,
+      get() {
+        invoked = true
+        return 'campaign'
+      },
+    })
+    assert.throws(() => migrateRunSave(runTypeAccessor), /JSON-compatible data/)
+    assert.equal(invoked, false, name)
+  }
 })
 
 test('schema versions 1 through 3 are deliberately quarantined without migration', () => {
@@ -105,8 +115,8 @@ test('schema versions 1 through 3 are deliberately quarantined without migration
 })
 
 test('future, malformed, and incompatible current versions are rejected', () => {
-  const current = fixture('run-save-v5.json')
-  for (const saveSchemaVersion of [6, 20]) {
+  const current = fixture('run-save-v6.json')
+  for (const saveSchemaVersion of [7, 20]) {
     assert.throws(
       () => migrateRunSave({ ...clone(current), saveSchemaVersion }),
       UnsupportedSaveVersionError,
@@ -116,7 +126,7 @@ test('future, malformed, and incompatible current versions are rejected', () => 
     {},
     { ...clone(current), saveSchemaVersion: 0 },
     { ...clone(current), saveSchemaVersion: 1.5 },
-    { ...clone(current), saveSchemaVersion: '5' },
+    { ...clone(current), saveSchemaVersion: '6' },
   ]) {
     assert.throws(() => migrateRunSave(save), TypeError)
   }

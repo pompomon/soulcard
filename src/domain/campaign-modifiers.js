@@ -9,7 +9,7 @@ function deepFreeze(value) {
   return value
 }
 
-// Rule hooks frozen for campaign rules version 4. Later rules versions may add hooks.
+// Rule hooks frozen since campaign rules version 4. Later rules versions may add hooks.
 export const CAMPAIGN_MODIFIER_HOOKS = deepFreeze([
   'maximumHealth',
   'holdDecision',
@@ -163,9 +163,10 @@ export function getCampaignModifier(id) {
   return modifier
 }
 
-export function createModifierRecord(id, grantedAtEncounterIndex) {
+// Records name the route node that granted them; the starting modifier has none.
+export function createModifierRecord(id, grantedAtNodeId) {
   const modifier = getCampaignModifier(id)
-  return { id: modifier.id, lifetime: modifier.lifetime, grantedAtEncounterIndex }
+  return { id: modifier.id, lifetime: modifier.lifetime, grantedAtNodeId }
 }
 
 export function createStartingModifierRecords() {
@@ -207,22 +208,33 @@ export function isModifierApplicable(modifier, ruleset) {
     || modifier.applicability.burnEnabled === ruleset.burn.enabled
 }
 
-// Pure and RNG-free: the pool excludes modifiers that survive the upcoming teardown,
+// Returns null when a draftable modifier can join `records`, otherwise why it cannot:
+// it is already active, shares a hook with an active modifier, or does not apply to the
+// ruleset. Pure and RNG-free.
+export function modifierGainBlocker(records, id, ruleset) {
+  const modifier = getCampaignModifier(id)
+  if (!modifier.draftable) return 'not-draftable'
+  if (records.some((record) => record.id === id)) return 'active'
+  const occupiedHooks = new Set(
+    records.flatMap((record) => getCampaignModifier(record.id).hooks),
+  )
+  if (modifier.hooks.some((hook) => occupiedHooks.has(hook))) return 'hook-conflict'
+  if (!isModifierApplicable(modifier, ruleset)) return 'inapplicable'
+  return null
+}
+
+// Shops and events: no teardown precedes the gain, so unexpired encounter modifiers still
+// occupy their hooks. The pool keeps catalogue ID order.
+export function getAvailableModifierPool(records, ruleset) {
+  return CAMPAIGN_MODIFIER_CATALOGUE
+    .filter((modifier) => modifierGainBlocker(records, modifier.id, ruleset) === null)
+    .map((modifier) => modifier.id)
+}
+
+// Reward drafts: the pool excludes modifiers that survive the upcoming teardown,
 // anything sharing a hook with them, and anything inapplicable to the ruleset.
 export function getDraftableModifierPool(records, ruleset) {
-  const surviving = expireEncounterModifiers(records)
-  const activeIds = new Set(surviving.map((record) => record.id))
-  const occupiedHooks = new Set(
-    surviving.flatMap((record) => getCampaignModifier(record.id).hooks),
-  )
-  return CAMPAIGN_MODIFIER_CATALOGUE
-    .filter((modifier) => (
-      modifier.draftable
-      && !activeIds.has(modifier.id)
-      && modifier.hooks.every((hook) => !occupiedHooks.has(hook))
-      && isModifierApplicable(modifier, ruleset)
-    ))
-    .map((modifier) => modifier.id)
+  return getAvailableModifierPool(expireEncounterModifiers(records), ruleset)
 }
 
 export function maximumHealthFor(records) {

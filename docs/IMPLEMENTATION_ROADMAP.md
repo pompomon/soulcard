@@ -630,12 +630,14 @@ versions. Invalid, incomplete, or corrupt runs are quarantined/discardable and l
 Main with Resume disabled and a clear discard/start-new recovery path—never a resume
 crash loop.
 
-The implemented current format is `saveSchemaVersion: 4`. It discriminates Classic
+The implemented current format is `saveSchemaVersion: 5`. It discriminates Classic
 and Campaign records with `runType`; Classic retains `gameRulesVersion: 2`, while
-Campaign uses its campaign rules version. Because version 4 introduces card-instance
-identity and a new run shape, schema versions 1–3 are deliberately quarantined rather
-than migrated or reinterpreted. Unknown future versions, incompatible rules, and
-synthetic older formats are also quarantined.
+Campaign uses its campaign rules version. Version 4 introduced card-instance identity
+and a new run shape, so schema versions 1–3 are deliberately quarantined rather than
+migrated or reinterpreted. Version 5 carries schema-4 Classic records over unchanged
+and quarantines schema-4 Campaign records, whose scripted rewards (Campaign rules 3)
+cannot replay under the seeded reward drafts of Campaign rules 4. Unknown future
+versions, incompatible rules, and synthetic older formats are also quarantined.
 
 Save only at stable domain boundaries: after every committed clash, explicit pause,
 and best effort on `visibilitychange`, `pagehide`, and lifecycle freeze events when the
@@ -653,7 +655,7 @@ and pass the stated zone validation.
 
 ```json
 {
-  "saveSchemaVersion": 4,
+  "saveSchemaVersion": 5,
   "gameRulesVersion": 2,
   "runType": "classic",
   "savedAt": "2026-09-19T07:00:00.000Z",
