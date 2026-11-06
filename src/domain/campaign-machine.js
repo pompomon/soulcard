@@ -4,6 +4,7 @@ import {
   CAMPAIGN_DECK_SIZE_LIMITS,
   getCampaignFight,
   getCampaignNodeEvent,
+  getCampaignRestSite,
 } from './campaign-content.js'
 import {
   DECK_EDIT_KINDS,
@@ -37,8 +38,10 @@ import {
   assertDistinctModifierHooks,
   contestCardBurns,
   createStartingModifierRecords,
+  encounterTraitIds,
   hasInformedHoldChoice,
   isCampaignModifierId,
+  isOpponentTraitId,
   maximumHealthFor,
   narrowHoldTargets,
 } from './campaign-modifiers.js'
@@ -52,18 +55,19 @@ import {
   validateRuleset,
 } from './ruleset.js'
 
-export const CAMPAIGN_VERSION = 3
-export const CAMPAIGN_GAME_RULES_VERSION = 6
+export const CAMPAIGN_VERSION = 4
+export const CAMPAIGN_GAME_RULES_VERSION = 7
 export const HOLD_POSITION = 'holdPosition'
 export const CAMPAIGN_HOLD_DECISION_STATES = Object.freeze([
   'awaitingHoldChoice',
   'awaitingInformedHoldChoice',
 ])
-// Saved boundaries between fights: the route map, an open shop, and an open event.
+// Saved boundaries between fights: the route map, an open shop, event, or rest site.
 export const CAMPAIGN_NODE_DECISION_STATES = Object.freeze([
   'awaitingRoute',
   'awaitingShop',
   'awaitingEvent',
+  'awaitingRest',
 ])
 
 const SIDES = Object.freeze(['player', 'opponent'])
@@ -82,6 +86,7 @@ const STATE_BY_PHASE = Object.freeze({
   route: 'awaitingRoute',
   shop: 'awaitingShop',
   event: 'awaitingEvent',
+  rest: 'awaitingRest',
 })
 const CARD_OWNERS = Object.freeze(['player', 'opponent'])
 const CAMPAIGN_KEYS = Object.freeze([
@@ -109,6 +114,7 @@ const CAMPAIGN_KEYS = Object.freeze([
   'pendingReward',
   'shop',
   'nodeEvent',
+  'restSite',
   'journal',
   'pendingEvent',
   'stateFingerprint',
@@ -124,7 +130,9 @@ const INFORMED_HOLD_CHOICE_KEYS = Object.freeze([
 const ENCOUNTER_KEYS = Object.freeze([
   'id',
   'name',
+  'tier',
   'damage',
+  'traitIds',
   'supplyMode',
   'zones',
   'outcome',
@@ -275,6 +283,9 @@ function assertActiveModifiers(run, expected) {
     assertExactKeys(record, MODIFIER_RECORD_KEYS, name)
     if (!isCampaignModifierId(record.id)) {
       throw new TypeError(`${name}.id must name a catalogue modifier`)
+    }
+    if (isOpponentTraitId(record.id)) {
+      throw new TypeError(`${name}.id names an opponent trait, which only an encounter can carry`)
     }
   })
   assertDistinctModifierHooks(run.activeModifiers)
@@ -446,10 +457,17 @@ function assertEncounterShape(run, definition) {
   if (
     run.encounter.id !== definition.id
     || run.encounter.name !== definition.name
+    || run.encounter.tier !== definition.tier
     || run.encounter.damage !== definition.damage
   ) {
     throw new Error('Campaign encounter metadata must match its authored definition')
   }
+  assertFixedData(
+    run.encounter.traitIds,
+    encounterTraitIds(definition, run.ruleset),
+    'campaign.encounter.traitIds',
+    'the traits its fight carries under the ruleset',
+  )
   assertPlainObject(run.encounter.supplyMode, 'campaign.encounter.supplyMode')
   assertExactKeys(
     run.encounter.supplyMode,
@@ -713,6 +731,7 @@ function assertPendingEvent(run, instances) {
     const burns = ({ suppliedBy }) => contestCardBurns({
       ruleset: run.ruleset,
       activeModifiers: run.activeModifiers,
+      traitIds: run.encounter.traitIds,
       winner,
       suppliedBy,
     })
@@ -823,6 +842,7 @@ function createRewardDraft(run, playerCards, activeModifiers) {
   return generateRewardDraft({
     seed: run.rng.seed,
     encounterIndex: run.encounterIndex,
+    tier: run.encounter.tier,
     playerCardIds: playerCards.map(({ cardId }) => cardId),
     activeModifiers,
     ruleset: run.ruleset,
@@ -936,6 +956,25 @@ function assertNodeEvent(run, replay) {
   )
 }
 
+function assertRestSite(run, replay) {
+  if (run.machineState !== 'awaitingRest') {
+    if (run.restSite !== null) {
+      throw new Error('A rest site is allowed only while a rest site is open')
+    }
+    return
+  }
+  assertPlainObject(run.restSite, 'campaign.restSite')
+  assertFixedData(
+    run.restSite,
+    {
+      nodeId: replay.activeNodeId,
+      siteId: getCampaignMapNode(replay.activeNodeId).contentId,
+    },
+    'campaign.restSite',
+    'the active route node',
+  )
+}
+
 // A lost or drawn fight costs its damage once; the journal records that loss only when
 // the player retries, so a pending retry or a defeat still owes it.
 function expectedHealth(run, replay, fight) {
@@ -1025,6 +1064,7 @@ function inspectCampaignState(run) {
   assertPendingReward(run, replay)
   assertShop(run, replay)
   assertNodeEvent(run, replay)
+  assertRestSite(run, replay)
   assertCampaignOutcome(run, replay)
   if (fight !== null) assertEncounterTransition(run, replay)
   assertRoute(run, replay)
@@ -1080,10 +1120,13 @@ function setUpEncounter(run, rng, fight) {
   ]
   const playerInput = run.deckLayout.filter((entry) => entry !== HOLD_POSITION)
   const opponentInput = opponentCards.map(({ instanceId }) => instanceId)
+  // Tier and traits come from content and draw nothing, so shuffles are unchanged.
   run.encounter = {
     id: fight.id,
     name: fight.name,
+    tier: fight.tier,
     damage: fight.damage,
+    traitIds: encounterTraitIds(fight, run.ruleset),
     supplyMode: { player: 'source', opponent: 'source' },
     zones: createEmptyZones(
       shuffle(playerInput, rng),
@@ -1140,6 +1183,7 @@ export function createCampaignRun(options) {
     pendingReward: null,
     shop: null,
     nodeEvent: null,
+    restSite: null,
     journal: [],
     pendingEvent: null,
     stateFingerprint: 'pending',
@@ -1226,6 +1270,7 @@ function settleContest(run, winner, reveals) {
     if (contestCardBurns({
       ruleset: run.ruleset,
       activeModifiers: run.activeModifiers,
+      traitIds: run.encounter.traitIds,
       winner,
       suppliedBy: record.suppliedBy,
     })) {
@@ -1489,7 +1534,7 @@ export function getEligibleHoldTargets(input) {
   if (input.machineState !== 'ready') return Object.freeze([])
   const heldCardId = input.hold === null ? null : cardMap(input).get(input.hold).cardId
   return Object.freeze(narrowHoldTargets(
-    input.activeModifiers,
+    { activeModifiers: input.activeModifiers, traitIds: input.encounter.traitIds },
     collectHoldTargets(input),
     heldCardId,
   ))
@@ -1623,6 +1668,12 @@ function commitNodeDecision(input, replay, entry, updateLayout = () => {}) {
     ? {
         nodeId: replay.activeNodeId,
         eventId: getCampaignMapNode(replay.activeNodeId).contentId,
+      }
+    : null
+  run.restSite = replay.phase === 'rest'
+    ? {
+        nodeId: replay.activeNodeId,
+        siteId: getCampaignMapNode(replay.activeNodeId).contentId,
       }
     : null
   if (replay.phase === 'fight') {
@@ -1798,9 +1849,9 @@ export function leaveCampaignShop(input, decision) {
   return commitNodeDecision(input, replay, { type: 'leaveShop', nodeId: decision.nodeId })
 }
 
-function eventOptionsWithBlockers(run) {
+function nodeOptionsWithBlockers(run, options) {
   const context = liveDecisionContext(run)
-  return getCampaignNodeEvent(run.nodeEvent.eventId).options.map((option) => {
+  return options.map((option) => {
     const { id, ...effects } = option
     return Object.freeze({
       optionId: id,
@@ -1810,27 +1861,34 @@ function eventOptionsWithBlockers(run) {
   })
 }
 
+function findNodeOption(options, optionId, noun, site) {
+  const option = options.find((candidate) => candidate.id === optionId)
+  if (option === undefined) {
+    throw new Error(`${noun} option is not part of the open ${site}`)
+  }
+  return option
+}
+
+function openEventOptions(run) {
+  return getCampaignNodeEvent(run.nodeEvent.eventId).options
+}
+
+function openRestOptions(run) {
+  return getCampaignRestSite(run.restSite.siteId).options
+}
+
 // Every option of the open event with the reason it cannot be chosen now, or null.
 export function getCampaignEventOptions(input) {
   validateCampaignState(input)
   if (input.machineState !== 'awaitingEvent') return Object.freeze([])
-  return Object.freeze(eventOptionsWithBlockers(input))
-}
-
-function findEventOption(run, optionId) {
-  const option = getCampaignNodeEvent(run.nodeEvent.eventId).options
-    .find((candidate) => candidate.id === optionId)
-  if (option === undefined) {
-    throw new Error('Event option is not part of the open event')
-  }
-  return option
+  return Object.freeze(nodeOptionsWithBlockers(input, openEventOptions(input)))
 }
 
 // Deck-edit targets for an event option. Surrendering Hold always names the held card.
 export function getCampaignEventTargets(input, optionId) {
   validateCampaignState(input)
   if (input.machineState !== 'awaitingEvent') return Object.freeze([])
-  const option = findEventOption(input, optionId)
+  const option = findNodeOption(openEventOptions(input), optionId, 'Event', 'event')
   if (option.surrenderHold) {
     if (input.hold === null) return Object.freeze([])
     return Object.freeze([Object.freeze({
@@ -1842,16 +1900,11 @@ export function getCampaignEventTargets(input, optionId) {
   return Object.freeze(collectLayoutTargets(input, option.deckEdit.kind))
 }
 
-export function chooseCampaignEventOption(input, decision) {
-  const replay = inspectCampaignState(input)
-  if (input.machineState !== 'awaitingEvent') {
-    throw new Error('Campaign is not at an event')
-  }
-  assertNodeDecision(input, decision, ['nodeId', 'step', 'optionId', 'targetInstanceId'])
-  const option = findEventOption(input, decision.optionId)
+// Checks a chosen event or rest option against the live boundary, then journals it.
+function commitNodeOption(input, replay, decision, option, type, noun) {
   const blocker = eventOptionBlocker(option, liveDecisionContext(input))
   if (blocker !== null) {
-    throw new Error(`Event option ${option.id} is unavailable: ${blocker}`)
+    throw new Error(`${noun} option ${option.id} is unavailable: ${blocker}`)
   }
   const { targetInstanceId } = decision
   if (option.surrenderHold) {
@@ -1859,15 +1912,15 @@ export function chooseCampaignEventOption(input, decision) {
       throw new Error('Surrendering Hold must name the held card')
     }
   } else if (option.deckEdit !== null) {
-    assertDeckEditTarget(input, option.deckEdit.kind, targetInstanceId, 'Event')
+    assertDeckEditTarget(input, option.deckEdit.kind, targetInstanceId, noun)
   } else if (targetInstanceId !== null) {
-    throw new Error('This event option does not take a target')
+    throw new Error(`This ${noun.toLowerCase()} option does not take a target`)
   }
   const createdInstanceId = option.deckEdit === null
     ? null
     : createdInstanceFor(replay, option.deckEdit.kind)
   return commitNodeDecision(input, replay, {
-    type: 'event',
+    type,
     nodeId: decision.nodeId,
     optionId: option.id,
     targetInstanceId,
@@ -1886,6 +1939,43 @@ export function chooseCampaignEventOption(input, decision) {
       )
     }
   })
+}
+
+export function chooseCampaignEventOption(input, decision) {
+  const replay = inspectCampaignState(input)
+  if (input.machineState !== 'awaitingEvent') {
+    throw new Error('Campaign is not at an event')
+  }
+  assertNodeDecision(input, decision, ['nodeId', 'step', 'optionId', 'targetInstanceId'])
+  const option = findNodeOption(openEventOptions(input), decision.optionId, 'Event', 'event')
+  return commitNodeOption(input, replay, decision, option, 'event', 'Event')
+}
+
+// Every option of the open rest site with the reason it cannot be chosen now, or null.
+// Resting is allowed at full health and then changes nothing.
+export function getCampaignRestOptions(input) {
+  validateCampaignState(input)
+  if (input.machineState !== 'awaitingRest') return Object.freeze([])
+  return Object.freeze(nodeOptionsWithBlockers(input, openRestOptions(input)))
+}
+
+// Deck-edit targets for a rest option, sorted for display. The held card is never one.
+export function getCampaignRestTargets(input, optionId) {
+  validateCampaignState(input)
+  if (input.machineState !== 'awaitingRest') return Object.freeze([])
+  const option = findNodeOption(openRestOptions(input), optionId, 'Rest', 'rest site')
+  if (option.deckEdit === null) return Object.freeze([])
+  return Object.freeze(collectLayoutTargets(input, option.deckEdit.kind))
+}
+
+export function chooseCampaignRestOption(input, decision) {
+  const replay = inspectCampaignState(input)
+  if (input.machineState !== 'awaitingRest') {
+    throw new Error('Campaign is not at a rest site')
+  }
+  assertNodeDecision(input, decision, ['nodeId', 'step', 'optionId', 'targetInstanceId'])
+  const option = findNodeOption(openRestOptions(input), decision.optionId, 'Rest', 'rest site')
+  return commitNodeOption(input, replay, decision, option, 'rest', 'Rest')
 }
 
 // A retry replays the active fight node with fresh setup shuffles. The journal records it

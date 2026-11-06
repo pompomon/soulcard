@@ -28,7 +28,15 @@ draft and reports its offers, the saved reward, the route map, the informed Hold
 and Run details as text. The expedition fixture at
 `/tests/browser/milestone-21-3-expedition.html` restores a saved route map and reports
 route locks, shop prices and purchases, reloads at node boundaries, a failed save and
-its retry, an event with a target, a sold-out shop, and console errors as text.
+its retry, an event with a target, a sold-out shop, and console errors as text. The
+elite ladder fixture at `/tests/browser/milestone-21-4-campaign.html` restores saved
+route, reward, rest, and victory boundaries and reports the stage-3 elite choice, an
+elite fight's trait and its Court Etiquette Hold note, the Greater Mend reward, rest
+options and targets, a reload and a failed rest save with its retry, the full-health
+sanctum note, the boss route and expedition log, the victory summary, and console
+errors as text. To check the elite ladder by hand, take the High Court or Night Watch
+elite, rest at the Roadside Camp or Last Light Sanctum, and fight the Ace Sovereign at
+stage 7.
 
 ## Texture cache ownership
 
@@ -109,19 +117,32 @@ persistence before play continues. The canonical comparison order is unchanged e
 that 2 beats Ace; 2 still loses to 3 through King.
 
 Campaign creates a separate expedition run in the same Game screen. It starts at 3/5
-health and 0 coins with all Diamonds and Hearts, then follows an authored five-stage
-route map. It opens against Spades/Clubs, chooses the Wayside Market shop or the
-Crossroads Shrine event, fights either Jacks/Queens/Kings or the 8s, 9s, and 10s,
-chooses the Ember Bazaar shop or Oathkeeper's Vault event, and ends against four Aces.
-A fight that is not won costs 1 health (2 against the Aces) and can be retried while
-health remains. Each non-final win pays a coin bounty and opens a seeded reward draft:
-a new card, a deck edit (duplicate, remove, or replace), a modifier, or Mend (+1
-health). Shops sell a bounded card, deck-edit, and modifier stock for coins; events
-state every health, coin, deck, Hold, and modifier trade-off and always offer Walk on.
-Every route, reward, purchase, event, shop-exit, and retry decision applies only to a
-saved boundary and names its journal step, so a reload never applies it twice. Campaign
-card instances retain immutable player/opponent provenance, and the one-slot Hold
-action can capture only player-owned cards currently in the player's draw or won pile.
+health and 0 coins with all Diamonds and Hearts, then follows an authored seven-stage
+route map. It opens against the Suit Opposition (Spades and Clubs) and chooses the
+Wayside Market shop or the Crossroads Shrine event. Stage 3 offers the Royal Court
+(Jacks, Queens, and Kings) or its elite twin, the High Court; stage 4 offers the Ember
+Bazaar shop, Oathkeeper's Vault event, or Roadside Camp rest; and stage 5 offers the
+Watch of Tens (8s, 9s, and 10s) or its elite twin, the Night Watch. Every route then
+rests at the Last Light Sanctum and ends against the Ace Sovereign boss (Kings and
+Aces). Elites add the Ace of Spades and Ace of Clubs to their archetype's deck and bring
+one opponent trait for that encounter: Court Etiquette lets Hold capture or replace
+only a 2–10, and Plunder (burn rules only) sends player cards from clashes it wins to
+its won pile instead of burning them, returning them to the deck after the encounter,
+and cancels Spoils of War for that fight. A fight that is not won costs 1 health (2
+against an elite or the boss) and can be retried while health remains. Each non-final
+win pays its coin bounty (3 at the gate, 4 at the Royal Court, 6 at the High Court, none
+at stage 5) and opens a seeded reward draft: a new card, a deck edit (duplicate, remove,
+or replace), a modifier, or Mend (+1 health). Elite drafts draw the new card from
+unowned Jacks through Aces when any remain and offer Greater Mend (+2 health) instead of
+Mend; defeating the boss ends the run without a draft. Rest sites trade healing (+2
+health) against training (duplicating) a card at the camp or cleansing (removing) one at
+the sanctum, and always offer Walk on; no node restores more than 2 health. Shops sell a
+bounded card, deck-edit, and modifier stock for coins; events state every health, coin,
+deck, Hold, and modifier trade-off and always offer Walk on. Every route, reward,
+purchase, event, rest, shop-exit, and retry decision applies only to a saved boundary
+and names its journal step, so a reload never applies it twice. Campaign card instances
+retain immutable player/opponent provenance, and the one-slot Hold action can capture
+only player-owned cards currently in the player's draw or won pile.
 
 The Settings screen persists a Turn burning preference independently from active runs.
 It selects the burn-enabled or burn-disabled ruleset only when starting or restarting a
@@ -133,13 +154,14 @@ still-restoring saved run requires confirmation.
 Main enables Resume only after a valid saved run restores, whether it is ready, paused,
 completed, or waiting at a Campaign decision. Invalid or incompatible saves remain
 quarantined until explicitly discarded; unavailable storage is reported without blocking
-session-only play. Current saves use save schema version 6. Classic runs use game rules
-version 2 and Campaign runs use version 6. Schema-version-4 and schema-version-5
+session-only play. Current saves use save schema version 7. Classic runs use game rules
+version 2 and Campaign runs use version 7. Schema-version-4 through schema-version-6
 Classic records carry over unchanged. Campaign records from earlier Campaign rules are
 quarantined as incompatible: the scripted rewards of version 3, the linear reward drafts
-of version 4, and the version-5 expedition, whose shrine paid 4 coins instead of 5,
-cannot replay under version 6. Schema-version-1 through schema-version-3 records are
-deliberately quarantined. Every quarantined record requires explicit discard.
+of version 4, and the five-stage expedition of versions 5 and 6 cannot replay under
+version 7, whose map, fights, and rest sites differ. Schema-version-1 through
+schema-version-3 records are deliberately quarantined. Every quarantined record requires
+explicit discard.
 
 Pause remains an overlay inside Game. Resume continues the exact snapshot, Save & Main
 Menu navigates only after a successful stable save, and Restart Game requires confirmation

@@ -630,17 +630,16 @@ versions. Invalid, incomplete, or corrupt runs are quarantined/discardable and l
 Main with Resume disabled and a clear discard/start-new recovery path—never a resume
 crash loop.
 
-The implemented current format is `saveSchemaVersion: 6`. It discriminates Classic
+The implemented current format is `saveSchemaVersion: 7`. It discriminates Classic
 and Campaign records with `runType`; Classic retains `gameRulesVersion: 2`, while
-Campaign uses its campaign rules version (currently 6). Version 4 introduced
+Campaign uses its campaign rules version (currently 7). Version 4 introduced
 card-instance identity and a new run shape, so schema versions 1–3 are deliberately
-quarantined rather than migrated or reinterpreted. Version 6 carries schema-4 and
-schema-5 Classic records over unchanged and quarantines their Campaign records, whose
-scripted rewards (Campaign rules 3) or linear reward drafts (Campaign rules 4) cannot
-replay as the branching expedition. Schema-6 Campaign records from Campaign rules 5
-are also quarantined, because their decision journals replay a 4-coin shrine payout
-that Campaign rules 6 raised to 5. Unknown future versions, incompatible rules, and
-synthetic older formats are also quarantined.
+quarantined rather than migrated or reinterpreted. Version 7 carries schema-4 through
+schema-6 Classic records over unchanged and quarantines their Campaign records, whose
+scripted rewards (Campaign rules 3), linear reward drafts (Campaign rules 4), or
+five-stage expedition (Campaign rules 5 and 6) cannot replay as the seven-stage elite
+ladder. Unknown future versions, incompatible rules, and synthetic older formats are
+also quarantined.
 
 Save only at stable domain boundaries: after every committed clash, explicit pause,
 and best effort on `visibilitychange`, `pagehide`, and lifecycle freeze events when the
@@ -658,7 +657,7 @@ and pass the stated zone validation.
 
 ```json
 {
-  "saveSchemaVersion": 6,
+  "saveSchemaVersion": 7,
   "gameRulesVersion": 2,
   "runType": "classic",
   "savedAt": "2026-09-19T07:00:00.000Z",

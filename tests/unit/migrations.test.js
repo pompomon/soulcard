@@ -24,10 +24,12 @@ function allObjects(value) {
 
 test('current schema saves are validated, cloned, and frozen', () => {
   for (const name of [
-    'run-save-v6.json',
-    'campaign-save-informed-v6.json',
-    'campaign-save-shop-v6.json',
-    'campaign-save-shop-exhausted-v6.json',
+    'run-save-v7.json',
+    'campaign-save-informed-v7.json',
+    'campaign-save-shop-v7.json',
+    'campaign-save-shop-exhausted-v7.json',
+    'campaign-save-rest-v7.json',
+    'campaign-save-victory-v7.json',
   ]) {
     const current = fixture(name)
     const migrated = migrateRunSave(current)
@@ -38,14 +40,14 @@ test('current schema saves are validated, cloned, and frozen', () => {
   }
 })
 
-test('schema 4 and 5 Classic saves carry over unchanged as schema 6', () => {
-  for (const version of [4, 5]) {
+test('schema 4, 5, and 6 Classic saves carry over unchanged as schema 7', () => {
+  for (const version of [4, 5, 6]) {
     for (const name of ['run-save', 'run-save-paused', 'run-save-terminal']) {
       const legacy = fixture(`${name}-v${version}.json`)
       const before = clone(legacy)
       const migrated = migrateRunSave(legacy)
 
-      assert.deepEqual(migrated, fixture(`${name}-v6.json`))
+      assert.deepEqual(migrated, fixture(`${name}-v7.json`))
       assert.deepEqual(Object.keys(migrated), Object.keys(legacy))
       assert.ok(allObjects(migrated).every(Object.isFrozen))
       assert.deepEqual(legacy, before)
@@ -65,13 +67,20 @@ test('schema 4 and 5 Classic saves carry over unchanged as schema 6', () => {
   }
 })
 
-test('schema 4 and 5 Campaign saves and rules-5 schema 6 Campaign saves are quarantined', () => {
+test('schema 4, 5, and 6 Campaign saves are quarantined with their rules version', () => {
   for (const [name, rulesVersion] of [
     ['campaign-save-v4.json', 3],
     ['campaign-save-reward-v5.json', 4],
     ['campaign-save-informed-v5.json', 4],
     ['campaign-save-modifiers-v5.json', 4],
     ['campaign-save-route-v6-rules5.json', 5],
+    ['campaign-save-reward-v6.json', 6],
+    ['campaign-save-route-v6.json', 6],
+    ['campaign-save-shop-v6.json', 6],
+    ['campaign-save-shop-exhausted-v6.json', 6],
+    ['campaign-save-event-v6.json', 6],
+    ['campaign-save-informed-v6.json', 6],
+    ['campaign-save-modifiers-v6.json', 6],
   ]) {
     const legacy = fixture(name)
     let invoked = false
@@ -121,8 +130,8 @@ test('schema versions 1 through 3 are deliberately quarantined without migration
 })
 
 test('future, malformed, and incompatible current versions are rejected', () => {
-  const current = fixture('run-save-v6.json')
-  for (const saveSchemaVersion of [7, 20]) {
+  const current = fixture('run-save-v7.json')
+  for (const saveSchemaVersion of [8, 20]) {
     assert.throws(
       () => migrateRunSave({ ...clone(current), saveSchemaVersion }),
       UnsupportedSaveVersionError,
@@ -132,13 +141,17 @@ test('future, malformed, and incompatible current versions are rejected', () => 
     {},
     { ...clone(current), saveSchemaVersion: 0 },
     { ...clone(current), saveSchemaVersion: 1.5 },
-    { ...clone(current), saveSchemaVersion: '6' },
+    { ...clone(current), saveSchemaVersion: '7' },
   ]) {
     assert.throws(() => migrateRunSave(save), TypeError)
   }
   assert.throws(
     () => migrateRunSave({ ...clone(current), gameRulesVersion: 1 }),
     UnsupportedGameRulesVersionError,
+  )
+  assert.throws(
+    () => migrateRunSave({ ...fixture('campaign-save-route-v7.json'), gameRulesVersion: 6 }),
+    (error) => error instanceof UnsupportedGameRulesVersionError && error.version === 6,
   )
 })
 

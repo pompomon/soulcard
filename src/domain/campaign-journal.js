@@ -1,8 +1,9 @@
 import {
-  CAMPAIGN_MEND_HEALTH,
+  CAMPAIGN_MEND_HEALTH_BY_TIER,
   CAMPAIGN_STARTING_HEALTH,
   getCampaignFight,
   getCampaignNodeEvent,
+  getCampaignRestSite,
 } from './campaign-content.js'
 import {
   DECK_EDIT_KINDS,
@@ -28,6 +29,7 @@ import {
   createStartingModifierRecords,
   expireEncounterModifiers,
   getCampaignModifier,
+  isOpponentTraitId,
   maximumHealthFor,
 } from './campaign-modifiers.js'
 import { eventOptionBlocker } from './campaign-node-events.js'
@@ -44,6 +46,7 @@ export const JOURNAL_ENTRY_TYPES = Object.freeze([
   'purchase',
   'leaveShop',
   'event',
+  'rest',
 ])
 export const JOURNAL_ENTRY_KEYS = Object.freeze({
   route: Object.freeze(['type', 'nodeId']),
@@ -71,8 +74,9 @@ export const JOURNAL_ENTRY_KEYS = Object.freeze({
   ]),
   leaveShop: Object.freeze(['type', 'nodeId']),
   event: Object.freeze(['type', 'nodeId', 'optionId', 'targetInstanceId', 'createdInstanceId']),
+  rest: Object.freeze(['type', 'nodeId', 'optionId', 'targetInstanceId', 'createdInstanceId']),
 })
-export const JOURNAL_PHASES = Object.freeze(['route', 'fight', 'shop', 'event'])
+export const JOURNAL_PHASES = Object.freeze(['route', 'fight', 'shop', 'event', 'rest'])
 
 const SHOP_ITEM_KINDS = Object.freeze([...DECK_EDIT_KINDS, 'modifier'])
 
@@ -162,7 +166,7 @@ export function assertCampaignJournalShape(journal, name = 'campaign.journal') {
       if (!Number.isSafeInteger(entry.price) || entry.price < 0) {
         throw new TypeError(`${entryName}.price must be a nonnegative safe integer`)
       }
-    } else if (entry.type === 'event') {
+    } else if (entry.type === 'event' || entry.type === 'rest') {
       assertIdentifier(entry.optionId, `${entryName}.optionId`)
     }
     for (const key of ['cardId', 'modifierId', 'targetInstanceId', 'createdInstanceId']) {
@@ -243,7 +247,10 @@ function applyDeckEdit(state, edit, entry, label) {
   )
 }
 
-function gainModifier(state, modifierId, nodeId) {
+function gainModifier(state, modifierId, nodeId, label) {
+  if (isOpponentTraitId(modifierId)) {
+    throw new Error(`${label} cannot gain opponent trait ${modifierId}`)
+  }
   state.activeModifiers = [...state.activeModifiers, createModifierRecord(modifierId, nodeId)]
   assertDistinctModifierHooks(state.activeModifiers)
   heal(state, getCampaignModifier(modifierId).healthOnGain)
@@ -298,10 +305,12 @@ function applyRetry(state, node, label) {
   state.encounterAttempt += 1
 }
 
+// The draft follows the fight at the active node; elite fights draw from the elite pool.
 export function regenerateRewardDraft(state) {
   return generateRewardDraft({
     seed: state.seed,
     encounterIndex: state.encounterIndex,
+    tier: getCampaignFight(getCampaignMapNode(state.activeNodeId).contentId).tier,
     playerCardIds: playerCardIdsOf(state),
     activeModifiers: state.activeModifiers,
     ruleset: state.ruleset,
@@ -311,7 +320,7 @@ export function regenerateRewardDraft(state) {
 function applyReward(state, node, entry, label) {
   requireActive(state, node, 'fight', label)
   if (isFinalCampaignNode(node.id)) {
-    throw new Error(`${label} claims a reward for the final fight`)
+    throw new Error(`${label} claims a reward for the boss, which offers none`)
   }
   const offer = regenerateRewardDraft(state).offers
     .find(({ offerId }) => offerId === entry.offerId)
@@ -329,9 +338,9 @@ function applyReward(state, node, entry, label) {
   } else {
     assertNoInstances(entry, label)
     if (offer.kind === 'modifier') {
-      gainModifier(state, offer.modifierId, node.id)
+      gainModifier(state, offer.modifierId, node.id, label)
     } else {
-      heal(state, CAMPAIGN_MEND_HEALTH)
+      heal(state, CAMPAIGN_MEND_HEALTH_BY_TIER[getCampaignFight(node.contentId).tier])
     }
   }
   state.currency += getCampaignFight(node.contentId).bounty
@@ -359,7 +368,7 @@ function applyPurchase(state, node, entry, label) {
   state.currency -= item.price
   if (item.kind === 'modifier') {
     assertNoInstances(entry, label)
-    gainModifier(state, item.modifierId, node.id)
+    gainModifier(state, item.modifierId, node.id, label)
   } else {
     applyDeckEdit(state, item, entry, label)
   }
@@ -373,16 +382,12 @@ function applyLeaveShop(state, node, label) {
   leaveNode(state, node)
 }
 
-function applyEvent(state, node, entry, label) {
-  requireActive(state, node, 'event', label)
-  const option = getCampaignNodeEvent(node.contentId).options
-    .find(({ id }) => id === entry.optionId)
-  if (option === undefined) {
-    throw new Error(`${label} must choose an option of its event`)
-  }
+// Applies a chosen event or rest option. Rest options cost nothing and never surrender
+// Hold or grant modifiers, so they use the same steps as event options.
+function applyNodeOption(state, node, entry, label, option) {
   const blocker = eventOptionBlocker(option, replayContext(state))
   if (blocker !== null) {
-    throw new Error(`${label} chooses an unavailable event option (${blocker})`)
+    throw new Error(`${label} chooses an unavailable ${node.kind} option (${blocker})`)
   }
   state.health -= option.healthCost
   state.currency -= option.coinCost
@@ -403,10 +408,30 @@ function applyEvent(state, node, entry, label) {
   if (option.deckEdit === null && entry.createdInstanceId !== null) {
     throw new Error(`${label} must not record a created card`)
   }
-  if (option.modifierId !== null) gainModifier(state, option.modifierId, node.id)
+  if (option.modifierId !== null) gainModifier(state, option.modifierId, node.id, label)
   heal(state, option.healthGain)
   state.currency += option.coinGain
   leaveNode(state, node)
+}
+
+function findOption(options, entry, label, noun) {
+  const option = options.find(({ id }) => id === entry.optionId)
+  if (option === undefined) {
+    throw new Error(`${label} must choose an option of its ${noun}`)
+  }
+  return option
+}
+
+function applyEvent(state, node, entry, label) {
+  requireActive(state, node, 'event', label)
+  const { options } = getCampaignNodeEvent(node.contentId)
+  applyNodeOption(state, node, entry, label, findOption(options, entry, label, 'event'))
+}
+
+function applyRest(state, node, entry, label) {
+  requireActive(state, node, 'rest', label)
+  const { options } = getCampaignRestSite(node.contentId)
+  applyNodeOption(state, node, entry, label, findOption(options, entry, label, 'rest site'))
 }
 
 export function applyJournalEntry(state, entry, index) {
@@ -420,7 +445,9 @@ export function applyJournalEntry(state, entry, index) {
   else if (entry.type === 'reward') applyReward(state, node, entry, label)
   else if (entry.type === 'purchase') applyPurchase(state, node, entry, label)
   else if (entry.type === 'leaveShop') applyLeaveShop(state, node, label)
-  else applyEvent(state, node, entry, label)
+  else if (entry.type === 'event') applyEvent(state, node, entry, label)
+  else if (entry.type === 'rest') applyRest(state, node, entry, label)
+  else throw new TypeError(`${label} has an unknown entry type: ${String(entry.type)}`)
   return state
 }
 

@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import test from 'node:test'
 import {
   CAMPAIGN_CARD_COPY_LIMIT,
   CAMPAIGN_DECK_SIZE_LIMITS,
+  CAMPAIGN_ELITE_CARD_RANKS,
   CAMPAIGN_FIGHTS,
-  CAMPAIGN_MEND_HEALTH,
+  CAMPAIGN_MEND_HEALTH_BY_TIER,
   CAMPAIGN_REWARD_SLOTS,
   CAMPAIGN_STARTER_CARD_IDS,
 } from '../../src/domain/campaign-content.js'
@@ -12,12 +14,17 @@ import {
   CAMPAIGN_MODIFIER_CATALOGUE,
   CAMPAIGN_MODIFIER_HOOKS,
   assertDistinctModifierHooks,
+  createModifierRecord,
   createStartingModifierRecords,
   getDraftableModifierPool,
   narrowHoldTargets,
   validateModifierCatalogue,
 } from '../../src/domain/campaign-modifiers.js'
-import { REWARD_DRAFT_STREAM, generateRewardDraft } from '../../src/domain/campaign-rewards.js'
+import {
+  REWARD_DRAFT_STREAM,
+  REWARD_TIERS,
+  generateRewardDraft,
+} from '../../src/domain/campaign-rewards.js'
 import { createStarterPlayerCards } from '../../src/domain/campaign-deck.js'
 import {
   HOLD_POSITION,
@@ -34,10 +41,13 @@ import { CARD_IDS, compareCards, getCard } from '../../src/domain/cards.js'
 import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
 import { createDerivedRng, restoreRng, shuffle } from '../../src/domain/rng.js'
 import {
+  activeNodeId,
   claimReward,
+  loseEncounter as loseFixtureEncounter,
   passThrough,
   retryEncounter,
   startCampaign,
+  winEncounter as winFixtureEncounter,
 } from '../fixtures/campaign-route.js'
 
 const DECISION_STATES = ['awaitingHoldChoice', 'awaitingInformedHoldChoice']
@@ -139,13 +149,22 @@ function start(seed, ruleset = BASELINE_RULESET, runId = `campaign-rewards-${see
   return startCampaign({ runId, seed, ruleset })
 }
 
-// Claims a reward, then walks the next stage's event and enters the following fight on the
-// court route, so the fights and their shuffles match the three 21.2 encounters.
+// After each normal fight on the court route, the next event or rest site to walk through
+// and the fight that follows it: gate, court, watch, then the finale.
+const COURT_ROUTE = Object.freeze([
+  ['shrine', 'court'],
+  ['vault', 'watch'],
+  ['sanctum', 'finale'],
+])
+
+// Claims a reward, then walks the next stage's event or rest site and enters the following
+// fight on the court route.
 function pick(run, offerId, targetInstanceId = null) {
   const claimed = claimReward(run, offerId, targetInstanceId)
-  return claimed.route.nodes.find(({ id }) => id === 'shrine').state === 'available'
-    ? passThrough(claimed, 'shrine', 'court')
-    : passThrough(claimed, 'vault', 'finale')
+  const [via, fight] = COURT_ROUTE.find(([nodeId]) => (
+    claimed.route.nodes.find(({ id }) => id === nodeId).state === 'available'
+  ))
+  return passThrough(claimed, via, fight)
 }
 
 function rewardEntries(run) {
@@ -166,7 +185,7 @@ function starterCardIds() {
   return createStarterPlayerCards().map(({ cardId }) => cardId)
 }
 
-function expectedDraft({ seed, encounterIndex, cardIds, modifierPool }) {
+function expectedDraft({ seed, encounterIndex, cardIds, modifierPool, tier = 'normal' }) {
   const rng = createDerivedRng(seed, REWARD_DRAFT_STREAM, encounterIndex)
   const owned = new Map()
   for (const cardId of cardIds) owned.set(cardId, (owned.get(cardId) ?? 0) + 1)
@@ -175,7 +194,9 @@ function expectedDraft({ seed, encounterIndex, cardIds, modifierPool }) {
   const offers = []
   let newCard = null
   if (cardIds.length < 40 && unowned.length > 0) {
-    newCard = unowned[draw(unowned.length)]
+    const court = unowned.filter((cardId) => ['J', 'Q', 'K', 'A'].includes(getCard(cardId).rank))
+    const pool = tier === 'elite' && court.length > 0 ? court : unowned
+    newCard = pool[draw(pool.length)]
     offers.push({ offerId: 'new-card', kind: 'add', cardId: newCard, modifierId: null })
   }
   const replacements = unowned.filter((cardId) => cardId !== newCard)
@@ -235,7 +256,9 @@ test('modifier catalogue is sorted by ID and uses only the frozen rule hooks', (
   const ids = CAMPAIGN_MODIFIER_CATALOGUE.map(({ id }) => id)
   assert.deepEqual(ids, [...ids].sort())
   assert.deepEqual(ids, [
+    'court-etiquette-v1',
     'hold-insight-v1',
+    'plunder-v1',
     'spoils-of-war-v1',
     'vitality-cap-v1',
     'vow-of-constancy-v1',
@@ -251,16 +274,18 @@ test('modifier catalogue is sorted by ID and uses only the frozen rule hooks', (
     assert.ok(entry.hooks.every((hook) => CAMPAIGN_MODIFIER_HOOKS.includes(hook)))
   }
   assert.deepEqual(
-    CAMPAIGN_MODIFIER_CATALOGUE.map(({ id, lifetime, hooks, draftable, healthOnGain }) => (
-      [id, lifetime, hooks.join(), draftable, healthOnGain]
+    CAMPAIGN_MODIFIER_CATALOGUE.map(({ id, owner, lifetime, hooks, draftable, healthOnGain }) => (
+      [id, owner, lifetime, hooks.join(), draftable, healthOnGain]
     )),
     [
-      ['hold-insight-v1', 'campaign', 'holdDecision', true, 0],
-      ['spoils-of-war-v1', 'encounter', 'burnSettlement', true, 0],
-      ['vitality-cap-v1', 'campaign', 'maximumHealth', false, 0],
-      ['vow-of-constancy-v1', 'campaign', 'holdReplacementEligibility', true, 2],
-      ['vow-of-patience-v1', 'campaign', 'holdCaptureEligibility', true, 2],
-      ['vow-of-the-court-v1', 'campaign', 'holdCaptureEligibility', true, 2],
+      ['court-etiquette-v1', 'opponent', 'encounter', 'holdCaptureEligibility,holdReplacementEligibility', false, 0],
+      ['hold-insight-v1', 'player', 'campaign', 'holdDecision', true, 0],
+      ['plunder-v1', 'opponent', 'encounter', 'burnSettlement', false, 0],
+      ['spoils-of-war-v1', 'player', 'encounter', 'burnSettlement', true, 0],
+      ['vitality-cap-v1', 'player', 'campaign', 'maximumHealth', false, 0],
+      ['vow-of-constancy-v1', 'player', 'campaign', 'holdReplacementEligibility', true, 2],
+      ['vow-of-patience-v1', 'player', 'campaign', 'holdCaptureEligibility', true, 2],
+      ['vow-of-the-court-v1', 'player', 'campaign', 'holdCaptureEligibility', true, 2],
     ],
   )
 
@@ -323,7 +348,8 @@ test('modifier pools keep ID order and filter without consuming randomness', (t)
 
 test('drafts use fixed slots, one derived draw per non-empty slot, and a final Mend', () => {
   assert.deepEqual(CAMPAIGN_REWARD_SLOTS, ['new-card', 'deck-edit', 'modifier'])
-  assert.equal(CAMPAIGN_MEND_HEALTH, 1)
+  assert.deepEqual(CAMPAIGN_MEND_HEALTH_BY_TIER, { normal: 1, elite: 2 })
+  assert.deepEqual(REWARD_TIERS, ['normal', 'elite'])
   assert.deepEqual(CAMPAIGN_DECK_SIZE_LIMITS, { minimum: 20, maximum: 40 })
   assert.equal(CAMPAIGN_CARD_COPY_LIMIT, 2)
   const cardIds = starterCardIds()
@@ -334,6 +360,7 @@ test('drafts use fixed slots, one derived draw per non-empty slot, and a final M
         const draft = generateRewardDraft({
           seed,
           encounterIndex,
+          tier: 'normal',
           playerCardIds: cardIds,
           activeModifiers: modifiers,
           ruleset,
@@ -364,11 +391,206 @@ test('drafts use fixed slots, one derived draw per non-empty slot, and a final M
   }
 })
 
+// Captured at f6ec7b3, before milestone 21.4 added reward tiers. Normal-tier drafts must
+// stay byte-identical, so existing seeds keep their rewards.
+test('normal-tier drafts match the drafts captured before reward tiers', () => {
+  const starter = [...CAMPAIGN_STARTER_CARD_IDS]
+  const decks = {
+    starter,
+    minimum: starter.slice(0, 20),
+    full: [...starter, ...starter.slice(0, 14)],
+  }
+  const modifierSets = {
+    base: ['vitality-cap-v1'],
+    insight: ['hold-insight-v1', 'vitality-cap-v1'],
+    spoils: ['spoils-of-war-v1', 'vitality-cap-v1'],
+    vows: ['hold-insight-v1', 'vitality-cap-v1', 'vow-of-constancy-v1', 'vow-of-patience-v1'],
+  }
+  const rulesets = { burn: BASELINE_RULESET, noBurn: NO_BURN_RULESET }
+  const draft = (seed, encounterIndex, deck, modifiers, ruleset) => generateRewardDraft({
+    seed,
+    encounterIndex,
+    playerCardIds: decks[deck],
+    activeModifiers: modifierSets[modifiers].map((id) => createModifierRecord(id, null)),
+    ruleset: rulesets[ruleset],
+    tier: 'normal',
+  })
+  const line = ({ offers }) => offers
+    .map(({ offerId, kind, cardId, modifierId }) => (
+      [offerId, kind, cardId ?? '-', modifierId ?? '-'].join(':')
+    ))
+    .join(' ')
+
+  const hash = createHash('sha256')
+  let count = 0
+  for (const seed of [0, 1, 6, 48, 123456789]) {
+    for (const encounterIndex of [0, 1, 2, 3]) {
+      for (const deck of Object.keys(decks)) {
+        for (const modifiers of Object.keys(modifierSets)) {
+          for (const ruleset of Object.keys(rulesets)) {
+            const value = draft(seed, encounterIndex, deck, modifiers, ruleset)
+            hash.update(`${seed}/${encounterIndex}/${deck}/${modifiers}/${ruleset}=`)
+            hash.update(`${JSON.stringify(value)}\n`)
+            count += 1
+          }
+        }
+      }
+    }
+  }
+  assert.equal(count, 480)
+  assert.equal(
+    hash.digest('hex'),
+    '997a18c51d142ffdb208e7c392a2a4c613693158388e570da57bf8395f429513',
+  )
+
+  for (const [seed, encounterIndex, deck, modifiers, ruleset, expected] of [
+    [0, 0, 'starter', 'base', 'burn', 'new-card:add:c-QC:- deck-edit:remove:-:- modifier:modifier:-:vow-of-the-court-v1 mend:mend:-:-'],
+    [48, 2, 'starter', 'insight', 'noBurn', 'new-card:add:c-3S:- deck-edit:duplicate:-:- modifier:modifier:-:vow-of-the-court-v1 mend:mend:-:-'],
+    [6, 1, 'full', 'spoils', 'burn', 'deck-edit:remove:-:- modifier:modifier:-:vow-of-constancy-v1 mend:mend:-:-'],
+    [1, 3, 'minimum', 'vows', 'noBurn', 'new-card:add:c-10H:- deck-edit:duplicate:-:- mend:mend:-:-'],
+    [123456789, 0, 'minimum', 'vows', 'burn', 'new-card:add:c-AS:- deck-edit:duplicate:-:- modifier:modifier:-:spoils-of-war-v1 mend:mend:-:-'],
+  ]) {
+    assert.equal(line(draft(seed, encounterIndex, deck, modifiers, ruleset)), expected)
+  }
+})
+
+test('elite drafts offer a J–A card while one is unowned and otherwise draw like normal drafts', (t) => {
+  t.mock.method(Math, 'random', () => assert.fail('Hidden Math.random use'))
+  assert.deepEqual(CAMPAIGN_ELITE_CARD_RANKS, ['J', 'Q', 'K', 'A'])
+  const starter = starterCardIds()
+  const court = CARD_IDS.filter((cardId) => CAMPAIGN_ELITE_CARD_RANKS.includes(getCard(cardId).rank))
+  const decks = {
+    starter,
+    // Owns every J–A, so the elite pool falls back to every unowned card.
+    courtless: [...starter, ...court.filter((cardId) => !starter.includes(cardId))],
+    full: [...starter, ...starter.slice(0, 14)],
+  }
+  const modifiers = createStartingModifierRecords()
+  const slot = (draft, offerId) => draft.offers.find((candidate) => candidate.offerId === offerId)
+  let differentCards = 0
+  for (let seed = 0; seed < 40; seed += 1) {
+    for (const encounterIndex of [0, 1, 2, 3]) {
+      for (const [deck, cardIds] of Object.entries(decks)) {
+        for (const ruleset of [BASELINE_RULESET, NO_BURN_RULESET]) {
+          const options = {
+            seed,
+            encounterIndex,
+            playerCardIds: cardIds,
+            activeModifiers: modifiers,
+            ruleset,
+          }
+          const elite = generateRewardDraft({ ...options, tier: 'elite' })
+          const normal = generateRewardDraft({ ...options, tier: 'normal' })
+          assert.deepEqual(elite, expectedDraft({
+            seed,
+            encounterIndex,
+            cardIds,
+            modifierPool: getDraftableModifierPool(modifiers, ruleset),
+            tier: 'elite',
+          }))
+          assert.deepEqual(
+            elite.offers.map(({ offerId }) => offerId),
+            normal.offers.map(({ offerId }) => offerId),
+          )
+          assert.equal(slot(elite, 'deck-edit').kind, slot(normal, 'deck-edit').kind)
+          assert.equal(slot(elite, 'deck-edit').cardId === null, slot(normal, 'deck-edit').cardId === null)
+          assert.deepEqual(slot(elite, 'modifier'), slot(normal, 'modifier'))
+          assert.deepEqual(slot(elite, 'mend'), slot(normal, 'mend'))
+          if (deck === 'starter') {
+            const added = slot(elite, 'new-card').cardId
+            assert.ok(CAMPAIGN_ELITE_CARD_RANKS.includes(getCard(added).rank))
+            assert.ok(!cardIds.includes(added))
+            if (added !== slot(normal, 'new-card').cardId) differentCards += 1
+          } else {
+            assert.deepEqual(elite, normal)
+          }
+        }
+      }
+    }
+  }
+  assert.ok(differentCards > 0)
+  const options = {
+    seed: 0,
+    encounterIndex: 0,
+    playerCardIds: starter,
+    activeModifiers: modifiers,
+    ruleset: BASELINE_RULESET,
+  }
+  assert.throws(() => generateRewardDraft({ ...options, tier: 'boss' }), /normal or elite fights, not boss/)
+  assert.throws(() => generateRewardDraft(options), /normal or elite fights, not undefined/)
+})
+
+test('Mend restores one after a normal fight and Greater Mend two after an elite, up to the maximum', () => {
+  const retried = retryEncounter(loseFixtureEncounter(start(SEEDS.court)))
+  const gate = winFixtureEncounter(retried)
+  assert.equal(gate.encounter.tier, 'normal')
+  assert.equal(gate.health, 2)
+  const mended = claimReward(gate, 'mend')
+  assert.equal(mended.health, 3)
+  const elite = winFixtureEncounter(passThrough(mended, 'shrine', 'high-court'))
+  assert.equal(elite.encounter.tier, 'elite')
+  assert.deepEqual(offer(elite, 'mend'), {
+    offerId: 'mend',
+    kind: 'mend',
+    cardId: null,
+    modifierId: null,
+  })
+  const greater = claimReward(elite, 'mend')
+  assert.equal(greater.health, 5)
+  assert.equal(greater.journal.at(-1).offerId, 'mend')
+  assert.doesNotThrow(() => validateCampaignState(greater))
+
+  const capped = winFixtureEncounter(passThrough(
+    claimReward(winFixtureEncounter(start(SEEDS.court)), 'mend'),
+    'shrine',
+    'high-court',
+  ))
+  assert.equal(capped.health, 4)
+  assert.equal(claimReward(capped, 'mend').health, capped.maxHealth)
+})
+
+test('replay regenerates elite drafts and refuses normal-tier offers after an elite', () => {
+  const elite = winFixtureEncounter(passThrough(
+    claimReward(winFixtureEncounter(start(SEEDS.court)), 'mend'),
+    'shrine',
+    'high-court',
+  ))
+  assert.equal(activeNodeId(elite), 'high-court')
+  const draft = (tier) => generateRewardDraft({
+    seed: elite.rng.seed,
+    encounterIndex: elite.encounterIndex,
+    tier,
+    playerCardIds: elite.cards
+      .filter(({ campaignOwner }) => campaignOwner === 'player')
+      .map(({ cardId }) => cardId),
+    activeModifiers: elite.activeModifiers,
+    ruleset: elite.ruleset,
+  })
+  assert.deepEqual(elite.pendingReward, draft('elite'))
+  const eliteCard = offer(elite, 'new-card').cardId
+  const normalCard = draft('normal').offers[0].cardId
+  assert.ok(CAMPAIGN_ELITE_CARD_RANKS.includes(getCard(eliteCard).rank))
+  assert.notEqual(normalCard, eliteCard)
+
+  const pending = clone(elite)
+  pending.pendingReward = draft('normal')
+  refingerprint(pending)
+  assert.throws(() => validateCampaignState(pending), /must match the regenerated reward draft/)
+
+  const claimed = claimReward(elite, 'new-card')
+  assert.doesNotThrow(() => validateCampaignState(claimed))
+  const tampered = clone(claimed)
+  tampered.journal.at(-1).cardId = normalCard
+  refingerprint(tampered)
+  assert.throws(() => validateCampaignState(tampered), /must match its regenerated reward draft/)
+})
+
 test('deck size and copy limits close slots without spending draws', () => {
   const modifiers = createStartingModifierRecords()
   const draft = (cardIds, seed = 3) => generateRewardDraft({
     seed,
     encounterIndex: 1,
+    tier: 'normal',
     playerCardIds: cardIds,
     activeModifiers: modifiers,
     ruleset: BASELINE_RULESET,
@@ -420,6 +642,7 @@ test('winning drafts are bound to the event fingerprint and leave the main RNG u
   assert.deepEqual(won.match.pendingReward, generateRewardDraft({
     seed: won.match.rng.seed,
     encounterIndex: 0,
+    tier: 'normal',
     playerCardIds: starterCardIds(),
     activeModifiers: createStartingModifierRecords(),
     ruleset: BASELINE_RULESET,
@@ -661,7 +884,7 @@ test('same seed and reward choices replay a full campaign exactly', () => {
     const states = []
     const drafts = []
     let run = start(SEEDS.replace, BASELINE_RULESET, 'campaign-full-replay')
-    for (let encounter = 0; encounter < 3; encounter += 1) {
+    for (let encounter = 0; encounter < 4; encounter += 1) {
       for (let step = 0; step < 400 && run.machineState === 'ready'; step += 1) {
         const resolved = resolvePrepared(run)
         states.push(resolved)
@@ -798,6 +1021,9 @@ test('encounter modifiers survive retries and reloads, then expire exactly once'
   vowed = retryEncounter(loseEncounter(vowed))
   vowed = pick(winEncounter(validateCampaignState(clone(vowed))), 'mend')
   assert.deepEqual(vowed.activeModifiers.at(-1), vow)
+  vowed = pick(winEncounter(vowed), 'mend')
+  assert.equal(vowed.encounter.id, 'ace-sovereign')
+  assert.deepEqual(vowed.activeModifiers.at(-1), vow)
   const victory = winEncounter(vowed)
   assert.equal(victory.status, 'ended')
   assert.deepEqual(victory.activeModifiers.at(-1), vow)
@@ -927,7 +1153,7 @@ test('Hold vows only narrow eligible targets and keep the swap unchanged', () =>
   for (const id of ['vow-of-constancy-v1', 'vow-of-patience-v1', 'vow-of-the-court-v1']) {
     const records = [{ id, lifetime: 'campaign', grantedAtNodeId: 'gate' }]
     for (const held of [null, 'c-2D', 'c-7D', 'c-AD']) {
-      const narrowed = narrowHoldTargets(records, targets, held)
+      const narrowed = narrowHoldTargets({ activeModifiers: records, traitIds: [] }, targets, held)
       assert.ok(narrowed.every((target) => targets.includes(target)))
     }
   }

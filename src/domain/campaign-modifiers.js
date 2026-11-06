@@ -1,5 +1,5 @@
-import { CAMPAIGN_MAX_HEALTH } from './campaign-content.js'
-import { compareCards, getCard } from './cards.js'
+import { CAMPAIGN_MAX_HEALTH, CAMPAIGN_NODE_HEAL_LIMIT } from './campaign-content.js'
+import { compareCards, getCard, RANKS } from './cards.js'
 
 function deepFreeze(value) {
   if (value !== null && typeof value === 'object') {
@@ -20,6 +20,32 @@ export const CAMPAIGN_MODIFIER_HOOKS = deepFreeze([
 
 export const CAMPAIGN_MODIFIER_LIFETIMES = deepFreeze(['campaign', 'encounter'])
 
+// Player modifiers are gained during the run. Opponent traits belong to an authored fight
+// and exist only while its encounter does.
+export const CAMPAIGN_MODIFIER_OWNERS = deepFreeze(['player', 'opponent'])
+
+const OPPONENT_TRAIT_HOOKS = Object.freeze([
+  'holdCaptureEligibility',
+  'holdReplacementEligibility',
+  'burnSettlement',
+])
+
+// The effect types each hook understands. Replacement-not-weaker compares against the
+// held card, so it cannot restrict a capture into an empty Hold.
+const HOOK_EFFECT_TYPES = Object.freeze({
+  maximumHealth: Object.freeze(['maximum-health']),
+  holdDecision: Object.freeze(['informed-hold-choice']),
+  holdCaptureEligibility: Object.freeze(['capture-from-zones', 'capture-ranks']),
+  holdReplacementEligibility: Object.freeze([
+    'capture-from-zones',
+    'capture-ranks',
+    'replacement-not-weaker',
+  ]),
+  burnSettlement: Object.freeze(['winner-claims-burns']),
+})
+
+const NUMBER_RANKS = Object.freeze(RANKS.slice(0, 9).map(({ rank }) => rank))
+
 export const HOLD_INSIGHT_MODIFIER_ID = 'hold-insight-v1'
 export const VITALITY_CAP_MODIFIER_ID = 'vitality-cap-v1'
 
@@ -28,8 +54,21 @@ const MODIFIER_ID_PATTERN = /^[a-z]+(?:-[a-z]+)*-v[1-9][0-9]*$/
 // Sorted by ID; draft modifier pools preserve this order.
 export const CAMPAIGN_MODIFIER_CATALOGUE = deepFreeze([
   {
+    id: 'court-etiquette-v1',
+    name: 'Court Etiquette',
+    owner: 'opponent',
+    description: 'Opponent trait. In this encounter, an empty Hold can capture only a 2–10, and an occupied Hold can be replaced only by a 2–10.',
+    lifetime: 'encounter',
+    hooks: ['holdCaptureEligibility', 'holdReplacementEligibility'],
+    effect: { type: 'capture-ranks', ranks: NUMBER_RANKS },
+    draftable: false,
+    applicability: null,
+    healthOnGain: 0,
+  },
+  {
     id: HOLD_INSIGHT_MODIFIER_ID,
     name: 'Hold Insight',
+    owner: 'player',
     description: 'Before each Hold decision, see the next card your opponent will reveal.',
     lifetime: 'campaign',
     hooks: ['holdDecision'],
@@ -39,8 +78,21 @@ export const CAMPAIGN_MODIFIER_CATALOGUE = deepFreeze([
     healthOnGain: 0,
   },
   {
+    id: 'plunder-v1',
+    name: 'Plunder',
+    owner: 'opponent',
+    description: 'Opponent trait. Clashes this opponent wins send your cards to its won pile instead of burning them. They return to your deck after the encounter. Spoils of War has no effect against it.',
+    lifetime: 'encounter',
+    hooks: ['burnSettlement'],
+    effect: { type: 'winner-claims-burns', winner: 'opponent' },
+    draftable: false,
+    applicability: { burnEnabled: true },
+    healthOnGain: 0,
+  },
+  {
     id: 'spoils-of-war-v1',
     name: 'Spoils of War',
+    owner: 'player',
     description: 'For your next encounter, including retries, clashes you win send your opponent\'s cards to your won pile instead of burning them.',
     lifetime: 'encounter',
     hooks: ['burnSettlement'],
@@ -52,6 +104,7 @@ export const CAMPAIGN_MODIFIER_CATALOGUE = deepFreeze([
   {
     id: VITALITY_CAP_MODIFIER_ID,
     name: 'Vitality Cap',
+    owner: 'player',
     description: 'Maximum health is 5.',
     lifetime: 'campaign',
     hooks: ['maximumHealth'],
@@ -63,6 +116,7 @@ export const CAMPAIGN_MODIFIER_CATALOGUE = deepFreeze([
   {
     id: 'vow-of-constancy-v1',
     name: 'Vow of Constancy',
+    owner: 'player',
     description: 'Restore 2 health. An occupied Hold can be replaced only by a card that does not lose to the held card (2 still beats A).',
     lifetime: 'campaign',
     hooks: ['holdReplacementEligibility'],
@@ -74,6 +128,7 @@ export const CAMPAIGN_MODIFIER_CATALOGUE = deepFreeze([
   {
     id: 'vow-of-patience-v1',
     name: 'Vow of Patience',
+    owner: 'player',
     description: 'Restore 2 health. An empty Hold can capture only from your won pile.',
     lifetime: 'campaign',
     hooks: ['holdCaptureEligibility'],
@@ -85,6 +140,7 @@ export const CAMPAIGN_MODIFIER_CATALOGUE = deepFreeze([
   {
     id: 'vow-of-the-court-v1',
     name: 'Vow of the Court',
+    owner: 'player',
     description: 'Restore 2 health. An empty Hold can capture only a J, Q, K, or A.',
     lifetime: 'campaign',
     hooks: ['holdCaptureEligibility'],
@@ -145,8 +201,37 @@ export function validateModifierCatalogue(catalogue) {
     if (!Number.isSafeInteger(entry.healthOnGain) || entry.healthOnGain < 0) {
       throw new TypeError(`Modifier ${entry.id} requires non-negative health on gain`)
     }
+    if (entry.healthOnGain > CAMPAIGN_NODE_HEAL_LIMIT) {
+      throw new RangeError(
+        `Modifier ${entry.id} cannot restore more than ${CAMPAIGN_NODE_HEAL_LIMIT} health`,
+      )
+    }
+    if (!CAMPAIGN_MODIFIER_OWNERS.includes(entry.owner)) {
+      throw new TypeError(`Modifier ${entry.id} must be owned by the player or the opponent`)
+    }
+    if (entry.owner === 'opponent') validateOpponentTrait(entry)
+    for (const hook of entry.hooks) {
+      if (!HOOK_EFFECT_TYPES[hook].includes(entry.effect.type)) {
+        throw new TypeError(`Modifier ${entry.id} cannot apply ${entry.effect.type} to ${hook}`)
+      }
+    }
+    if (entry.effect.type === 'winner-claims-burns' && entry.effect.winner !== entry.owner) {
+      throw new TypeError(`Modifier ${entry.id} may only claim burns for its owner`)
+    }
   }
   return catalogue
+}
+
+// Traits last one encounter, are never gained, and touch only Hold eligibility and burns.
+function validateOpponentTrait(entry) {
+  if (entry.lifetime !== 'encounter' || entry.draftable || entry.healthOnGain !== 0) {
+    throw new TypeError(
+      `Opponent trait ${entry.id} must last one encounter, restore no health, and never be drafted`,
+    )
+  }
+  if (entry.hooks.some((hook) => !OPPONENT_TRAIT_HOOKS.includes(hook))) {
+    throw new TypeError(`Opponent trait ${entry.id} may modify only Hold eligibility or burns`)
+  }
 }
 
 validateModifierCatalogue(CAMPAIGN_MODIFIER_CATALOGUE)
@@ -157,16 +242,33 @@ export function isCampaignModifierId(id) {
   return typeof id === 'string' && MODIFIER_BY_ID.has(id)
 }
 
+export function isOpponentTraitId(id) {
+  return isCampaignModifierId(id) && MODIFIER_BY_ID.get(id).owner === 'opponent'
+}
+
 export function getCampaignModifier(id) {
   const modifier = MODIFIER_BY_ID.get(id)
   if (modifier === undefined) throw new RangeError(`Unknown campaign modifier: ${String(id)}`)
   return modifier
 }
 
-// Records name the route node that granted them; the starting modifier has none.
+// Records name the route node that granted them; the starting modifier has none. Opponent
+// traits are never records.
 export function createModifierRecord(id, grantedAtNodeId) {
   const modifier = getCampaignModifier(id)
+  if (modifier.owner !== 'player') {
+    throw new Error(`Opponent trait ${modifier.id} cannot become an active modifier`)
+  }
   return { id: modifier.id, lifetime: modifier.lifetime, grantedAtNodeId }
+}
+
+// The traits of an authored fight that apply under the ruleset, in catalogue order.
+export function encounterTraitIds(fight, ruleset) {
+  return CAMPAIGN_MODIFIER_CATALOGUE
+    .filter((modifier) => (
+      fight.traitIds.includes(modifier.id) && isModifierApplicable(modifier, ruleset)
+    ))
+    .map((modifier) => modifier.id)
 }
 
 export function createStartingModifierRecords() {
@@ -193,6 +295,17 @@ export function findModifierForHook(records, hook) {
     if (modifier.hooks.includes(hook)) return modifier
   }
   return null
+}
+
+// A hook carries at most one player modifier and at most one opponent trait. Returns the
+// effects on the hook, player first.
+function hookEffects({ activeModifiers, traitIds }, hook) {
+  return [
+    findModifierForHook(activeModifiers, hook),
+    findModifierForHook(traitIds.map((id) => ({ id })), hook),
+  ]
+    .filter((modifier) => modifier !== null)
+    .map(({ effect }) => effect)
 }
 
 export function hasCampaignModifier(records, id) {
@@ -247,22 +360,22 @@ export function hasInformedHoldChoice(records) {
   return findModifierForHook(records, 'holdDecision')?.effect.type === 'informed-hold-choice'
 }
 
-// Returns whether a settled contest card burns. Only cards supplied by the clash loser can burn.
-export function contestCardBurns({ ruleset, activeModifiers, winner, suppliedBy }) {
+// Returns whether a settled contest card burns. Only cards supplied by the clash loser can
+// burn, and not when an effect claims burns for the clash winner. An opponent trait on the
+// hook suspends the player's modifier for the encounter, so Plunder and Spoils of War never
+// apply together and the player's wins still burn the opponent's cards.
+export function contestCardBurns({ ruleset, activeModifiers, traitIds, winner, suppliedBy }) {
   if (!ruleset.burn.enabled || suppliedBy === winner) return false
-  const modifier = findModifierForHook(activeModifiers, 'burnSettlement')
-  return !(
-    modifier?.effect.type === 'winner-claims-burns'
-    && modifier.effect.winner === winner
-  )
+  const traitEffects = hookEffects({ activeModifiers: [], traitIds }, 'burnSettlement')
+  const effects = traitEffects.length > 0
+    ? traitEffects
+    : hookEffects({ activeModifiers, traitIds: [] }, 'burnSettlement')
+  return !effects.some((effect) => (
+    effect.type === 'winner-claims-burns' && effect.winner === winner
+  ))
 }
 
-// Hold restrictions can only remove targets from the unrestricted list, never add them.
-export function narrowHoldTargets(records, targets, heldCardId) {
-  const hook = heldCardId === null ? 'holdCaptureEligibility' : 'holdReplacementEligibility'
-  const modifier = findModifierForHook(records, hook)
-  if (modifier === null) return targets
-  const { effect } = modifier
+function narrowByEffect(effect, targets, heldCardId) {
   if (effect.type === 'capture-from-zones') {
     return targets.filter((target) => effect.zones.includes(target.zone))
   }
@@ -273,4 +386,13 @@ export function narrowHoldTargets(records, targets, heldCardId) {
     return targets.filter((target) => compareCards(target.cardId, heldCardId) >= 0)
   }
   throw new Error(`Unsupported Hold eligibility effect: ${effect.type}`)
+}
+
+// Hold restrictions can only remove targets from the unrestricted list, never add them. The
+// player modifier and the opponent trait both filter, so their order does not matter and
+// together they may leave no target.
+export function narrowHoldTargets({ activeModifiers, traitIds }, targets, heldCardId) {
+  const hook = heldCardId === null ? 'holdCaptureEligibility' : 'holdReplacementEligibility'
+  return hookEffects({ activeModifiers, traitIds }, hook)
+    .reduce((remaining, effect) => narrowByEffect(effect, remaining, heldCardId), targets)
 }

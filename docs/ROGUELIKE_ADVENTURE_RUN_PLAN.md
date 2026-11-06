@@ -315,6 +315,60 @@ campaign finale.
 - Tests cover each archetype, elite/boss rewards, modifier stacks and expiry, health
   recovery, retry behavior, deterministic full-campaign replay, and save/resume.
 
+**Completion evidence:** Campaign rules version 7, campaign version 4, and save schema 7
+implement the authored `expedition-v2` map. Its 24 seven-stage routes run from the Suit
+Opposition fight through the Wayside Market or Crossroads Shrine, the Royal Court or the
+elite High Court, the Ember Bazaar, Oathkeeper's Vault, or Roadside Camp, and the Watch
+of Tens or the elite Night Watch, to the Last Light Sanctum and the Ace Sovereign boss.
+Four archetypes (Suit Legion, Court, Watch, and Sovereign) define opponent families by
+their core decks, and each fight fields its archetype's core at a normal, elite, or boss
+tier. Opponents make no choices; deck construction and traits decide their behaviour.
+Both elites add A♠ and A♣ so that every rank can lose a clash, deal 2 damage, and carry
+an opponent trait. Court Etiquette limits Hold capture and replacement to 2–10 cards,
+and Plunder sends the player's losing cards to the opponent's won pile until the
+encounter ends. Traits are opponent-owned catalogue entries stored on the encounter and
+validated against its fight. They draw no randomness, and their stacking with player
+modifiers is specified per hook. Plunder suspends Spoils of War, because fights with
+both averaged 341 clashes in the balance probes. Elite drafts offer a J–A card while one
+is unowned, and their Greater Mend restores 2 health instead of 1. Defeating the boss
+completes the expedition without a draft; each loss costs the fight's damage, and a
+fight can be retried while health remains. Rest sites offer 2 health, a free deck edit
+(training or cleansing a card), or Walk on, and no node restores more than 2 health.
+Rest decisions enter the decision journal with the same node-and-step guard as other
+decisions. Campaign rules 3–6 saves are quarantined until discarded, and Classic schemas
+4–6 carry over unchanged. The implementation plan, its decisions, and the measured
+balance are recorded in
+[`MILESTONE_21_4_IMPLEMENTATION_PLAN.md`](./MILESTONE_21_4_IMPLEMENTATION_PLAN.md).
+
+Focused domain tests cover each archetype and tier; fight, archetype, and rest-site
+validation; the trait lifetime; Hold and burn stacking matrices, including Plunder
+suspending Spoils of War; plunder conservation; normal drafts that match goldens
+captured before reward tiers; elite drafts and Greater Mend; the heal limit; rests and
+their refusals; boss retries, victory, and defeat; and a per-step ledger that balances
+coins, health, cards, modifiers, and RNG draws on all 21 map links, with a negative
+self-test. Persistence, migration, repository, and HUD tests cover the v7 fixtures, the
+rules 3–6 quarantine, rest boundaries that wait for their save and resume, and the
+elite, rest, and boss presentation.
+`tests/integration/milestone-21-4-campaign-flow.test.js` drives an elite ladder that
+rests twice and defeats the Ace Sovereign across reloads, a boss defeat at 1 health
+followed by a restart, stale, repeated, and replayed rest decisions, and a failed rest
+save lost to a reload. The text-only browser fixture at
+`/tests/browser/milestone-21-4-campaign.html` checks labelled elite, rest, and boss
+nodes, Court Etiquette in Run details and Hold capture, Greater Mend, training targets
+and Back at the Roadside Camp, a failed rest save and its retry, reloads at the rest and
+route boundaries, cleansing targets at the sanctum, the stage-7 expedition log, and a
+saved victory that restarts at 3/5 health, while reporting one canvas and relevant
+console errors. It passes at 1280×720 and 390×844 viewports, as do the 21.1–21.3
+fixtures on the seven-stage map.
+
+First-attempt win rates with the starter deck over 1,000 seeds fall within the planned
+bands: the High Court 61.7–66.9 % for every Hold policy, the Night Watch 45.8 % without
+Hold and 94.2 % with Hold Insight, and the Ace Sovereign 24.5 % and 81.4 %. Decks from
+the end of scripted routes raise these rates, the Sovereign's to 54 % without Hold, so
+tuning stays with 21.5's simulation tooling. Opponent-reveal access, recycle order,
+card-value effects, traits on normal and boss fights, and procedural traits are
+deferred to 21.5. The checklist entry stays open until reviewer sign-off.
+
 ## 21.5 Seeded Procedural Campaign
 
 **Goal:** create the full repeatable roguelike mode from deterministic generated content.

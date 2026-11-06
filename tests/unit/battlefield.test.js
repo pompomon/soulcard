@@ -1325,7 +1325,7 @@ test('campaign informed Hold choices render both peeked top cards face-up', () =
   windowObject.flushFrames()
 
   const map = restoreRunSave(JSON.parse(readFileSync(
-    new URL('../fixtures/campaign-save-route-v6.json', import.meta.url),
+    new URL('../fixtures/campaign-save-route-v7.json', import.meta.url),
     'utf8',
   )))
   const ready = passThrough(map, 'shrine', 'court')

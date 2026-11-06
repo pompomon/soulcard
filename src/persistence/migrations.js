@@ -5,12 +5,12 @@ import {
   validateRunSave,
 } from './run-schema.js'
 
-// Schema 4 and 5 Classic saves carry over unchanged. Their Campaign saves use the
-// scripted rewards of campaign rules 3 or the linear seeded drafts of campaign
-// rules 4, which the branching expedition cannot replay. Schema 6 Campaign saves from
-// campaign rules 5 are quarantined by the rules check in validateRunSave, because their
-// journals replay a different shrine payout.
-const CARRIED_SCHEMAS = Object.freeze([4, 5])
+// Schema 4, 5, and 6 Classic saves carry over unchanged. Their Campaign saves use the
+// scripted rewards of campaign rules 3, the linear seeded drafts of campaign rules 4, or
+// the five-stage expedition of campaign rules 5 and 6, which the elite ladder cannot
+// replay: its map, fights, and rest sites differ. A schema 7 Campaign save from another
+// campaign rules version is quarantined by the rules check in validateRunSave.
+const CARRIED_SCHEMAS = Object.freeze([4, 5, 6])
 
 function assertPlainObject(value, name) {
   if (

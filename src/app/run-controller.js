@@ -3,6 +3,7 @@ import {
   CAMPAIGN_HOLD_DECISION_STATES,
   captureCampaignHold,
   chooseCampaignEventOption,
+  chooseCampaignRestOption,
   chooseCampaignReveal,
   chooseCampaignRoute,
   leaveCampaignShop,
@@ -523,6 +524,13 @@ export function createRunController({
     )
   }
 
+  function chooseRestOption(selection) {
+    return applyNodeDecision(
+      'The Campaign rest site must be saved before an option can be chosen',
+      (current) => chooseCampaignRestOption(current, selection),
+    )
+  }
+
   function retryEncounter(selection) {
     return applyNodeDecision(
       'The lost Campaign encounter must be saved before it can be retried',
@@ -615,6 +623,7 @@ export function createRunController({
     purchaseShopItem,
     leaveShop,
     chooseEventOption,
+    chooseRestOption,
     pause,
     resume,
     saveStable,

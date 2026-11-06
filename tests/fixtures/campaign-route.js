@@ -2,12 +2,15 @@ import {
   CAMPAIGN_HOLD_DECISION_STATES,
   captureCampaignHold,
   chooseCampaignEventOption,
+  chooseCampaignRestOption,
   chooseCampaignReveal,
   chooseCampaignRoute,
   createCampaignRun,
   createCampaignStateFingerprint,
   getCampaignEventOptions,
   getCampaignEventTargets,
+  getCampaignRestOptions,
+  getCampaignRestTargets,
   getCampaignRewardTargets,
   getCampaignShopOffers,
   getCampaignShopTargets,
@@ -78,16 +81,27 @@ export function chooseEventOption(run, optionId, targetInstanceId = null) {
   })
 }
 
+export function chooseRestOption(run, optionId, targetInstanceId = null) {
+  return chooseCampaignRestOption(run, {
+    nodeId: run.restSite.nodeId,
+    step: run.journal.length,
+    optionId,
+    targetInstanceId,
+  })
+}
+
 export function retryEncounter(run) {
   return retryCampaignEncounter(run, { nodeId: activeNodeId(run), step: run.journal.length })
 }
 
-// Passes through a shop or event node without changing the run, then enters `fightId`.
+// Passes through a shop, event, or rest node without changing the run, then enters
+// `fightId`.
 export function passThrough(run, viaNodeId, fightId) {
   let next = chooseRoute(run, viaNodeId)
-  next = getCampaignMapNode(viaNodeId).kind === 'shop'
-    ? leaveShop(next)
-    : chooseEventOption(next, 'walk-on')
+  const { kind } = getCampaignMapNode(viaNodeId)
+  if (kind === 'shop') next = leaveShop(next)
+  else if (kind === 'rest') next = chooseRestOption(next, 'walk-on')
+  else next = chooseEventOption(next, 'walk-on')
   return fightId === undefined ? next : chooseRoute(next, fightId)
 }
 
@@ -208,7 +222,8 @@ const SCRIPTED_REWARDS = ['deck-edit', 'new-card', 'modifier', 'mend']
 // One deterministic step of a scripted expedition. `plan` lists preferred route nodes;
 // fights capture an eligible card every seventh clash, rewards rotate through the draft,
 // shops buy the first available item, and events take the first available non-walk-on
-// option. Targeted edits use the first eligible card.
+// option. Rest sites heal below maximum health, otherwise take the first available deck
+// edit, otherwise walk on. Targeted edits use the first eligible card.
 export function stepExpedition(run, plan, counters) {
   switch (run.machineState) {
     case 'awaitingRoute': {
@@ -261,23 +276,58 @@ export function stepExpedition(run, plan, counters) {
       const targets = getCampaignEventTargets(run, option.optionId)
       return chooseEventOption(run, option.optionId, targets[0]?.instanceId ?? null)
     }
+    case 'awaitingRest': {
+      const options = getCampaignRestOptions(run)
+      const option = run.health < run.maxHealth
+        ? options.find(({ healthGain }) => healthGain > 0)
+        : options.find(({ blocker, deckEdit }) => blocker === null && deckEdit !== null)
+      if (option === undefined) {
+        counters.rests.push('walk-on')
+        return chooseRestOption(run, 'walk-on')
+      }
+      counters.rests.push(option.optionId)
+      const targets = getCampaignRestTargets(run, option.optionId)
+      return chooseRestOption(run, option.optionId, targets[0]?.instanceId ?? null)
+    }
     default:
       throw new Error(`A scripted expedition cannot continue from ${run.machineState}`)
   }
 }
 
 export function createExpeditionCounters() {
-  return { clashes: 0, retries: 0, rewards: 0, purchases: [], events: [] }
+  return { clashes: 0, retries: 0, rewards: 0, purchases: [], events: [], rests: [] }
 }
 
-// Market, Royal Court, and Oathkeeper's Vault; Crossroads Shrine, Watch of Tens, and
-// Ember Bazaar; or Crossroads Shrine, Royal Court, and Ember Bazaar, where bleeding at the
-// shrine and both bounties pay exactly the bazaar's full stock. All end at the Ace Assembly.
+// The normal path through the market and Oathkeeper's Vault; the elite ladder through the
+// shrine, High Court, Roadside Camp, and Night Watch; or the shrine, Royal Court, and Ember
+// Bazaar, where bleeding at the shrine and both bounties pay exactly the bazaar's full
+// stock. All rest at the Last Light Sanctum and end at the Ace Sovereign.
 export const EXPEDITION_PLANS = Object.freeze({
-  market: Object.freeze(['gate', 'market', 'court', 'vault', 'finale']),
-  shrine: Object.freeze(['gate', 'shrine', 'watch', 'bazaar', 'finale']),
-  soldOut: Object.freeze(['gate', 'shrine', 'court', 'bazaar', 'finale']),
+  market: Object.freeze(['gate', 'market', 'court', 'vault', 'watch', 'sanctum', 'finale']),
+  shrine: Object.freeze([
+    'gate', 'shrine', 'high-court', 'camp', 'night-watch', 'sanctum', 'finale',
+  ]),
+  soldOut: Object.freeze(['gate', 'shrine', 'court', 'bazaar', 'watch', 'sanctum', 'finale']),
 })
+
+// Six routes that together use every map link; each rests at the sanctum before the boss.
+export const EDGE_COVERING_ROUTES = Object.freeze([
+  ['gate', 'market', 'court', 'bazaar', 'watch', 'sanctum', 'finale'],
+  ['gate', 'shrine', 'court', 'vault', 'night-watch', 'sanctum', 'finale'],
+  ['gate', 'market', 'court', 'camp', 'watch', 'sanctum', 'finale'],
+  ['gate', 'shrine', 'high-court', 'bazaar', 'night-watch', 'sanctum', 'finale'],
+  ['gate', 'market', 'high-court', 'vault', 'watch', 'sanctum', 'finale'],
+  ['gate', 'shrine', 'high-court', 'camp', 'night-watch', 'sanctum', 'finale'],
+].map((route) => Object.freeze(route)))
+
+// Fixture runs are deep-frozen machine states, so each is built once per runId and shared.
+function buildOnce(build) {
+  const runs = new Map()
+  return (runId) => {
+    if (!runs.has(runId)) runs.set(runId, build(runId))
+    return runs.get(runId)
+  }
+}
 
 // Stable states behind the JSON Campaign save fixtures. Seed 48 wins its first fight
 // without a retry and drafts Hold Insight; seed 6 does the same and drafts Spoils of War.
@@ -285,29 +335,29 @@ function fixtureCampaign(seed, runId) {
   return startCampaign({ runId, seed, ruleset: BASELINE_RULESET })
 }
 
-export function rewardFixtureRun(runId = 'fixture-campaign-reward') {
+export const rewardFixtureRun = buildOnce((runId = 'fixture-campaign-reward') => {
   return playUntilTransition(fixtureCampaign(48, runId))
-}
+})
 
 // The route map after Hold Insight is claimed: the market and shrine are available.
-export function routeFixtureRun(runId = 'fixture-campaign-route') {
+export const routeFixtureRun = buildOnce((runId = 'fixture-campaign-route') => {
   return claimReward(rewardFixtureRun(runId), 'modifier')
-}
+})
 
-export function shopFixtureRun() {
+export const shopFixtureRun = buildOnce(() => {
   return chooseRoute(routeFixtureRun('fixture-campaign-shop'), 'market')
-}
+})
 
-export function eventFixtureRun() {
+export const eventFixtureRun = buildOnce(() => {
   return chooseRoute(routeFixtureRun('fixture-campaign-event'), 'shrine')
-}
+})
 
-export function informedFixtureRun() {
+export const informedFixtureRun = buildOnce(() => {
   const insight = passThrough(routeFixtureRun('fixture-campaign-informed'), 'shrine', 'court')
   return prepareCampaignReveal(insight).match
-}
+})
 
-export function modifiersFixtureRun() {
+export const modifiersFixtureRun = buildOnce(() => {
   let run = claimReward(
     playUntilTransition(fixtureCampaign(6, 'fixture-campaign-modifiers')),
     'modifier',
@@ -315,11 +365,11 @@ export function modifiersFixtureRun() {
   run = passThrough(run, 'shrine', 'court')
   for (let clash = 0; clash < 3; clash += 1) run = advanceClash(run)
   return captureCampaignHold(run, getEligibleHoldTargets(run)[0].instanceId)
-}
+})
 
 // Ember Bazaar after its last item is bought. Seed 1 bleeds at the shrine, so the gate
 // bounty, the shrine coins, and the court bounty pay exactly the bazaar's 12-coin stock.
-export function exhaustedShopFixtureRun(runId = 'fixture-campaign-shop-exhausted') {
+export const exhaustedShopFixtureRun = buildOnce((runId = 'fixture-campaign-shop-exhausted') => {
   let run = fixtureCampaign(1, runId)
   const counters = createExpeditionCounters()
   for (let step = 0; step < 5000 && run.machineState !== 'ended'; step += 1) {
@@ -333,14 +383,64 @@ export function exhaustedShopFixtureRun(runId = 'fixture-campaign-shop-exhausted
     run = stepExpedition(run, EXPEDITION_PLANS.soldOut, counters)
   }
   throw new Error('The scripted expedition did not sell out Ember Bazaar')
+})
+
+// The route map after walking on from the shrine: Royal Court and the High Court are open.
+export const eliteChoiceFixtureRun = buildOnce(() => {
+  return passThrough(routeFixtureRun('fixture-campaign-elite-choice'), 'shrine')
+})
+
+// Seed 11 climbs the elite ladder of the shrine plan without a retry: it wins the High
+// Court, rests at the Roadside Camp, wins the Night Watch, cleanses at the Last Light
+// Sanctum, and defeats the Ace Sovereign.
+function eliteLadderRun(runId, reached) {
+  let run = fixtureCampaign(11, runId)
+  const counters = createExpeditionCounters()
+  for (let step = 0; step < 5000; step += 1) {
+    if (reached(run)) return run
+    if (run.machineState === 'ended') break
+    run = stepExpedition(run, EXPEDITION_PLANS.shrine, counters)
+  }
+  throw new Error(`The scripted elite ladder did not reach the ${runId} state`)
 }
 
+export const eliteRewardFixtureRun = buildOnce(() => {
+  return eliteLadderRun('fixture-campaign-elite-reward', (run) => (
+    run.machineState === 'awaitingReward' && activeNodeId(run) === 'high-court'
+  ))
+})
+
+export const restFixtureRun = buildOnce(() => {
+  return eliteLadderRun('fixture-campaign-rest', (run) => (
+    run.machineState === 'awaitingRest' && run.restSite.nodeId === 'camp'
+  ))
+})
+
+// The boss fight just after the route choice, before its first reveal.
+export const bossFixtureRun = buildOnce(() => {
+  return eliteLadderRun('fixture-campaign-boss', (run) => {
+    const last = run.journal.at(-1)
+    return run.machineState === 'ready' && last.type === 'route' && last.nodeId === 'finale'
+  })
+})
+
+export const victoryFixtureRun = buildOnce(() => {
+  return eliteLadderRun('fixture-campaign-victory', (run) => (
+    run.outcome?.reason === 'campaignCompleted'
+  ))
+})
+
 export const CAMPAIGN_SAVE_FIXTURES = Object.freeze([
-  ['campaign-save-reward-v6.json', rewardFixtureRun],
-  ['campaign-save-route-v6.json', routeFixtureRun],
-  ['campaign-save-shop-v6.json', shopFixtureRun],
-  ['campaign-save-shop-exhausted-v6.json', exhaustedShopFixtureRun],
-  ['campaign-save-event-v6.json', eventFixtureRun],
-  ['campaign-save-informed-v6.json', informedFixtureRun],
-  ['campaign-save-modifiers-v6.json', modifiersFixtureRun],
+  ['campaign-save-reward-v7.json', rewardFixtureRun],
+  ['campaign-save-route-v7.json', routeFixtureRun],
+  ['campaign-save-shop-v7.json', shopFixtureRun],
+  ['campaign-save-shop-exhausted-v7.json', exhaustedShopFixtureRun],
+  ['campaign-save-event-v7.json', eventFixtureRun],
+  ['campaign-save-informed-v7.json', informedFixtureRun],
+  ['campaign-save-modifiers-v7.json', modifiersFixtureRun],
+  ['campaign-save-elite-choice-v7.json', eliteChoiceFixtureRun],
+  ['campaign-save-elite-reward-v7.json', eliteRewardFixtureRun],
+  ['campaign-save-rest-v7.json', restFixtureRun],
+  ['campaign-save-boss-v7.json', bossFixtureRun],
+  ['campaign-save-victory-v7.json', victoryFixtureRun],
 ])

@@ -209,8 +209,14 @@ test('shrine options apply their exact costs and gains and cap healing', () => {
   assert.equal(bled.machineState, 'awaitingRoute')
   assert.equal(bled.nodeEvent, null)
   assert.deepEqual(
-    [routeStates(bled).market, routeStates(bled).shrine, routeStates(bled).court, routeStates(bled).watch],
-    ['bypassed', 'completed', 'available', 'available'],
+    [
+      routeStates(bled).market,
+      routeStates(bled).shrine,
+      routeStates(bled).court,
+      routeStates(bled)['high-court'],
+      routeStates(bled).watch,
+    ],
+    ['bypassed', 'completed', 'available', 'available', 'locked'],
   )
 
   const targets = getCampaignEventTargets(event, 'burn-an-offering')

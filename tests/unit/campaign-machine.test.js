@@ -127,17 +127,22 @@ test('a new campaign opens on the route map without drawing RNG', () => {
     market: 'locked',
     shrine: 'locked',
     court: 'locked',
-    watch: 'locked',
+    'high-court': 'locked',
     bazaar: 'locked',
     vault: 'locked',
+    camp: 'locked',
+    watch: 'locked',
+    'night-watch': 'locked',
+    sanctum: 'locked',
     finale: 'locked',
   })
-  assert.equal(run.route.mapId, 'expedition-v1')
+  assert.equal(run.route.mapId, 'expedition-v2')
   assert.equal(run.currency, 0)
   assert.deepEqual(run.journal, [])
   assert.equal(run.encounter, null)
   assert.equal(run.shop, null)
   assert.equal(run.nodeEvent, null)
+  assert.equal(run.restSite, null)
   assert.equal(run.cards.length, CAMPAIGN_STARTER_CARD_IDS.length)
   assert.ok(run.cards.every(({ campaignOwner }) => campaignOwner === 'player'))
   assert.deepEqual(run.deckLayout, run.cards.map(({ instanceId }) => instanceId))
@@ -1055,7 +1060,7 @@ test('a retry names the lost fight node and the journal step it was offered at',
   )
 })
 
-test('final encounter deals two damage and the third win completes the campaign', () => {
+test('the boss deals two damage and the fourth win completes the campaign', () => {
   let run = startCampaign({
     runId: 'campaign-final',
     seed: 7,
@@ -1065,11 +1070,13 @@ test('final encounter deals two damage and the third win completes the campaign'
   assert.equal(run.machineState, 'awaitingRoute')
   run = passThrough(run, 'shrine', 'court')
   run = claimReward(winEncounter(run), 'mend')
-  run = passThrough(run, 'vault', 'finale')
-  assert.equal(run.encounterIndex, 2)
+  run = passThrough(run, 'vault', 'watch')
+  run = claimReward(winEncounter(run), 'new-card')
+  run = passThrough(run, 'sanctum', 'finale')
+  assert.equal(run.encounterIndex, 3)
   assert.equal(run.health, 4)
   assert.equal(run.encounter.damage, 2)
-  assert.equal(run.encounter.id, 'ace-assembly')
+  assert.equal(run.encounter.id, 'ace-sovereign')
 
   const losing = loseEncounter(run)
   assert.equal(losing.health, 2)
@@ -1091,6 +1098,57 @@ test('final encounter deals two damage and the third win completes the campaign'
     () => validateCampaignState(zeroHealthVictory),
     /victory must follow the final encounter win with positive health/,
   )
+})
+
+// Reaches the Ace Sovereign on the court route with `health` (1–5) on arrival. Each gate
+// loss costs 1 and each Mend restores 1; the other rewards are new cards, and the sanctum
+// is walked past.
+function arriveAtBoss(health) {
+  let run = startCampaign({ runId: `campaign-boss-${health}`, seed: 7, ruleset: BASELINE_RULESET })
+  for (let loss = 0; loss < 3 - health; loss += 1) run = retryEncounter(loseEncounter(run))
+  const rewards = [0, 1, 2].map((index) => (index < health - 3 ? 'mend' : 'new-card'))
+  run = claimReward(winEncounter(run), rewards[0])
+  run = passThrough(run, 'shrine', 'court')
+  run = claimReward(winEncounter(run), rewards[1])
+  run = passThrough(run, 'vault', 'watch')
+  run = claimReward(winEncounter(run), rewards[2])
+  run = passThrough(run, 'sanctum', 'finale')
+  assert.equal(run.health, health)
+  return run
+}
+
+test('the boss allows a retry only while health survives its damage, and a win opens no draft', () => {
+  const attempts = {}
+  for (const health of [5, 4, 3, 2, 1]) {
+    const arrival = arriveAtBoss(health)
+    assert.equal(arrival.encounter.id, 'ace-sovereign')
+    assert.equal(arrival.encounter.tier, 'boss')
+    assert.deepEqual(arrival.encounter.traitIds, [])
+
+    let run = arrival
+    attempts[health] = 1
+    for (let lost = loseEncounter(run); ; lost = loseEncounter(run)) {
+      assert.equal(lost.health, Math.max(0, run.health - 2))
+      if (run.health - 2 <= 0) {
+        assert.equal(lost.status, 'ended')
+        assert.deepEqual(lost.outcome, { result: 'defeat', reason: 'healthDepleted' })
+        assert.equal(lost.pendingReward, null)
+        assert.equal(routeStates(lost).finale, 'active')
+        break
+      }
+      assert.equal(lost.machineState, 'awaitingRetry')
+      run = retryEncounter(lost)
+      attempts[health] += 1
+    }
+
+    const victory = winEncounter(arrival)
+    assert.equal(victory.machineState, 'ended')
+    assert.deepEqual(victory.outcome, { result: 'victory', reason: 'campaignCompleted' })
+    assert.equal(victory.pendingReward, null)
+    assert.equal(victory.health, health)
+    assert.equal(routeStates(victory).finale, 'completed')
+  }
+  assert.deepEqual(attempts, { 5: 3, 4: 2, 3: 2, 2: 1, 1: 1 })
 })
 
 test('same seed and campaign choices replay exactly', () => {

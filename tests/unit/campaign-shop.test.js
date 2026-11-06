@@ -430,8 +430,14 @@ test('a new card joins the deck once and leaving keeps unsold stock behind', () 
   assert.deepEqual(left.rng, bought.rng)
   assert.deepEqual(left.journal.at(-1), { type: 'leaveShop', nodeId: 'market' })
   assert.deepEqual(
-    [routeStates(left).market, routeStates(left).shrine, routeStates(left).court, routeStates(left).watch],
-    ['completed', 'bypassed', 'available', 'available'],
+    [
+      routeStates(left).market,
+      routeStates(left).shrine,
+      routeStates(left).court,
+      routeStates(left)['high-court'],
+      routeStates(left).watch,
+    ],
+    ['completed', 'bypassed', 'available', 'available', 'locked'],
   )
   assert.throws(
     () => leaveCampaignShop(left, { nodeId: 'market', step: left.journal.length }),
