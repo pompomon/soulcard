@@ -179,7 +179,9 @@ persistence, controller, HUD, and bootstrap tests cover the acceptance matrix ab
 The text-only browser fixture at
 `/tests/browser/milestone-21-1-campaign.html` exercises that UI entry, a saved normal
 choice, Hold capture, and a saved held-card choice while reporting one canvas, semantic
-controls, completed presentations, and relevant console errors.
+controls, completed presentations, and relevant console errors. Since 21.3 a new
+Campaign opens on the route map, so the fixture first chooses the stage-1 Suit
+Opposition node and waits for that choice to save before the first reveal.
 
 ## 21.2 Reward Drafts and Hold Upgrades
 
@@ -228,7 +230,10 @@ described 44px offers, the target list without the held card, Back, a reward tha
 saved before the next encounter appears, the informed Hold choice, and Run details,
 while reporting one canvas and relevant console errors. Which modifier a draft offers
 depends on the run seed, so Hold Insight is not guaranteed in the first draft; the
-fixture restores a seeded draft that offers it.
+fixture restores a seeded draft that offers it. Since 21.3 the fixture restores the
+schema-6 draft, waits for the saved route map after the reward, and reaches the informed
+Hold choice at the Royal Court through the Crossroads Shrine; Run details list the
+route, active modifiers, and expedition log.
 
 ## 21.3 Branching Expedition
 
@@ -252,6 +257,39 @@ same encounter and Hold rules.
 - Currency, purchases, route locks, and event outcomes are conserved and deterministic.
 - Tests cover alternate paths, all node decisions, retries, exhausted shops, save/resume,
   and refusal of stale or duplicate decisions.
+
+**Completion evidence:** Campaign rules version 6 and save schema 6 implement the
+authored `expedition-v1` map. Its eight five-stage routes run from the Suit Opposition
+fight through the Wayside Market or Crossroads Shrine, the Royal Court or Watch of Tens,
+and the Ember Bazaar or Oathkeeper's Vault to the Ace Assembly finale. Route, reward,
+purchase, event, shop-exit, and retry decisions are recorded in a decision journal that
+restore replays against the saved run. Each decision names its node and journal step
+and applies only to a saved boundary, so stale steps, other nodes, reloads, and repeated
+activations cannot apply it twice. Rules 6 raises the shrine's Bleed for fortune payout
+from 4 to 5 coins so that the gate, shrine, and Royal Court bounties (3 + 5 + 4) can buy
+out the 12-coin Ember Bazaar; rules-5 Campaign saves replay the old payout and are
+quarantined until discarded, as are the rules-3 and rules-4 Campaign saves carried by
+schemas 4 and 5. The completion plan and its accepted decisions are recorded in
+[`MILESTONE_21_3_COMPLETION_PLAN.md`](./MILESTONE_21_3_COMPLETION_PLAN.md).
+
+Focused domain tests cover the map, route locks and bypasses, shop stock draws, purchase
+blockers, sold and sold-out stock, event costs and gains, the vault's Hold trades,
+journal replay and its rejection of illegal entries, guarded retries, and a content
+ledger that balances coins, health, cards, and modifiers on every route with
+deterministic seed-plus-choice replay. Persistence, controller, HUD, and bootstrap tests
+cover save/resume at every node boundary, the sold-out fixture, the rules-5 quarantine,
+retries that wait for the saved loss, and Auto-reveal stopping at restored boundaries.
+`tests/integration/milestone-21-3-expedition-flow.test.js` drives market, sold-out
+bazaar, and defeated expeditions through the application shell, reloading at each new
+boundary, losing a failed purchase save to a reload that offers the saved shop again,
+and refusing stale or repeated decisions. The text-only browser fixture at
+`/tests/browser/milestone-21-3-expedition.html` restores a saved route map and checks
+route locks, described 44px shop items and price blockers, the target list and Back, a
+purchase saved before the shop updates, reloads at the shop and the next route map, a
+failed shop-exit save and its retry, the expedition log, a shrine offering with a
+target, and a sold-out bazaar, while reporting one canvas and relevant console errors;
+it passes at 1280×720 and 390×844 viewports. The 21.1 and 21.2 fixtures now reach their
+fights through the route map. The checklist entry stays open until reviewer sign-off.
 
 ## 21.4 Encounter Archetypes and Elite Ladder
 

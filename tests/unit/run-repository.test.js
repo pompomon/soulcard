@@ -429,11 +429,39 @@ test('schema 4 and 5 Campaign saves are quarantined as incompatible game rules',
   }
 })
 
+test('schema 6 Campaign saves from rules 5 are quarantined until discarded', async () => {
+  const indexedDB = new FakeIndexedDB()
+  const legacy = fixture('campaign-save-route-v6-rules5.json')
+  assert.equal(legacy.saveSchemaVersion, 6)
+  assert.equal(legacy.gameRulesVersion, 5)
+  indexedDB.seed(ACTIVE_RUN_KEY, legacy)
+  const repository = createRunRepository({ indexedDB, now: () => SAVED_AT })
+
+  const expected = {
+    status: 'recovery-required',
+    reason: 'incompatible-game-rules',
+    message: 'This saved run uses game rules from a different app version and must be discarded.',
+  }
+  assert.deepEqual(await repository.load(), expected)
+  assert.equal(indexedDB.read(ACTIVE_RUN_KEY), undefined)
+  assert.deepEqual(indexedDB.read(QUARANTINED_RUN_KEY), {
+    quarantinedAt: SAVED_AT,
+    reason: 'incompatible-game-rules',
+    record: legacy,
+  })
+  assert.deepEqual(await repository.load(), expected)
+
+  assert.deepEqual(await repository.discard(), { status: 'discarded' })
+  assert.equal(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
+  assert.deepEqual(await repository.load(), { status: 'empty' })
+})
+
 test('schema 6 Campaign saves load without migration', async () => {
   for (const name of [
     'campaign-save-reward-v6.json',
     'campaign-save-route-v6.json',
     'campaign-save-shop-v6.json',
+    'campaign-save-shop-exhausted-v6.json',
     'campaign-save-event-v6.json',
     'campaign-save-informed-v6.json',
     'campaign-save-modifiers-v6.json',

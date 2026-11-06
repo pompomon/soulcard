@@ -42,6 +42,7 @@ const TARGET_PICKER_STATES = Object.freeze({
   event: 'awaitingEvent',
 })
 const BOUNDARY_SAVE_FAILURES = Object.freeze({
+  awaitingRetry: 'The lost encounter could not be saved. Try again.',
   awaitingReward: 'The reward draft could not be saved. Try again.',
   awaitingRoute: 'The route map could not be saved. Try again.',
   awaitingShop: 'The shop could not be saved. Try again.',
@@ -683,33 +684,6 @@ export function createGameScreen({
         renderHud()
       })
   }
-  const handleCampaignRetry = () => {
-    if (overlayAction !== null) return
-    overlayAction = 'campaign-retry'
-    overlayError = null
-    renderHud()
-    let action
-    try {
-      action = runController?.retryEncounter()
-    } catch {
-      overlayAction = null
-      overlayError = 'The campaign retry could not be completed. Try again.'
-      renderHud()
-      return
-    }
-    Promise.resolve(action)
-      .then(() => {
-        if (destroyed) return
-        overlayAction = null
-        renderHud()
-      })
-      .catch(() => {
-        if (destroyed) return
-        overlayAction = null
-        overlayError = 'The campaign retry could not be completed. Try again.'
-        renderHud()
-      })
-  }
   const decisionSelectable = (machineState) => (
     overlayAction === null
     && decisionSave === null
@@ -822,6 +796,14 @@ export function createGameScreen({
       'shop exit',
       'The shop could not be left. Try again.',
       (boundary) => runController?.leaveShop(nodeDecision(boundary)),
+    )
+  }
+  const handleCampaignRetry = () => {
+    if (!decisionSelectable('awaitingRetry')) return
+    commitDecision(
+      'encounter retry',
+      'The campaign retry could not be completed. Try again.',
+      (boundary) => runController?.retryEncounter(nodeDecision(boundary)),
     )
   }
   const handleEventOption = (optionId) => {

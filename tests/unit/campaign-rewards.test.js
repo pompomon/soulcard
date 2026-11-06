@@ -27,14 +27,18 @@ import {
   getCampaignRewardTargets,
   getEligibleHoldTargets,
   prepareCampaignReveal,
-  retryCampaignEncounter,
   selectCampaignReward,
   validateCampaignState,
 } from '../../src/domain/campaign-machine.js'
 import { CARD_IDS, compareCards, getCard } from '../../src/domain/cards.js'
 import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
 import { createDerivedRng, restoreRng, shuffle } from '../../src/domain/rng.js'
-import { claimReward, passThrough, startCampaign } from '../fixtures/campaign-route.js'
+import {
+  claimReward,
+  passThrough,
+  retryEncounter,
+  startCampaign,
+} from '../fixtures/campaign-route.js'
 
 const DECISION_STATES = ['awaitingHoldChoice', 'awaitingInformedHoldChoice']
 
@@ -667,7 +671,7 @@ test('same seed and reward choices replay a full campaign exactly', () => {
           if (target !== undefined) run = captureCampaignHold(run, target.instanceId)
         }
       }
-      if (run.machineState === 'awaitingRetry') run = retryCampaignEncounter(run)
+      if (run.machineState === 'awaitingRetry') run = retryEncounter(run)
       if (run.machineState === 'ready') run = winEncounter(run)
       if (run.machineState === 'awaitingReward') {
         drafts.push(run)
@@ -769,7 +773,7 @@ test('encounter modifiers survive retries and reloads, then expire exactly once'
   run = loseEncounter(run)
   assert.equal(run.machineState, 'awaitingRetry')
   assert.deepEqual(run.activeModifiers.at(-1), spoils)
-  run = retryCampaignEncounter(run)
+  run = retryEncounter(run)
   assert.equal(run.encounterAttempt, 2)
   assert.deepEqual(run.activeModifiers.at(-1), spoils)
   run = validateCampaignState(clone(run))
@@ -791,7 +795,7 @@ test('encounter modifiers survive retries and reloads, then expire exactly once'
 
   let vowed = pick(winEncounter(start(SEEDS.court)), 'modifier')
   const vow = vowed.activeModifiers.at(-1)
-  vowed = retryCampaignEncounter(loseEncounter(vowed))
+  vowed = retryEncounter(loseEncounter(vowed))
   vowed = pick(winEncounter(validateCampaignState(clone(vowed))), 'mend')
   assert.deepEqual(vowed.activeModifiers.at(-1), vow)
   const victory = winEncounter(vowed)

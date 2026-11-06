@@ -53,7 +53,7 @@ import {
 } from './ruleset.js'
 
 export const CAMPAIGN_VERSION = 3
-export const CAMPAIGN_GAME_RULES_VERSION = 5
+export const CAMPAIGN_GAME_RULES_VERSION = 6
 export const HOLD_POSITION = 'holdPosition'
 export const CAMPAIGN_HOLD_DECISION_STATES = Object.freeze([
   'awaitingHoldChoice',
@@ -1889,19 +1889,19 @@ export function chooseCampaignEventOption(input, decision) {
 }
 
 // A retry replays the active fight node with fresh setup shuffles. The journal records it
-// so replay can account for the health the lost attempt cost.
-export function retryCampaignEncounter(input) {
+// so replay can account for the health the lost attempt cost. Like the other node
+// decisions it names the lost fight node and the journal step it was offered at, so a
+// retry replayed after a reload cannot apply twice.
+export function retryCampaignEncounter(input, decision) {
   const replay = inspectCampaignState(input)
   if (input.machineState !== 'awaitingRetry') {
     throw new Error('Campaign is not awaiting an encounter retry')
   }
+  assertNodeDecision(input, decision, ['nodeId', 'step'])
   if (!Number.isSafeInteger(input.encounterAttempt + 1)) {
     throw new RangeError('Campaign encounter attempt limit reached')
   }
-  return commitNodeDecision(input, replay, {
-    type: 'retry',
-    nodeId: activeRouteNodeId(input),
-  })
+  return commitNodeDecision(input, replay, { type: 'retry', nodeId: decision.nodeId })
 }
 
 export function pauseCampaign(input) {

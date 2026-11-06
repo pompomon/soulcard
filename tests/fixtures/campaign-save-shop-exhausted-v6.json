@@ -1,0 +1,392 @@
+{
+  "saveSchemaVersion": 6,
+  "gameRulesVersion": 6,
+  "runType": "campaign",
+  "savedAt": "2026-09-25T04:00:00.000Z",
+  "runId": "fixture-campaign-shop-exhausted",
+  "rng": {
+    "algorithm": "mulberry32",
+    "seed": 1,
+    "state": 4151932303
+  },
+  "ruleset": {
+    "id": "mvp-baseline-v2",
+    "burn": {
+      "enabled": true,
+      "eligibleScope": "all-losing-side-cards-in-resolved-contested-pile",
+      "decisiveWinningCard": "winner.wonPile"
+    }
+  },
+  "match": {
+    "campaignVersion": 3,
+    "machineState": "awaitingShop",
+    "turn": 72,
+    "status": "active",
+    "outcome": null,
+    "health": 4,
+    "maxHealth": 5,
+    "currency": 0,
+    "encounterIndex": 2,
+    "encounterAttempt": 1,
+    "route": {
+      "mapId": "expedition-v1",
+      "nodes": [
+        {
+          "id": "gate",
+          "state": "completed"
+        },
+        {
+          "id": "market",
+          "state": "bypassed"
+        },
+        {
+          "id": "shrine",
+          "state": "completed"
+        },
+        {
+          "id": "court",
+          "state": "completed"
+        },
+        {
+          "id": "watch",
+          "state": "bypassed"
+        },
+        {
+          "id": "bazaar",
+          "state": "active"
+        },
+        {
+          "id": "vault",
+          "state": "bypassed"
+        },
+        {
+          "id": "finale",
+          "state": "locked"
+        }
+      ]
+    },
+    "cards": [
+      {
+        "instanceId": "player-001",
+        "cardId": "c-2D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-002",
+        "cardId": "c-3D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-003",
+        "cardId": "c-4D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-004",
+        "cardId": "c-5D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-005",
+        "cardId": "c-6D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-006",
+        "cardId": "c-7D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-007",
+        "cardId": "c-8D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-008",
+        "cardId": "c-9D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-009",
+        "cardId": "c-10D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-010",
+        "cardId": "c-JD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-011",
+        "cardId": "c-QD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-012",
+        "cardId": "c-KD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-013",
+        "cardId": "c-AD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-015",
+        "cardId": "c-3H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-016",
+        "cardId": "c-4H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-017",
+        "cardId": "c-5H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-018",
+        "cardId": "c-6H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-019",
+        "cardId": "c-7H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-020",
+        "cardId": "c-8H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-021",
+        "cardId": "c-9H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-022",
+        "cardId": "c-10H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-023",
+        "cardId": "c-JH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-024",
+        "cardId": "c-QH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-025",
+        "cardId": "c-KH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-026",
+        "cardId": "c-AH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-027",
+        "cardId": "c-2H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-028",
+        "cardId": "c-JC",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-029",
+        "cardId": "c-AC",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-030",
+        "cardId": "c-4C",
+        "campaignOwner": "player"
+      }
+    ],
+    "deckLayout": [
+      "player-001",
+      "player-002",
+      "player-003",
+      "player-004",
+      "player-005",
+      "player-006",
+      "player-007",
+      "player-008",
+      "player-009",
+      "player-010",
+      "player-011",
+      "holdPosition",
+      "player-013",
+      "player-015",
+      "player-016",
+      "player-017",
+      "player-018",
+      "player-019",
+      "player-020",
+      "player-021",
+      "player-022",
+      "player-023",
+      "player-024",
+      "player-025",
+      "player-026",
+      "player-027",
+      "player-028",
+      "player-029",
+      "player-030"
+    ],
+    "hold": "player-012",
+    "activeModifiers": [
+      {
+        "id": "vitality-cap-v1",
+        "lifetime": "campaign",
+        "grantedAtNodeId": null
+      },
+      {
+        "id": "vow-of-patience-v1",
+        "lifetime": "campaign",
+        "grantedAtNodeId": "bazaar"
+      }
+    ],
+    "encounter": null,
+    "holdChoice": null,
+    "pendingReward": null,
+    "shop": {
+      "nodeId": "bazaar",
+      "items": [
+        {
+          "itemId": "card-1",
+          "kind": "add",
+          "cardId": "c-AC",
+          "modifierId": null,
+          "price": 3,
+          "sold": true
+        },
+        {
+          "itemId": "card-2",
+          "kind": "add",
+          "cardId": "c-4C",
+          "modifierId": null,
+          "price": 3,
+          "sold": true
+        },
+        {
+          "itemId": "service-1",
+          "kind": "remove",
+          "cardId": null,
+          "modifierId": null,
+          "price": 2,
+          "sold": true
+        },
+        {
+          "itemId": "modifier-1",
+          "kind": "modifier",
+          "cardId": null,
+          "modifierId": "vow-of-patience-v1",
+          "price": 4,
+          "sold": true
+        }
+      ]
+    },
+    "nodeEvent": null,
+    "journal": [
+      {
+        "type": "route",
+        "nodeId": "gate"
+      },
+      {
+        "type": "reward",
+        "nodeId": "gate",
+        "offerId": "deck-edit",
+        "kind": "duplicate",
+        "cardId": null,
+        "modifierId": null,
+        "targetInstanceId": "player-014",
+        "createdInstanceId": "player-027"
+      },
+      {
+        "type": "route",
+        "nodeId": "shrine"
+      },
+      {
+        "type": "event",
+        "nodeId": "shrine",
+        "optionId": "bleed-for-fortune",
+        "targetInstanceId": null,
+        "createdInstanceId": null
+      },
+      {
+        "type": "route",
+        "nodeId": "court"
+      },
+      {
+        "type": "reward",
+        "nodeId": "court",
+        "offerId": "new-card",
+        "kind": "add",
+        "cardId": "c-JC",
+        "modifierId": null,
+        "targetInstanceId": null,
+        "createdInstanceId": "player-028"
+      },
+      {
+        "type": "route",
+        "nodeId": "bazaar"
+      },
+      {
+        "type": "purchase",
+        "nodeId": "bazaar",
+        "itemId": "card-1",
+        "kind": "add",
+        "cardId": "c-AC",
+        "modifierId": null,
+        "price": 3,
+        "targetInstanceId": null,
+        "createdInstanceId": "player-029"
+      },
+      {
+        "type": "purchase",
+        "nodeId": "bazaar",
+        "itemId": "card-2",
+        "kind": "add",
+        "cardId": "c-4C",
+        "modifierId": null,
+        "price": 3,
+        "targetInstanceId": null,
+        "createdInstanceId": "player-030"
+      },
+      {
+        "type": "purchase",
+        "nodeId": "bazaar",
+        "itemId": "service-1",
+        "kind": "remove",
+        "cardId": null,
+        "modifierId": null,
+        "price": 2,
+        "targetInstanceId": "player-014",
+        "createdInstanceId": null
+      },
+      {
+        "type": "purchase",
+        "nodeId": "bazaar",
+        "itemId": "modifier-1",
+        "kind": "modifier",
+        "cardId": null,
+        "modifierId": "vow-of-patience-v1",
+        "price": 4,
+        "targetInstanceId": null,
+        "createdInstanceId": null
+      }
+    ],
+    "stateFingerprint": "{\"activeModifiers\":[{\"grantedAtNodeId\":null,\"id\":\"vitality-cap-v1\",\"lifetime\":\"campaign\"},{\"grantedAtNodeId\":\"bazaar\",\"id\":\"vow-of-patience-v1\",\"lifetime\":\"campaign\"}],\"campaignVersion\":3,\"cards\":[{\"campaignOwner\":\"player\",\"cardId\":\"c-2D\",\"instanceId\":\"player-001\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3D\",\"instanceId\":\"player-002\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4D\",\"instanceId\":\"player-003\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5D\",\"instanceId\":\"player-004\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6D\",\"instanceId\":\"player-005\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7D\",\"instanceId\":\"player-006\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8D\",\"instanceId\":\"player-007\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9D\",\"instanceId\":\"player-008\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10D\",\"instanceId\":\"player-009\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JD\",\"instanceId\":\"player-010\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QD\",\"instanceId\":\"player-011\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KD\",\"instanceId\":\"player-012\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AD\",\"instanceId\":\"player-013\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3H\",\"instanceId\":\"player-015\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4H\",\"instanceId\":\"player-016\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5H\",\"instanceId\":\"player-017\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6H\",\"instanceId\":\"player-018\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7H\",\"instanceId\":\"player-019\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8H\",\"instanceId\":\"player-020\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9H\",\"instanceId\":\"player-021\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10H\",\"instanceId\":\"player-022\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JH\",\"instanceId\":\"player-023\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QH\",\"instanceId\":\"player-024\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KH\",\"instanceId\":\"player-025\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AH\",\"instanceId\":\"player-026\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-2H\",\"instanceId\":\"player-027\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JC\",\"instanceId\":\"player-028\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AC\",\"instanceId\":\"player-029\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4C\",\"instanceId\":\"player-030\"}],\"currency\":0,\"deckLayout\":[\"player-001\",\"player-002\",\"player-003\",\"player-004\",\"player-005\",\"player-006\",\"player-007\",\"player-008\",\"player-009\",\"player-010\",\"player-011\",\"holdPosition\",\"player-013\",\"player-015\",\"player-016\",\"player-017\",\"player-018\",\"player-019\",\"player-020\",\"player-021\",\"player-022\",\"player-023\",\"player-024\",\"player-025\",\"player-026\",\"player-027\",\"player-028\",\"player-029\",\"player-030\"],\"encounter\":null,\"encounterAttempt\":1,\"encounterIndex\":2,\"health\":4,\"hold\":\"player-012\",\"holdChoice\":null,\"journal\":[{\"nodeId\":\"gate\",\"type\":\"route\"},{\"cardId\":null,\"createdInstanceId\":\"player-027\",\"kind\":\"duplicate\",\"modifierId\":null,\"nodeId\":\"gate\",\"offerId\":\"deck-edit\",\"targetInstanceId\":\"player-014\",\"type\":\"reward\"},{\"nodeId\":\"shrine\",\"type\":\"route\"},{\"createdInstanceId\":null,\"nodeId\":\"shrine\",\"optionId\":\"bleed-for-fortune\",\"targetInstanceId\":null,\"type\":\"event\"},{\"nodeId\":\"court\",\"type\":\"route\"},{\"cardId\":\"c-JC\",\"createdInstanceId\":\"player-028\",\"kind\":\"add\",\"modifierId\":null,\"nodeId\":\"court\",\"offerId\":\"new-card\",\"targetInstanceId\":null,\"type\":\"reward\"},{\"nodeId\":\"bazaar\",\"type\":\"route\"},{\"cardId\":\"c-AC\",\"createdInstanceId\":\"player-029\",\"itemId\":\"card-1\",\"kind\":\"add\",\"modifierId\":null,\"nodeId\":\"bazaar\",\"price\":3,\"targetInstanceId\":null,\"type\":\"purchase\"},{\"cardId\":\"c-4C\",\"createdInstanceId\":\"player-030\",\"itemId\":\"card-2\",\"kind\":\"add\",\"modifierId\":null,\"nodeId\":\"bazaar\",\"price\":3,\"targetInstanceId\":null,\"type\":\"purchase\"},{\"cardId\":null,\"createdInstanceId\":null,\"itemId\":\"service-1\",\"kind\":\"remove\",\"modifierId\":null,\"nodeId\":\"bazaar\",\"price\":2,\"targetInstanceId\":\"player-014\",\"type\":\"purchase\"},{\"cardId\":null,\"createdInstanceId\":null,\"itemId\":\"modifier-1\",\"kind\":\"modifier\",\"modifierId\":\"vow-of-patience-v1\",\"nodeId\":\"bazaar\",\"price\":4,\"targetInstanceId\":null,\"type\":\"purchase\"}],\"machineState\":\"awaitingShop\",\"maxHealth\":5,\"mode\":\"campaign\",\"nodeEvent\":null,\"outcome\":null,\"pendingEvent\":null,\"pendingReward\":null,\"rng\":{\"algorithm\":\"mulberry32\",\"seed\":1,\"state\":4151932303},\"route\":{\"mapId\":\"expedition-v1\",\"nodes\":[{\"id\":\"gate\",\"state\":\"completed\"},{\"id\":\"market\",\"state\":\"bypassed\"},{\"id\":\"shrine\",\"state\":\"completed\"},{\"id\":\"court\",\"state\":\"completed\"},{\"id\":\"watch\",\"state\":\"bypassed\"},{\"id\":\"bazaar\",\"state\":\"active\"},{\"id\":\"vault\",\"state\":\"bypassed\"},{\"id\":\"finale\",\"state\":\"locked\"}]},\"ruleset\":{\"burn\":{\"decisiveWinningCard\":\"winner.wonPile\",\"eligibleScope\":\"all-losing-side-cards-in-resolved-contested-pile\",\"enabled\":true},\"id\":\"mvp-baseline-v2\"},\"runId\":\"fixture-campaign-shop-exhausted\",\"shop\":{\"items\":[{\"cardId\":\"c-AC\",\"itemId\":\"card-1\",\"kind\":\"add\",\"modifierId\":null,\"price\":3,\"sold\":true},{\"cardId\":\"c-4C\",\"itemId\":\"card-2\",\"kind\":\"add\",\"modifierId\":null,\"price\":3,\"sold\":true},{\"cardId\":null,\"itemId\":\"service-1\",\"kind\":\"remove\",\"modifierId\":null,\"price\":2,\"sold\":true},{\"cardId\":null,\"itemId\":\"modifier-1\",\"kind\":\"modifier\",\"modifierId\":\"vow-of-patience-v1\",\"price\":4,\"sold\":true}],\"nodeId\":\"bazaar\"},\"status\":\"active\",\"turn\":72}"
+  },
+  "pendingEvent": null
+}

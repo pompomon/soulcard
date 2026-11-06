@@ -469,20 +469,6 @@ export function createRunController({
     }))
   }
 
-  function retryEncounter() {
-    assertActive()
-    if (match === null || !isCampaignState(match)) {
-      throw new Error('No active campaign is available')
-    }
-    const nextMatch = retryCampaignEncounter(match)
-    markMatch(nextMatch)
-    const save = queueSave(nextMatch)
-    return save.then((saveResult) => Object.freeze({
-      match: nextMatch,
-      save: saveResult,
-    }))
-  }
-
   // Node decisions apply only to a saved boundary, so a reload always restores the state
   // the decision was offered from and the journal step refuses a repeated decision.
   function applyNodeDecision(unsavedMessage, decide) {
@@ -534,6 +520,13 @@ export function createRunController({
     return applyNodeDecision(
       'The Campaign event must be saved before an option can be chosen',
       (current) => chooseCampaignEventOption(current, selection),
+    )
+  }
+
+  function retryEncounter(selection) {
+    return applyNodeDecision(
+      'The lost Campaign encounter must be saved before it can be retried',
+      (current) => retryCampaignEncounter(current, selection),
     )
   }
 

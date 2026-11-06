@@ -23,7 +23,12 @@ function allObjects(value) {
 }
 
 test('current schema saves are validated, cloned, and frozen', () => {
-  for (const name of ['run-save-v6.json', 'campaign-save-informed-v6.json', 'campaign-save-shop-v6.json']) {
+  for (const name of [
+    'run-save-v6.json',
+    'campaign-save-informed-v6.json',
+    'campaign-save-shop-v6.json',
+    'campaign-save-shop-exhausted-v6.json',
+  ]) {
     const current = fixture(name)
     const migrated = migrateRunSave(current)
 
@@ -60,12 +65,13 @@ test('schema 4 and 5 Classic saves carry over unchanged as schema 6', () => {
   }
 })
 
-test('schema 4 and 5 Campaign saves are quarantined as incompatible game rules', () => {
+test('schema 4 and 5 Campaign saves and rules-5 schema 6 Campaign saves are quarantined', () => {
   for (const [name, rulesVersion] of [
     ['campaign-save-v4.json', 3],
     ['campaign-save-reward-v5.json', 4],
     ['campaign-save-informed-v5.json', 4],
     ['campaign-save-modifiers-v5.json', 4],
+    ['campaign-save-route-v6-rules5.json', 5],
   ]) {
     const legacy = fixture(name)
     let invoked = false

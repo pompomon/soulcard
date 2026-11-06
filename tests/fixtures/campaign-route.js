@@ -78,6 +78,10 @@ export function chooseEventOption(run, optionId, targetInstanceId = null) {
   })
 }
 
+export function retryEncounter(run) {
+  return retryCampaignEncounter(run, { nodeId: activeNodeId(run), step: run.journal.length })
+}
+
 // Passes through a shop or event node without changing the run, then enters `fightId`.
 export function passThrough(run, viaNodeId, fightId) {
   let next = chooseRoute(run, viaNodeId)
@@ -226,7 +230,7 @@ export function stepExpedition(run, plan, counters) {
       return chooseCampaignReveal(run, run.holdChoice.candidate === null ? 'hold' : 'normal').match
     case 'awaitingRetry':
       counters.retries += 1
-      return retryCampaignEncounter(run)
+      return retryEncounter(run)
     case 'awaitingReward': {
       const offerId = SCRIPTED_REWARDS[counters.rewards % SCRIPTED_REWARDS.length]
       counters.rewards += 1
@@ -266,11 +270,13 @@ export function createExpeditionCounters() {
   return { clashes: 0, retries: 0, rewards: 0, purchases: [], events: [] }
 }
 
-// Market, Royal Court, and Oathkeeper's Vault; or Crossroads Shrine, Watch of Tens, and
-// Ember Bazaar. Both end at the Ace Assembly.
+// Market, Royal Court, and Oathkeeper's Vault; Crossroads Shrine, Watch of Tens, and
+// Ember Bazaar; or Crossroads Shrine, Royal Court, and Ember Bazaar, where bleeding at the
+// shrine and both bounties pay exactly the bazaar's full stock. All end at the Ace Assembly.
 export const EXPEDITION_PLANS = Object.freeze({
   market: Object.freeze(['gate', 'market', 'court', 'vault', 'finale']),
   shrine: Object.freeze(['gate', 'shrine', 'watch', 'bazaar', 'finale']),
+  soldOut: Object.freeze(['gate', 'shrine', 'court', 'bazaar', 'finale']),
 })
 
 // Stable states behind the JSON Campaign save fixtures. Seed 48 wins its first fight
@@ -311,10 +317,29 @@ export function modifiersFixtureRun() {
   return captureCampaignHold(run, getEligibleHoldTargets(run)[0].instanceId)
 }
 
+// Ember Bazaar after its last item is bought. Seed 1 bleeds at the shrine, so the gate
+// bounty, the shrine coins, and the court bounty pay exactly the bazaar's 12-coin stock.
+export function exhaustedShopFixtureRun(runId = 'fixture-campaign-shop-exhausted') {
+  let run = fixtureCampaign(1, runId)
+  const counters = createExpeditionCounters()
+  for (let step = 0; step < 5000 && run.machineState !== 'ended'; step += 1) {
+    if (
+      run.machineState === 'awaitingShop'
+      && run.shop.nodeId === 'bazaar'
+      && run.shop.items.every(({ sold }) => sold)
+    ) {
+      return run
+    }
+    run = stepExpedition(run, EXPEDITION_PLANS.soldOut, counters)
+  }
+  throw new Error('The scripted expedition did not sell out Ember Bazaar')
+}
+
 export const CAMPAIGN_SAVE_FIXTURES = Object.freeze([
   ['campaign-save-reward-v6.json', rewardFixtureRun],
   ['campaign-save-route-v6.json', routeFixtureRun],
   ['campaign-save-shop-v6.json', shopFixtureRun],
+  ['campaign-save-shop-exhausted-v6.json', exhaustedShopFixtureRun],
   ['campaign-save-event-v6.json', eventFixtureRun],
   ['campaign-save-informed-v6.json', informedFixtureRun],
   ['campaign-save-modifiers-v6.json', modifiersFixtureRun],
