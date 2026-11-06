@@ -23,6 +23,7 @@ import {
   chooseRoute,
   claimReward,
   passThrough,
+  retryEncounter,
   routeStates,
   startCampaign,
 } from '../fixtures/campaign-route.js'
@@ -632,7 +633,7 @@ test('terminal draws retain tied contests and retry with player-first shuffle or
     )),
     control,
   )
-  const retried = retryCampaignEncounter(drawn)
+  const retried = retryEncounter(drawn)
   assert.equal(retried.health, 2)
   assert.equal(retried.encounterAttempt, 2)
   assert.deepEqual(retried.journal.at(-1), { type: 'retry', nodeId: 'gate' })
@@ -997,14 +998,61 @@ test('encounter damage retries while positive and ends at zero health', () => {
   run = loseEncounter(run)
   assert.equal(run.health, 2)
   assert.equal(run.machineState, 'awaitingRetry')
-  run = retryCampaignEncounter(run)
+  run = retryEncounter(run)
   run = loseEncounter(run)
   assert.equal(run.health, 1)
-  run = retryCampaignEncounter(run)
+  run = retryEncounter(run)
   run = loseEncounter(run)
   assert.equal(run.health, 0)
   assert.equal(run.status, 'ended')
   assert.deepEqual(run.outcome, { result: 'defeat', reason: 'healthDepleted' })
+})
+
+test('a retry names the lost fight node and the journal step it was offered at', () => {
+  const lost = loseEncounter(startCampaign({
+    runId: 'campaign-retry-decision',
+    seed: 6,
+    ruleset: BASELINE_RULESET,
+  }))
+  const step = lost.journal.length
+  assert.equal(lost.machineState, 'awaitingRetry')
+  assert.equal(activeNodeId(lost), 'gate')
+
+  for (const [decision, message] of [
+    [undefined, /decision must be a plain object/],
+    [{ nodeId: 'gate' }, /decision must contain only nodeId, step/],
+    [{ nodeId: 'gate', step, offerId: 'mend' }, /decision must contain only nodeId, step/],
+    [{ nodeId: 'gate', step: -1 }, /decision.step must be a nonnegative safe integer/],
+    [{ nodeId: 'nowhere', step }, /Route node nowhere is not part of the campaign map/],
+    [{ nodeId: 'market', step }, /Route node market is not the active node/],
+    [{ nodeId: 'gate', step: step - 1 }, /decision step 0 is stale; the journal is at step 1/],
+    [{ nodeId: 'gate', step: step + 1 }, /decision step 2 is stale/],
+  ]) {
+    assert.throws(() => retryCampaignEncounter(lost, decision), message)
+  }
+
+  const retried = retryCampaignEncounter(lost, { nodeId: 'gate', step })
+  assert.deepEqual(retried, retryEncounter(lost))
+  assert.equal(retried.machineState, 'ready')
+  assert.equal(retried.encounterAttempt, 2)
+  assert.equal(retried.health, lost.health)
+  assert.deepEqual(retried.journal.at(-1), { type: 'retry', nodeId: 'gate' })
+  assert.throws(
+    () => retryCampaignEncounter(retried, { nodeId: 'gate', step }),
+    /Campaign is not awaiting an encounter retry/,
+  )
+
+  // A second loss reopens the retry at a later step, so the first decision stays stale.
+  const lostAgain = loseEncounter(retried)
+  assert.equal(lostAgain.machineState, 'awaitingRetry')
+  assert.throws(
+    () => retryCampaignEncounter(lostAgain, { nodeId: 'gate', step }),
+    /decision step 1 is stale; the journal is at step 2/,
+  )
+  assert.equal(
+    retryCampaignEncounter(lostAgain, { nodeId: 'gate', step: step + 1 }).encounterAttempt,
+    3,
+  )
 })
 
 test('final encounter deals two damage and the third win completes the campaign', () => {
@@ -1025,7 +1073,7 @@ test('final encounter deals two damage and the third win completes the campaign'
 
   const losing = loseEncounter(run)
   assert.equal(losing.health, 2)
-  run = retryCampaignEncounter(losing)
+  run = retryEncounter(losing)
   const victory = winEncounter(run)
   assert.equal(victory.status, 'ended')
   assert.deepEqual(victory.outcome, {

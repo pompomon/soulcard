@@ -415,6 +415,24 @@ test('Resume continues saved Campaign reward drafts and informed Hold choices', 
     await boundary.app.destroy()
   }
 
+  const exhausted = await resume('campaign-save-shop-exhausted-v6.json')
+  const leave = byAction(exhausted.root, 'campaign-leave')
+  await waitFor(() => leave.hidden === false && leave.disabled === false)
+  const shopItems = descendants(exhausted.root).filter(
+    (element) => element.tagName === 'BUTTON' && element.dataset.shopItem !== undefined,
+  )
+  assert.equal(shopItems.length, 4)
+  assert.ok(shopItems.every((button) => button.disabled))
+  leave.dispatch('click')
+  await waitFor(() => (
+    exhausted.app.runSnapshot.match.machineState === 'awaitingRoute'
+    && exhausted.app.runSnapshot.saveStatus === 'saved'
+  ))
+  assert.equal(exhausted.saves.length, 1)
+  assert.deepEqual(exhausted.saves[0].journal.at(-1), { type: 'leaveShop', nodeId: 'bazaar' })
+  assert.equal(exhausted.saves[0].currency, 0)
+  await exhausted.app.destroy()
+
   const informed = await resume('campaign-save-informed-v6.json')
   const normal = byAction(informed.root, 'campaign-normal')
   await waitFor(() => normal.hidden === false && normal.disabled === false)
@@ -861,46 +879,50 @@ test('Main exposes recovery and discards quarantined data without enabling Resum
     globalThis.document = previousDocument
   })
 
-  let discardCalls = 0
-  const root = new FakeElement('div')
-  const app = bootstrap({
-    root,
-    runRepository: {
-      load: async () => ({
-        status: 'recovery-required',
-        reason: 'invalid-save',
-        message: 'This saved run is invalid and must be discarded.',
-      }),
-      save: async () => assert.fail('Recovery discard should not save a run'),
-      async discard() {
-        discardCalls += 1
-        return { status: 'discarded' }
+  for (const [reason, message] of [
+    ['invalid-save', 'This saved run is invalid and must be discarded.'],
+    [
+      'incompatible-game-rules',
+      'This saved run uses game rules from a different app version and must be discarded.',
+    ],
+  ]) {
+    let discardCalls = 0
+    const root = new FakeElement('div')
+    const app = bootstrap({
+      root,
+      runRepository: {
+        load: async () => ({ status: 'recovery-required', reason, message }),
+        save: async () => assert.fail('Recovery discard should not save a run'),
+        async discard() {
+          discardCalls += 1
+          return { status: 'discarded' }
+        },
       },
-    },
-    settingsRepository: createSettingsRepository({ storage: null }),
-    matchMedia: null,
-    pageLifecycleFactory: () => ({ destroy() {} }),
-    mountBattlefield: () => undefined,
-  })
-  await app.ready
+      settingsRepository: createSettingsRepository({ storage: null }),
+      matchMedia: null,
+      pageLifecycleFactory: () => ({ destroy() {} }),
+      mountBattlefield: () => undefined,
+    })
+    await app.ready
 
-  const status = descendants(root).find(
-    (element) => Object.hasOwn(element.dataset, 'mainStatus'),
-  )
-  const resume = byAction(root, 'resume')
-  const discard = byAction(root, 'discard')
-  assert.equal(app.resumeAvailable, false)
-  assert.equal(resume.disabled, true)
-  assert.equal(discard.hidden, false)
-  assert.equal(status.textContent, 'This saved run is invalid and must be discarded.')
+    const status = descendants(root).find(
+      (element) => Object.hasOwn(element.dataset, 'mainStatus'),
+    )
+    const resume = byAction(root, 'resume')
+    const discard = byAction(root, 'discard')
+    assert.equal(app.resumeAvailable, false, reason)
+    assert.equal(resume.disabled, true, reason)
+    assert.equal(discard.hidden, false, reason)
+    assert.equal(status.textContent, message)
 
-  discard.dispatch('click')
-  await waitFor(() => app.runSnapshot.restoreStatus === 'empty')
-  assert.equal(discardCalls, 1)
-  assert.equal(app.resumeAvailable, false)
-  assert.equal(discard.hidden, true)
-  assert.equal(status.textContent, 'No saved game found.')
-  await app.destroy()
+    discard.dispatch('click')
+    await waitFor(() => app.runSnapshot.restoreStatus === 'empty')
+    assert.equal(discardCalls, 1, reason)
+    assert.equal(app.resumeAvailable, false, reason)
+    assert.equal(discard.hidden, true, reason)
+    assert.equal(status.textContent, 'No saved game found.')
+    await app.destroy()
+  }
 })
 
 test('Game restart confirms replacement and tears down presentation before installing it', async (t) => {

@@ -107,6 +107,29 @@ async function run() {
   )
   await waitFor(() => app.runSnapshot.saveStatus === 'saved', 'initial Campaign save')
 
+  assert(
+    app.runSnapshot.match.machineState === 'awaitingRoute',
+    'Campaign must open on the route map',
+  )
+  const overlay = query('#app [data-campaign-overlay]', 'Campaign overlay')
+  assert(overlay.getAttribute('role') === 'dialog', 'Route map must be a dialog')
+  const gate = query('#app button[data-route-node="gate"]', 'gate route choice')
+  assertButton(gate, 'Stage 1 · Suit Opposition')
+  await waitFor(
+    () => overlay.hidden === false && gate.disabled === false,
+    'enabled gate route choice',
+  )
+  const routeHeading = query('#campaign-overlay-title', 'route map heading').textContent
+  gate.click()
+  await waitFor(
+    () => (
+      app.runSnapshot.match?.machineState === 'ready'
+      && app.runSnapshot.saveStatus === 'saved'
+      && overlay.hidden === true
+    ),
+    'saved gate encounter',
+  )
+
   const initial = app.runSnapshot.match
   assert(initial.encounter.supplyMode.player === 'source', 'Campaign must start in source mode')
   assert(initial.encounter.zones.playerSourcePile.length > 0, 'Player source pile must render')
@@ -205,6 +228,10 @@ async function run() {
   const report = Object.freeze({
     reportVersion: 1,
     canvasCount: document.querySelectorAll('#app canvas').length,
+    routeChoice: {
+      heading: routeHeading,
+      nodeId: 'gate',
+    },
     sourceChoice: {
       instanceId: firstCandidate,
       from: 'player.sourcePile',

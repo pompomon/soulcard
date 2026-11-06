@@ -14,8 +14,10 @@ import { createGameScreen } from '../../src/ui/hud.js'
 import { createCampaignOverlay } from '../../src/ui/overlays.js'
 import { createUpdateNotice } from '../../src/ui/update-notice.js'
 import {
+  arrangeInability,
   chooseRoute,
   claimReward,
+  loseEncounter,
   passThrough,
   startCampaign,
   winEncounter,
@@ -782,6 +784,116 @@ test('Campaign reward drafts unlock after their save and hold the next encounter
   await controller.destroy()
 })
 
+test('Campaign retries unlock after the loss saves and hold the fight until the retry saves', async (t) => {
+  installFakeDocument(t)
+  const writes = []
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      save() {
+        const write = deferred()
+        writes.push(write)
+        return write.promise
+      },
+    },
+    initialMatch: loseEncounter(startCampaign({
+      runId: 'campaign-hud-retry',
+      seed: 6,
+      ruleset: BASELINE_RULESET,
+    })),
+  })
+  const presented = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createSettledEventPlayerFactory(presented),
+  })
+  const parts = campaignOverlayParts(screen)
+  const status = descendants(screen.element).find(
+    (element) => Object.hasOwn(element.dataset, 'statusHost'),
+  )
+  const encounter = byValue(screen, 'campaign-route')
+  const retry = byAction(screen, 'campaign-retry')
+  const retrySave = byAction(screen, 'campaign-save')
+  const mainMenu = byAction(screen, 'campaign-main')
+  const loss = 'Suit Opposition dealt 1 damage. 2 health remains.'
+
+  const lossSave = controller.saveStable()
+  await waitFor(() => writes.length === 1)
+  writes[0].resolve(SAVE_FAILURE)
+  await lossSave
+  await flushMicrotasks()
+
+  assert.equal(parts.overlay.hidden, false)
+  assert.equal(parts.heading.textContent, 'Encounter lost')
+  assert.equal(
+    parts.description.textContent,
+    `${loss} The encounter can be retried once this loss is saved.`,
+  )
+  assert.equal(retry.hidden, false)
+  assert.equal(retry.disabled, true)
+  assert.equal(retrySave.hidden, false)
+  assert.equal(encounter.textContent, '1/5')
+  retry.dispatch('click')
+  assert.equal(controller.currentMatch.machineState, 'awaitingRetry')
+  assert.equal(writes.length, 1)
+
+  retrySave.dispatch('click')
+  await settleWrite(controller, writes, 1)
+
+  assert.equal(parts.heading.textContent, 'Encounter lost')
+  assert.equal(parts.description.textContent, loss)
+  assert.equal(retry.disabled, false)
+  assert.equal(retrySave.hidden, true)
+  assert.equal(status.textContent, 'Encounter ended. Retry to continue the campaign.')
+  const boundary = controller.currentMatch
+  const presentedLoss = presented.length
+
+  retry.dispatch('click')
+  assert.equal(controller.currentMatch.machineState, 'ready')
+  assert.equal(controller.currentMatch.encounterAttempt, 2)
+  assert.equal(parts.overlay.hidden, false)
+  assert.equal(parts.heading.textContent, 'Saving encounter retry')
+  assert.equal(retry.hidden, true)
+  assert.equal(status.textContent, 'Saving your encounter retry before continuing…')
+  retry.dispatch('click')
+  assert.equal(controller.currentMatch.encounterAttempt, 2)
+
+  await waitFor(() => writes.length === 3)
+  writes[2].resolve(SAVE_FAILURE)
+  await controller.whenIdle()
+  await flushMicrotasks()
+
+  assert.equal(controller.getSnapshot().saveStatus, 'failed')
+  assert.equal(parts.overlay.hidden, false)
+  assert.equal(parts.heading.textContent, 'Encounter retry not saved')
+  assert.equal(
+    parts.description.textContent,
+    'Your encounter retry is made but not saved. Retry the save to continue, or return to the main menu.',
+  )
+  assert.equal(retry.hidden, true)
+  assert.equal(retrySave.hidden, false)
+  assert.equal(mainMenu.hidden, false)
+  assert.equal(status.textContent, 'Saving your encounter retry failed. Retry the save to continue.')
+  assert.equal(presented.length, presentedLoss)
+
+  retrySave.dispatch('click')
+  await settleWrite(controller, writes, 3)
+
+  assert.equal(parts.overlay.hidden, true)
+  assert.equal(controller.currentMatch.machineState, 'ready')
+  assert.deepEqual(controller.currentMatch.journal, [
+    ...boundary.journal,
+    { type: 'retry', nodeId: 'gate' },
+  ])
+  assert.equal(presented.at(-1), controller.currentMatch)
+  assert.equal(encounter.textContent, '1/5')
+  assert.equal(writes.length, 4)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
 test('Targeted campaign rewards list eligible deck cards and return with Back', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
@@ -1210,7 +1322,7 @@ test('Campaign events state each cost and gain, explain blocked options, and pic
     ],
   )
   assert.deepEqual(parts.choiceDetails(), [
-    'Lose 1 health → gain 4 coins.',
+    'Lose 1 health → gain 5 coins.',
     'Remove a chosen card → restore 2 health.',
     'Leave without changing anything.',
   ])
@@ -1226,7 +1338,7 @@ test('Campaign events state each cost and gain, explain blocked options, and pic
   assert.equal(parts.heading.textContent, 'Saving event choice')
   await settleWrite(controller, writes, 0)
   assert.equal(controller.currentMatch.health, 2)
-  assert.equal(controller.currentMatch.currency, 7)
+  assert.equal(controller.currentMatch.currency, 8)
   assert.equal(parts.heading.textContent, 'Route map · Stage 3/5')
   screen.teardown()
   await controller.destroy()
@@ -1357,6 +1469,196 @@ test('Campaign shop overlays announce an emptied shop and keep Leave shop availa
   const leave = all.find((element) => element.dataset.action === 'campaign-leave')
   assert.equal(leave.hidden, false)
   assert.equal(leave.disabled, false)
+})
+
+test('A restored sold-out Campaign shop explains every sold item and leaves to the finale', async (t) => {
+  installFakeDocument(t)
+  const exhausted = restoredFixture('campaign-save-shop-exhausted-v6.json')
+  const { controller, screen, writes, parts } = await restoredCampaignScreen(exhausted)
+  const leave = byAction(screen, 'campaign-leave')
+  const items = () => parts.withData('shopItem')
+  const soldOut = () => descendants(parts.overlay).find(
+    (element) => Object.hasOwn(element.dataset, 'shopSoldOut'),
+  )
+
+  assert.equal(parts.heading.textContent, 'Ember Bazaar')
+  assert.equal(
+    parts.description.textContent,
+    'The last market before the finale stocks two cards. You have 0 coins.',
+  )
+  assert.equal(soldOut().textContent, 'Out of stock. Everything here has been sold.')
+  assert.deepEqual(
+    items().map((button) => [button.dataset.shopItem, button.textContent, button.disabled]),
+    [
+      ['card-1', 'New card: AC · 3 coins', true],
+      ['card-2', 'New card: 4C · 3 coins', true],
+      ['service-1', 'Remove a card · 2 coins', true],
+      ['modifier-1', 'Modifier: Vow of Patience · 4 coins', true],
+    ],
+  )
+  assert.ok(parts.choiceDetails().every((detail) => detail.endsWith(' Sold.')))
+  const before = controller.currentMatch
+  items()[0].dispatch('click')
+  assert.equal(parts.heading.textContent, 'Ember Bazaar')
+  assert.equal(controller.currentMatch, before)
+  assert.equal(writes.length, 0)
+
+  assert.equal(leave.hidden, false)
+  assert.equal(leave.disabled, false)
+  leave.dispatch('click')
+  assert.equal(parts.heading.textContent, 'Saving shop exit')
+  await settleWrite(controller, writes, 0)
+  assert.equal(controller.currentMatch.machineState, 'awaitingRoute')
+  assert.equal(controller.currentMatch.currency, 0)
+  assert.equal(parts.heading.textContent, 'Route map · Stage 5/5')
+  assert.equal(soldOut(), undefined)
+  assert.deepEqual(parts.routeButtons().map((button) => button.dataset.routeNode), ['finale'])
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Auto-reveal stops at a lost Campaign fight and leaves the retried fight to the player', async (t) => {
+  installFakeDocument(t)
+  const saves = []
+  const controller = createRunController({
+    repository: {
+      load: async () => ({ status: 'empty' }),
+      async save(match) {
+        saves.push(match)
+        return { status: 'saved', savedAt: CAMPAIGN_SAVED_AT }
+      },
+    },
+    initialMatch: arrangeInability(startCampaign({
+      runId: 'hud-auto-reveal-loss',
+      seed: 6,
+      ruleset: BASELINE_RULESET,
+    }), 'player'),
+  })
+  const presented = []
+  const screen = createGameScreen({
+    runController: controller,
+    mountBattlefield: () => undefined,
+    eventPlayerFactory: createSettledEventPlayerFactory(presented),
+  })
+  const parts = campaignOverlayParts(screen)
+  const autoReveal = byAction(screen, 'auto-reveal')
+  const reveal = byAction(screen, 'reveal')
+  const retry = byAction(screen, 'campaign-retry')
+  await controller.saveStable()
+  await flushMicrotasks()
+
+  autoReveal.checked = true
+  autoReveal.dispatch('change')
+  reveal.dispatch('click')
+  await waitFor(() => controller.currentMatch.machineState === 'awaitingRetry')
+  await controller.whenIdle()
+  await flushMicrotasks(20)
+
+  const lost = controller.currentMatch
+  const savesAtLoss = saves.length
+  assert.equal(lost.machineState, 'awaitingRetry')
+  assert.deepEqual(saves.at(-1), lost)
+  assert.equal(presented.at(-1), lost)
+  assert.equal(parts.heading.textContent, 'Encounter lost')
+  assert.equal(retry.disabled, false)
+  assert.equal(reveal.disabled, true)
+  assert.equal(autoReveal.disabled, true)
+  assert.equal(autoReveal.checked, true)
+
+  retry.dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks(20)
+
+  const retried = controller.currentMatch
+  assert.equal(retried.machineState, 'ready')
+  assert.equal(retried.encounterAttempt, 2)
+  assert.equal(retried.pendingEvent, null)
+  assert.equal(retried.turn, lost.turn)
+  assert.equal(saves.length, savesAtLoss + 1)
+  assert.deepEqual(saves.at(-1), retried)
+  assert.equal(parts.overlay.hidden, true)
+  assert.equal(reveal.disabled, false)
+  assert.equal(autoReveal.disabled, false)
+  assert.equal(autoReveal.checked, true)
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Restored Campaign boundaries lead to fights that wait for a manual first reveal', async (t) => {
+  installFakeDocument(t)
+  const lost = loseEncounter(startCampaign({
+    runId: 'hud-restored-retry',
+    seed: 6,
+    ruleset: BASELINE_RULESET,
+  }))
+  const boundaries = [
+    ['route', restoredFixture('campaign-save-route-v6.json'), [
+      ['route', 'shrine'],
+      ['event', 'walk-on'],
+      ['route', 'court'],
+    ]],
+    ['shop', restoredFixture('campaign-save-shop-v6.json'), [['leave'], ['route', 'court']]],
+    ['sold-out shop', restoredFixture('campaign-save-shop-exhausted-v6.json'), [
+      ['leave'],
+      ['route', 'finale'],
+    ]],
+    ['event', restoredFixture('campaign-save-event-v6.json'), [
+      ['event', 'walk-on'],
+      ['route', 'court'],
+    ]],
+    ['retry', lost, [['retry']]],
+  ]
+  for (const [name, boundary, decisions] of boundaries) {
+    const saves = []
+    const { controller, screen, presented, parts } = await restoredCampaignScreen(boundary, {
+      async save(match) {
+        saves.push(match)
+        return { status: 'saved', savedAt: CAMPAIGN_SAVED_AT }
+      },
+    })
+    const autoReveal = byAction(screen, 'auto-reveal')
+    const reveal = byAction(screen, 'reveal')
+    const presentedAtRestore = presented.length
+    assert.equal(parts.overlay.hidden, false, name)
+    assert.equal(reveal.disabled, true, name)
+    assert.equal(autoReveal.disabled, true, name)
+
+    for (const [kind, id] of decisions) {
+      const button = kind === 'route'
+        ? parts.routeButtons().find(({ dataset }) => dataset.routeNode === id)
+        : kind === 'event'
+          ? parts.withData('eventOption').find(({ dataset }) => dataset.eventOption === id)
+          : byAction(screen, `campaign-${kind}`)
+      assert.equal(button.disabled, false, `${name}: ${kind} ${id ?? ''}`)
+      button.dispatch('click')
+      await controller.whenIdle()
+      await flushMicrotasks()
+    }
+
+    const fight = controller.currentMatch
+    assert.equal(fight.machineState, 'ready', name)
+    assert.equal(fight.pendingEvent, null, name)
+    assert.equal(fight.turn, boundary.turn, name)
+    assert.equal(saves.length, decisions.length, name)
+    assert.equal(parts.overlay.hidden, true, name)
+    assert.equal(reveal.disabled, false, name)
+    assert.equal(autoReveal.disabled, false, name)
+
+    autoReveal.checked = true
+    autoReveal.dispatch('change')
+    await flushMicrotasks(20)
+    assert.equal(controller.currentMatch, fight, name)
+    assert.equal(saves.length, decisions.length, name)
+    assert.ok(
+      presented.slice(presentedAtRestore).every(({ pendingEvent }) => pendingEvent === null),
+      name,
+    )
+
+    screen.teardown()
+    await controller.destroy()
+  }
 })
 
 test('Pause restart remains open when replacement is declined', async (t) => {

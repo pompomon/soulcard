@@ -9,6 +9,7 @@ import {
   chooseCampaignReveal,
   createCampaignRun,
   createCampaignStateFingerprint,
+  getCampaignShopOffers,
   getCampaignShopTargets,
   prepareCampaignReveal,
 } from '../../src/domain/campaign-machine.js'
@@ -27,8 +28,11 @@ import {
   chooseRoute,
   claimReward,
   createExpeditionCounters,
+  exhaustedShopFixtureRun,
   informedFixtureRun,
   leaveShop,
+  loseEncounter,
+  retryEncounter,
   rewardFixtureRun,
   routeFixtureRun,
   routeStates,
@@ -74,7 +78,7 @@ function refingerprintSave(save) {
   return save
 }
 
-test('campaign saves use schema v6 and campaign rules v5 and restore exactly', () => {
+test('campaign saves use schema v6 and campaign rules v6 and restore exactly', () => {
   const map = createCampaignRun({
     runId: 'campaign-persistence-map',
     seed: 27,
@@ -82,7 +86,7 @@ test('campaign saves use schema v6 and campaign rules v5 and restore exactly', (
   })
   const mapSave = createRunSave(map, { savedAt: SAVED_AT })
   assert.equal(SAVE_SCHEMA_VERSION, 6)
-  assert.equal(CAMPAIGN_GAME_RULES_VERSION, 5)
+  assert.equal(CAMPAIGN_GAME_RULES_VERSION, 6)
   assert.equal(CAMPAIGN_VERSION, 3)
   assert.equal(mapSave.saveSchemaVersion, SAVE_SCHEMA_VERSION)
   assert.equal(mapSave.runType, 'campaign')
@@ -167,6 +171,44 @@ test('campaign v6 fixtures regenerate exactly and restore their stable states', 
     ['modifier-1', 'modifier', 4, false],
   ])
 
+  const exhausted = fixture('campaign-save-shop-exhausted-v6.json')
+  assert.equal(exhausted.match.machineState, 'awaitingShop')
+  assert.equal(exhausted.match.shop.nodeId, 'bazaar')
+  assert.equal(exhausted.match.currency, 0)
+  assert.equal(exhausted.match.encounter, null)
+  assert.deepEqual(exhausted.match.shop.items.map(({ itemId, kind, price, sold }) => (
+    [itemId, kind, price, sold]
+  )), [
+    ['card-1', 'add', 3, true],
+    ['card-2', 'add', 3, true],
+    ['service-1', 'remove', 2, true],
+    ['modifier-1', 'modifier', 4, true],
+  ])
+  assert.deepEqual(exhausted.match.journal.map(({ type, nodeId }) => `${type}:${nodeId}`), [
+    'route:gate',
+    'reward:gate',
+    'route:shrine',
+    'event:shrine',
+    'route:court',
+    'reward:court',
+    'route:bazaar',
+    'purchase:bazaar',
+    'purchase:bazaar',
+    'purchase:bazaar',
+    'purchase:bazaar',
+  ])
+  assert.equal(exhausted.match.journal[3].optionId, 'bleed-for-fortune')
+  assert.deepEqual(routeStates(restoreRunSave(exhausted)), {
+    gate: 'completed',
+    market: 'bypassed',
+    shrine: 'completed',
+    court: 'completed',
+    watch: 'bypassed',
+    bazaar: 'active',
+    vault: 'bypassed',
+    finale: 'locked',
+  })
+
   const event = fixture('campaign-save-event-v6.json')
   assert.equal(event.match.machineState, 'awaitingEvent')
   assert.deepEqual(event.match.nodeEvent, { nodeId: 'shrine', eventId: 'crossroads-shrine' })
@@ -246,7 +288,7 @@ test('restored boundaries continue exactly without RNG replay', () => {
   const restoredEvent = restoreRunSave(fixture('campaign-save-event-v6.json'))
   const bled = chooseEventOption(restoredEvent, 'bleed-for-fortune')
   assert.equal(bled.health, restoredEvent.health - 1)
-  assert.equal(bled.currency, restoredEvent.currency + 4)
+  assert.equal(bled.currency, restoredEvent.currency + 5)
   assert.deepEqual(bled.rng, restoredEvent.rng)
 
   const informed = informedFixtureRun()
@@ -261,14 +303,60 @@ test('restored boundaries continue exactly without RNG replay', () => {
   assert.deepEqual(resumed.match.rng, restoredInformed.rng)
 })
 
+test('a restored sold-out shop refuses every purchase and leaves to the finale', () => {
+  const exhausted = restoreRunSave(fixture('campaign-save-shop-exhausted-v6.json'))
+  const offers = getCampaignShopOffers(exhausted)
+  assert.deepEqual(offers.map(({ itemId, blocker }) => [itemId, blocker]), [
+    ['card-1', 'sold'],
+    ['card-2', 'sold'],
+    ['service-1', 'sold'],
+    ['modifier-1', 'sold'],
+  ])
+  const deckCard = exhausted.cards.find(({ campaignOwner, instanceId }) => (
+    campaignOwner === 'player' && instanceId !== exhausted.hold
+  )).instanceId
+  for (const { itemId, kind } of offers) {
+    assert.throws(
+      () => buyShopItem(exhausted, itemId, kind === 'remove' ? deckCard : null),
+      new RegExp(`Shop item ${itemId} is unavailable: sold`),
+    )
+  }
+
+  const left = leaveShop(exhausted)
+  assert.equal(left.machineState, 'awaitingRoute')
+  assert.equal(left.currency, 0)
+  assert.equal(left.shop, null)
+  assert.deepEqual(left.rng, exhausted.rng)
+  assert.deepEqual(left.cards, exhausted.cards)
+  assert.deepEqual(left.journal.at(-1), { type: 'leaveShop', nodeId: 'bazaar' })
+  assert.deepEqual(routeStates(left), {
+    gate: 'completed',
+    market: 'bypassed',
+    shrine: 'completed',
+    court: 'completed',
+    watch: 'bypassed',
+    bazaar: 'completed',
+    vault: 'bypassed',
+    finale: 'available',
+  })
+  assert.deepEqual(roundTrip(left), left)
+  assert.deepEqual(left, leaveShop(exhaustedShopFixtureRun()))
+
+  const finale = chooseRoute(roundTrip(left), 'finale')
+  assert.equal(finale.machineState, 'ready')
+  assert.equal(finale.encounter.id, 'ace-assembly')
+})
+
 test('every expedition boundary round-trips and continues like an uninterrupted run', () => {
   // Seed 0 retries the gate, buys at the market, and surrenders Hold at the vault before
-  // winning; seed 2 is defeated at the finale; seed 6 burns an offering at the shrine,
-  // retries twice, and buys at the bazaar before winning.
-  for (const [seed, plan, outcome] of [
-    [0, EXPEDITION_PLANS.market, 'victory'],
-    [2, EXPEDITION_PLANS.market, 'defeat'],
-    [6, EXPEDITION_PLANS.shrine, 'victory'],
+  // winning; seed 2 retries once and is defeated at the finale; seed 6 burns an offering at
+  // the shrine, retries twice, and buys at the bazaar before winning; seed 1 bleeds at the
+  // shrine, sells out the bazaar, and wins without a retry.
+  for (const [seed, plan, outcome, retries] of [
+    [0, EXPEDITION_PLANS.market, 'victory', 1],
+    [2, EXPEDITION_PLANS.market, 'defeat', 1],
+    [6, EXPEDITION_PLANS.shrine, 'victory', 2],
+    [1, EXPEDITION_PLANS.soldOut, 'victory', 0],
   ]) {
     const options = { runId: `expedition-boundaries-${seed}`, seed, ruleset: BASELINE_RULESET }
     let uninterrupted = createCampaignRun(options)
@@ -276,26 +364,31 @@ test('every expedition boundary round-trips and continues like an uninterrupted 
     const straightCounters = createExpeditionCounters()
     const resumedCounters = createExpeditionCounters()
     const boundaries = new Set()
+    let soldOut = false
     for (let step = 0; uninterrupted.machineState !== 'ended'; step += 1) {
       assert.ok(step < 5000)
       boundaries.add(uninterrupted.machineState)
+      soldOut ||= uninterrupted.machineState === 'awaitingShop'
+        && uninterrupted.shop.items.every(({ sold }) => sold)
       uninterrupted = stepExpedition(uninterrupted, plan, straightCounters)
       resumed = roundTrip(stepExpedition(resumed, plan, resumedCounters))
       assert.deepEqual(resumed, uninterrupted)
     }
     assert.equal(uninterrupted.outcome.result, outcome)
     assert.deepEqual(resumedCounters, straightCounters)
+    assert.equal(straightCounters.retries, retries, `seed ${seed} retries`)
     for (const state of [
       'awaitingRoute',
       'ready',
       'awaitingHoldChoice',
       'awaitingReward',
-      plan === EXPEDITION_PLANS.market ? 'awaitingShop' : 'awaitingEvent',
+      'awaitingShop',
       'awaitingEvent',
     ]) {
       assert.ok(boundaries.has(state), `seed ${seed} reaches ${state}`)
     }
-    if (seed !== 2) assert.ok(boundaries.has('awaitingRetry'))
+    assert.equal(boundaries.has('awaitingRetry'), retries > 0)
+    assert.equal(soldOut, plan === EXPEDITION_PLANS.soldOut, `seed ${seed} sells out a shop`)
     if (outcome === 'victory') {
       assert.equal(routeStates(uninterrupted).finale, 'completed')
     } else {
@@ -556,7 +649,7 @@ test('route, shop, and event decisions wait for their saved boundary and apply o
   await eventController.saveStable()
   const chosen = await eventController.chooseEventOption(option)
   assert.equal(chosen.match.machineState, 'awaitingRoute')
-  assert.equal(chosen.match.currency, 7)
+  assert.equal(chosen.match.currency, 8)
   assert.equal(chosen.match.health, 2)
   assert.throws(() => eventController.chooseEventOption(option), /not at an event/)
   await eventController.destroy()
@@ -592,6 +685,55 @@ test('a decision lost before its save reloads to the offered boundary and applie
   const replayed = chooseRoute(restored, 'market')
   assert.deepEqual(replayed, failed.match)
   assert.throws(() => chooseRoute(replayed, 'market'), /route map/)
+})
+
+test('an encounter retry waits for the saved loss, applies once, and survives a reload', async () => {
+  const lost = loseEncounter(campaign(6, 'campaign-retry-controller'))
+  assert.equal(lost.machineState, 'awaitingRetry')
+  const retry = { nodeId: 'gate', step: lost.journal.length }
+  const repository = recordingRepository([
+    { status: 'storage-unavailable', reason: 'quota-exceeded' },
+  ])
+  const controller = createRunController({ repository, initialMatch: lost })
+
+  assert.throws(
+    () => controller.retryEncounter(retry),
+    /lost Campaign encounter must be saved before it can be retried/,
+  )
+  assert.equal((await controller.saveStable()).status, 'storage-unavailable')
+  assert.throws(() => controller.retryEncounter(retry), /must be saved before it can be retried/)
+  assert.equal(controller.currentMatch.machineState, 'awaitingRetry')
+  assert.equal((await controller.saveStable()).status, 'saved')
+  assert.throws(() => controller.retryEncounter({ ...retry, step: 0 }), /stale/)
+  assert.throws(() => controller.retryEncounter({ ...retry, nodeId: 'market' }), /not the active node/)
+  assert.deepEqual(controller.currentMatch, lost)
+  assert.equal(repository.writes.length, 2)
+
+  const result = await controller.retryEncounter(retry)
+  assert.deepEqual(result.match, retryEncounter(lost))
+  assert.equal(result.save.status, 'saved')
+  assert.equal(result.match.machineState, 'ready')
+  assert.equal(result.match.encounterAttempt, 2)
+  assert.deepEqual(repository.writes.at(-1), result.match)
+  assert.throws(() => controller.retryEncounter(retry), /not awaiting an encounter retry/)
+  await controller.destroy()
+
+  const flaky = recordingRepository([
+    { status: 'saved', savedAt: SAVED_AT },
+    { status: 'storage-unavailable', reason: 'quota-exceeded' },
+  ])
+  const reloading = createRunController({ repository: flaky, initialMatch: lost })
+  await reloading.saveStable()
+  const unsaved = await reloading.retryEncounter(retry)
+  assert.equal(unsaved.save.status, 'storage-unavailable')
+  assert.equal(reloading.getSnapshot().saveStatus, 'failed')
+  await reloading.destroy()
+
+  // A reload restores the saved loss; the same retry applies once to it.
+  const restored = restoreRunSave(createRunSave(flaky.writes[0], { savedAt: SAVED_AT }))
+  assert.deepEqual(restored, lost)
+  assert.deepEqual(retryEncounter(restored), unsaved.match)
+  assert.throws(() => retryEncounter(unsaved.match), /not awaiting an encounter retry/)
 })
 
 test('automatic reveal saves the informed Hold choice before resolving it', async () => {
@@ -659,4 +801,72 @@ test('automatic reveal never selects a pending reward', async () => {
   assert.equal(controller.currentMatch.machineState, 'awaitingReward')
   assert.equal(repository.writes.length, 1)
   await controller.destroy()
+})
+
+const CONTROLLER_DECISIONS = Object.freeze([
+  'revealOrContinue',
+  'chooseHoldChoice',
+  'captureHold',
+  'selectReward',
+  'chooseRoute',
+  'purchaseShopItem',
+  'leaveShop',
+  'chooseEventOption',
+  'retryEncounter',
+])
+
+test('automatic reveal leaves restored route, shop, event, and retry boundaries to the player', async () => {
+  const lost = loseEncounter(campaign(27, 'campaign-auto-retry'))
+  const boundaries = [
+    ['route', fixture('campaign-save-route-v6.json')],
+    ['shop', fixture('campaign-save-shop-v6.json')],
+    ['sold-out shop', fixture('campaign-save-shop-exhausted-v6.json')],
+    ['event', fixture('campaign-save-event-v6.json')],
+    ['retry', clone(createRunSave(lost, { savedAt: SAVED_AT }))],
+  ]
+  for (const [name, save] of boundaries) {
+    const restored = restoreRunSave(save)
+    const writes = []
+    const controller = createRunController({
+      repository: {
+        load: async () => ({ status: 'resumable', savedAt: SAVED_AT, match: restored }),
+        async save(run) {
+          writes.push(run)
+          return { status: 'saved', savedAt: SAVED_AT }
+        },
+      },
+    })
+    assert.equal((await controller.restore()).status, 'resumable', name)
+    assert.equal(controller.getSnapshot().saveStatus, 'saved', name)
+    const calls = []
+    const runController = { getSnapshot: () => controller.getSnapshot() }
+    for (const method of CONTROLLER_DECISIONS) {
+      runController[method] = (...args) => {
+        calls.push(method)
+        return controller[method](...args)
+      }
+    }
+    const coordinator = createAutoRevealCoordinator({ runController })
+    const continuation = await coordinator.continueAfterPresentation({
+      active: true,
+      enabled: true,
+      saveSucceeded: true,
+      presentationStatus: 'completed',
+      runId: restored.runId,
+      eventId: restored.pendingEvent?.id,
+      blocked: false,
+    })
+    assert.equal(continuation, null, name)
+    assert.deepEqual(calls, [], name)
+    assert.throws(
+      () => controller.revealOrContinue({ autoChooseNormal: true }),
+      /Only a ready campaign can prepare a reveal/,
+      name,
+    )
+    await controller.whenIdle()
+    assert.deepEqual(writes, [], name)
+    assert.deepEqual(controller.currentMatch, restored, name)
+    coordinator.destroy()
+    await controller.destroy()
+  }
 })

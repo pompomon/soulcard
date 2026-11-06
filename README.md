@@ -16,15 +16,19 @@ npm run dev
 
 Build the production site with `npm run build`; serve it with `npm run preview`.
 
-## Campaign Duel manual verification
+## Campaign manual verification
 
 Run `npm run dev`, open the reported local URL, and choose **Campaign** from Main.
-That native button is the manual entry point for the three-encounter Campaign Duel in
-the existing Game screen. The deterministic browser acceptance fixture is available at
-`/tests/browser/milestone-21-1-campaign.html`; it reports its canvas, semantic Hold
-choices, presentation states, and console errors as text. The reward fixture at
-`/tests/browser/milestone-21-2-rewards.html` restores a saved reward draft and reports
-its offers, the saved reward, the informed Hold choice, and Run details as text.
+That native button is the manual entry point for the Campaign expedition in the
+existing Game screen. The deterministic browser acceptance fixture is available at
+`/tests/browser/milestone-21-1-campaign.html`; it reports its canvas, the first route
+choice, semantic Hold choices, presentation states, and console errors as text. The
+reward fixture at `/tests/browser/milestone-21-2-rewards.html` restores a saved reward
+draft and reports its offers, the saved reward, the route map, the informed Hold choice,
+and Run details as text. The expedition fixture at
+`/tests/browser/milestone-21-3-expedition.html` restores a saved route map and reports
+route locks, shop prices and purchases, reloads at node boundaries, a failed save and
+its retry, an event with a target, a sold-out shop, and console errors as text.
 
 ## Texture cache ownership
 
@@ -104,13 +108,20 @@ domain RNG snapshot, and immediately queues the stable turn-zero run for Indexed
 persistence before play continues. The canonical comparison order is unchanged except
 that 2 beats Ace; 2 still loses to 3 through King.
 
-Campaign creates a separate three-encounter run in the same Game screen. It starts at
-3/5 health with all Diamonds and Hearts, then faces Spades/Clubs, Jacks/Queens/Kings,
-and four Aces for 1, 1, and 2 damage. Each non-final win opens a seeded reward draft:
+Campaign creates a separate expedition run in the same Game screen. It starts at 3/5
+health and 0 coins with all Diamonds and Hearts, then follows an authored five-stage
+route map. It opens against Spades/Clubs, chooses the Wayside Market shop or the
+Crossroads Shrine event, fights either Jacks/Queens/Kings or the 8s, 9s, and 10s,
+chooses the Ember Bazaar shop or Oathkeeper's Vault event, and ends against four Aces.
+A fight that is not won costs 1 health (2 against the Aces) and can be retried while
+health remains. Each non-final win pays a coin bounty and opens a seeded reward draft:
 a new card, a deck edit (duplicate, remove, or replace), a modifier, or Mend (+1
-health). Campaign card instances retain immutable player/opponent provenance, and the
-one-slot Hold action can capture only player-owned cards currently in the player's draw
-or won pile.
+health). Shops sell a bounded card, deck-edit, and modifier stock for coins; events
+state every health, coin, deck, Hold, and modifier trade-off and always offer Walk on.
+Every route, reward, purchase, event, shop-exit, and retry decision applies only to a
+saved boundary and names its journal step, so a reload never applies it twice. Campaign
+card instances retain immutable player/opponent provenance, and the one-slot Hold
+action can capture only player-owned cards currently in the player's draw or won pile.
 
 The Settings screen persists a Turn burning preference independently from active runs.
 It selects the burn-enabled or burn-disabled ruleset only when starting or restarting a
@@ -119,14 +130,16 @@ still-restoring saved run requires confirmation.
 
 ## Run menus and summaries
 
-Main enables Resume only after a valid ready, paused, or completed run restores. Invalid
-or incompatible saves remain quarantined until explicitly discarded; unavailable storage
-is reported without blocking session-only play. Current saves use save schema version 5.
-Classic runs use game rules version 2 and Campaign runs use version 4. Schema-version-4
-Classic records carry over unchanged; schema-version-4 Campaign records use the
-scripted rewards of Campaign rules version 3 and are quarantined as incompatible.
-Schema-version-1 through schema-version-3 records are deliberately quarantined. Every
-quarantined record requires explicit discard.
+Main enables Resume only after a valid saved run restores, whether it is ready, paused,
+completed, or waiting at a Campaign decision. Invalid or incompatible saves remain
+quarantined until explicitly discarded; unavailable storage is reported without blocking
+session-only play. Current saves use save schema version 6. Classic runs use game rules
+version 2 and Campaign runs use version 6. Schema-version-4 and schema-version-5
+Classic records carry over unchanged. Campaign records from earlier Campaign rules are
+quarantined as incompatible: the scripted rewards of version 3, the linear reward drafts
+of version 4, and the version-5 expedition, whose shrine paid 4 coins instead of 5,
+cannot replay under version 6. Schema-version-1 through schema-version-3 records are
+deliberately quarantined. Every quarantined record requires explicit discard.
 
 Pause remains an overlay inside Game. Resume continues the exact snapshot, Save & Main
 Menu navigates only after a successful stable save, and Restart Game requires confirmation

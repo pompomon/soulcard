@@ -437,10 +437,15 @@ export function createCampaignOverlay({
       buttons.cancel.hidden = false
       buttons.cancel.disabled = options.busy
     } else if (mode === 'retry') {
+      const loss = `${match.encounter.name} dealt ${match.encounter.damage} damage. ${match.health} health remains.`
       heading.textContent = 'Encounter lost'
-      description.textContent = `${match.encounter.name} dealt ${match.encounter.damage} damage. ${match.health} health remains.`
+      description.textContent = boundarySaved
+        ? loss
+        : `${loss} The encounter can be retried once this loss is saved.`
       buttons.retry.hidden = false
-      buttons.retry.disabled = options.busy
+      buttons.retry.disabled = options.busy || !boundarySaved
+      buttons.save.hidden = snapshot.saveStatus !== 'failed'
+      buttons.save.disabled = options.busy
     } else if (mode === 'reward-draft') {
       heading.textContent = 'Encounter won'
       description.textContent = boundarySaved

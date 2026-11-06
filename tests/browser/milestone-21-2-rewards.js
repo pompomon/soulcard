@@ -6,6 +6,13 @@ import { createSettingsRepository } from '../../src/persistence/settings-reposit
 const output = document.querySelector('#reward-browser-results')
 const consoleErrors = []
 const originalConsoleError = console.error.bind(console)
+const EXPECTED_LOG = Object.freeze([
+  'Stage 1: entered Suit Opposition',
+  'Suit Opposition: gained Hold Insight and collected 3 coins',
+  'Stage 2: entered Crossroads Shrine',
+  'Crossroads Shrine: Walk on',
+  'Stage 3: entered Royal Court',
+])
 
 console.error = (...values) => {
   consoleErrors.push(values.map(String).join(' '))
@@ -48,6 +55,26 @@ function visibleOverlayButtons() {
   return queryAll('#app [data-campaign-overlay] button')
     .filter(isShown)
     .map((button) => button.textContent.trim())
+}
+
+function detailSectionLines(title) {
+  const section = queryAll('#app [data-campaign-details] section')
+    .find((candidate) => candidate.querySelector('h3')?.textContent.trim() === title)
+  assert(section !== undefined, `${title} section must be shown`)
+  return [...section.querySelectorAll('li')].map((line) => line.textContent.trim())
+}
+
+async function chooseSavedButton(selector, name) {
+  await waitFor(
+    () => {
+      const button = document.querySelector(selector)
+      return button !== null && isShown(button) && button.disabled === false
+    },
+    `enabled ${name}`,
+  )
+  const button = query(selector, name)
+  assertButton(button)
+  button.click()
 }
 
 function assertWithinViewport(element, name) {
@@ -96,7 +123,7 @@ function createUpdateController() {
 }
 
 async function loadRewardDraft() {
-  const response = await fetch(new URL('../fixtures/campaign-save-reward-v5.json', import.meta.url))
+  const response = await fetch(new URL('../fixtures/campaign-save-reward-v6.json', import.meta.url))
   if (!response.ok) throw new Error('The saved reward draft fixture could not be loaded')
   return restoreRunSave(await response.json())
 }
@@ -117,7 +144,7 @@ async function run() {
       }),
       save: async (run) => {
         saves.push(Object.freeze({
-          encounterIndex: run.encounterIndex,
+          step: run.journal.length,
           machineState: run.machineState,
         }))
         if (holdNextSave) {
@@ -154,7 +181,7 @@ async function run() {
 
   const overlay = query('#app [data-campaign-overlay]', 'Campaign overlay')
   const heading = query('#campaign-overlay-title', 'Campaign overlay heading')
-  const encounterMetric = query('#app [data-value="campaign-encounter"]', 'encounter metric')
+  const routeMetric = query('#app [data-value="campaign-route"]', 'route metric')
   const status = query('#app [data-status-host]', 'Game status')
   const screen = query('#app .screen--game', 'Game screen')
   const offerSelector = '#app [data-reward-offer]'
@@ -167,7 +194,7 @@ async function run() {
   )
   assert(overlay.hidden === false, 'Reward draft overlay must be visible')
   assert(heading.textContent === 'Encounter won', 'Reward draft must announce the win')
-  assert(encounterMetric.textContent === '1/3', 'Draft must keep the won encounter visible')
+  assert(routeMetric.textContent === '1/5', 'Draft must keep the won stage visible')
   const offers = queryAll(offerSelector)
   for (const offer of offers) {
     assertButton(offer)
@@ -204,12 +231,12 @@ async function run() {
   const metricChanges = []
   const metricObserver = new MutationObserver(() => {
     metricChanges.push(Object.freeze({
-      text: encounterMetric.textContent,
+      text: routeMetric.textContent,
       saveStatus: app.runSnapshot.saveStatus,
-      savedEncounterIndexes: saves.map(({ encounterIndex }) => encounterIndex),
+      savedStates: saves.map(({ step, machineState }) => `${step}:${machineState}`),
     }))
   })
-  metricObserver.observe(encounterMetric, {
+  metricObserver.observe(routeMetric, {
     childList: true,
     characterData: true,
     subtree: true,
@@ -219,30 +246,56 @@ async function run() {
   assertButton(modifierOffer, 'Modifier: Hold Insight')
   modifierOffer.click()
   await waitFor(() => heldSave !== null, 'reward save start')
-  assert(app.runSnapshot.match.encounterIndex === 1, 'The reward must commit the next encounter')
+  assert(
+    app.runSnapshot.match.machineState === 'awaitingRoute',
+    'The reward must commit the route map',
+  )
   await new Promise((resolve) => setTimeout(resolve, 250))
   const whileSaving = Object.freeze({
     heading: heading.textContent,
-    encounter: encounterMetric.textContent,
+    route: routeMetric.textContent,
     saveStatus: app.runSnapshot.saveStatus,
     status: status.textContent,
     buttons: visibleOverlayButtons(),
   })
   assert(whileSaving.heading === 'Saving reward', 'Reward save must be announced')
-  assert(whileSaving.encounter === '1/3', 'Next encounter must stay hidden while saving')
+  assert(whileSaving.route === '1/5', 'The next stage must stay hidden while saving')
   assert(whileSaving.saveStatus === 'saving', 'Reward save must still be pending')
   heldSave.resolve()
   await waitFor(
-    () => encounterMetric.textContent === '2/3' && overlay.hidden === true,
-    'next encounter after the reward save',
+    () => routeMetric.textContent === '2/5' && heading.textContent === 'Route map · Stage 2/5',
+    'route map after the reward save',
   )
   metricObserver.disconnect()
-  const nextEncounterShown = metricChanges.find(({ text }) => text === '2/3')
-  assert(nextEncounterShown?.saveStatus === 'saved', 'Next encounter must follow a saved reward')
+  const nextStageShown = metricChanges.find(({ text }) => text === '2/5')
+  assert(nextStageShown?.saveStatus === 'saved', 'The next stage must follow a saved reward')
   assert(
-    nextEncounterShown.savedEncounterIndexes.includes(1),
-    'The saved reward state must precede the next encounter',
+    nextStageShown.savedStates.includes('2:awaitingRoute'),
+    'The saved reward state must precede the route map',
   )
+  const routeMap = Object.freeze({
+    heading: heading.textContent,
+    available: queryAll('#app button[data-route-node]')
+      .map((button) => button.dataset.routeNode),
+    buttons: visibleOverlayButtons(),
+  })
+  assert(
+    routeMap.available.join() === 'market,shrine',
+    'The won start fight must open both stage-2 paths',
+  )
+
+  await chooseSavedButton('#app button[data-route-node="shrine"]', 'Crossroads Shrine route')
+  await chooseSavedButton('#app button[data-event-option="walk-on"]', 'Walk on option')
+  await chooseSavedButton('#app button[data-route-node="court"]', 'Royal Court route')
+  await waitFor(
+    () => (
+      app.runSnapshot.match?.machineState === 'ready'
+      && app.runSnapshot.saveStatus === 'saved'
+      && overlay.hidden === true
+    ),
+    'saved Royal Court encounter',
+  )
+  assert(routeMetric.textContent === '3/5', 'The Royal Court must show stage 3')
 
   const reveal = query('#app [data-action="reveal"]', 'Reveal action')
   await waitFor(() => reveal.disabled === false, 'enabled reveal in the next encounter')
@@ -264,6 +317,7 @@ async function run() {
     .map((line) => line.textContent.trim())
   assert(insightLines.length === 3, 'Hold Insight must list both next cards and the Hold')
   assert(insightLines[0].startsWith("Opponent's next card:"), 'Opponent peek must be shown')
+  assert(insightLines[2] === 'Hold is empty.', 'Hold Insight must report the empty Hold')
   const informedButtons = visibleOverlayButtons()
   assertWithinViewport(normalChoice, 'Informed normal choice')
   normalChoice.click()
@@ -295,14 +349,21 @@ async function run() {
     summary: query('#app [data-campaign-description]', 'Run details summary').textContent,
     sections: queryAll('#app [data-campaign-details] h3')
       .map((title) => title.textContent.trim()),
-    modifiers: queryAll('#app [data-campaign-details] ul li')
-      .map((line) => line.textContent.trim()),
-    history: queryAll('#app [data-campaign-details] ol li')
-      .map((line) => line.textContent.trim()),
+    route: detailSectionLines('Route'),
+    modifiers: detailSectionLines('Active modifiers'),
+    log: detailSectionLines('Expedition log'),
   })
   assert(
-    inspection.history.length === 1 && inspection.history[0] === 'Encounter 1: Gained Hold Insight',
-    'Run details must list the chosen reward',
+    inspection.sections.join() === 'Route,Active modifiers,Expedition log',
+    'Run details must show the route, modifiers, and log in order',
+  )
+  assert(
+    inspection.modifiers.some((line) => line.startsWith('Hold Insight (Permanent)')),
+    'Run details must list the chosen modifier',
+  )
+  assert(
+    inspection.log.join('\n') === EXPECTED_LOG.join('\n'),
+    'Run details must list every expedition decision in order',
   )
   const inspectButtons = visibleOverlayButtons()
   const close = query('#app [data-action="campaign-close"]', 'Close action')
@@ -314,7 +375,7 @@ async function run() {
   assert(consoleErrors.length === 0, 'Reward check reported a relevant console error')
 
   const report = Object.freeze({
-    reportVersion: 1,
+    reportVersion: 2,
     viewport: {
       width: globalThis.innerWidth,
       height: globalThis.innerHeight,
@@ -333,9 +394,10 @@ async function run() {
     },
     rewardSave: {
       whileSaving,
-      nextEncounterShownAfterSave: nextEncounterShown,
-      saves: saves.map(({ encounterIndex, machineState }) => `${encounterIndex}:${machineState}`),
+      nextStageShownAfterSave: nextStageShown,
+      saves: saves.map(({ step, machineState }) => `${step}:${machineState}`),
     },
+    routeMap,
     informedChoice: {
       saveStatusWhenEnabled: informedSaveStatus,
       lines: insightLines,
@@ -357,7 +419,7 @@ async function run() {
 run().catch((error) => {
   output.dataset.status = 'failed'
   output.textContent = JSON.stringify({
-    reportVersion: 1,
+    reportVersion: 2,
     error: error instanceof Error ? error.message : String(error),
     consoleErrors,
   }, null, 2)

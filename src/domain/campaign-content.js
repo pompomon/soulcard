@@ -105,7 +105,7 @@ export const CAMPAIGN_NODE_EVENTS = deepFreeze([
         id: 'bleed-for-fortune',
         label: 'Bleed for fortune',
         healthCost: 1,
-        coinGain: 4,
+        coinGain: 5,
       },
       {
         ...WALK_ON,
