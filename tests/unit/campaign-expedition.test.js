@@ -4,42 +4,68 @@ import {
   CAMPAIGN_CARD_COPY_LIMIT,
   CAMPAIGN_DECK_SIZE_LIMITS,
   CAMPAIGN_MAX_HEALTH,
-  CAMPAIGN_MEND_HEALTH,
+  CAMPAIGN_MEND_HEALTH_BY_TIER,
+  CAMPAIGN_NODE_HEAL_LIMIT,
   CAMPAIGN_SHOP_PRICES,
   CAMPAIGN_STARTER_CARD_IDS,
   CAMPAIGN_STARTING_HEALTH,
   getCampaignFight,
   getCampaignNodeEvent,
+  getCampaignRestSite,
 } from '../../src/domain/campaign-content.js'
 import { deckEditRequiresTarget } from '../../src/domain/campaign-deck.js'
 import { replayCampaignJournal } from '../../src/domain/campaign-journal.js'
 import {
+  CAMPAIGN_HOLD_DECISION_STATES,
   HOLD_POSITION,
   createCampaignRun,
   getCampaignEventOptions,
   getCampaignEventTargets,
+  getCampaignRestOptions,
+  getCampaignRestTargets,
   getCampaignShopOffers,
   getCampaignShopTargets,
+  getEligibleHoldTargets,
   validateCampaignState,
 } from '../../src/domain/campaign-machine.js'
 import {
+  CAMPAIGN_FINAL_NODE_ID,
   CAMPAIGN_MAP,
   CAMPAIGN_START_NODE_ID,
   getCampaignMapNode,
 } from '../../src/domain/campaign-map.js'
-import { VITALITY_CAP_MODIFIER_ID, getCampaignModifier } from '../../src/domain/campaign-modifiers.js'
+import {
+  VITALITY_CAP_MODIFIER_ID,
+  encounterTraitIds,
+  getCampaignModifier,
+  isOpponentTraitId,
+} from '../../src/domain/campaign-modifiers.js'
+import { getCard } from '../../src/domain/cards.js'
+import { createRng } from '../../src/domain/rng.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import {
-  activeNodeId,
+  EDGE_COVERING_ROUTES,
   buyShopItem,
   chooseEventOption,
+  chooseRestOption,
+  chooseRoute,
+  claimReward,
   createExpeditionCounters,
   leaveShop,
   stepExpedition,
+  winEncounter,
 } from '../fixtures/campaign-route.js'
 
 // Whole expeditions checked against a ledger built only from the campaign content: fight
-// bounties and damage, shop prices, event costs and gains, modifier healing, and deck edits.
+// bounties, damage, and Mend by tier; shop prices; event and rest costs and gains; modifier
+// healing; deck edits; and the RNG draws each step may take.
+
+const COURT_ETIQUETTE_TRAIT_ID = 'court-etiquette-v1'
+const PLUNDER_TRAIT_ID = 'plunder-v1'
+const SPOILS_OF_WAR_MODIFIER_ID = 'spoils-of-war-v1'
+const ETIQUETTE_RANKS = getCampaignModifier(COURT_ETIQUETTE_TRAIT_ID).effect.ranks
+// Mulberry32 advances its state by 0x6D2B79F5 per draw; this is its inverse modulo 2^32.
+const MULBERRY32_INVERSE = 0xDC58AA5D
 
 function routesFrom(nodeId) {
   const { next } = getCampaignMapNode(nodeId)
@@ -50,8 +76,10 @@ function routesFrom(nodeId) {
 const ROUTES = Object.freeze(routesFrom(CAMPAIGN_START_NODE_ID))
 
 // Contrasts the scripted policy: shops sell their last available item and events take their
-// last available option other than Walk on, each with the last eligible target. Rewards
-// rotate two places ahead of the scripted rotation, so the first claim is the modifier.
+// last available option other than Walk on, each with the last eligible target. Rest sites
+// walk on at full health and otherwise take their deck edit with the last eligible target,
+// resting only when the edit is blocked. Rewards rotate two places ahead of the scripted
+// rotation, so the first claim is the modifier.
 function contrastingStep(run, plan, counters) {
   if (run.machineState === 'awaitingShop') {
     const item = getCampaignShopOffers(run).findLast(({ blocker }) => blocker === null)
@@ -72,6 +100,20 @@ function contrastingStep(run, plan, counters) {
     counters.events.push(option.optionId)
     const target = getCampaignEventTargets(run, option.optionId).at(-1)
     return chooseEventOption(run, option.optionId, target?.instanceId ?? null)
+  }
+  if (run.machineState === 'awaitingRest') {
+    const options = getCampaignRestOptions(run)
+    const option = run.health === run.maxHealth
+      ? undefined
+      : options.find(({ blocker, deckEdit }) => blocker === null && deckEdit !== null)
+        ?? options.find(({ healthGain }) => healthGain > 0)
+    if (option === undefined) {
+      counters.rests.push('walk-on')
+      return chooseRestOption(run, 'walk-on')
+    }
+    counters.rests.push(option.optionId)
+    const target = getCampaignRestTargets(run, option.optionId).at(-1)
+    return chooseRestOption(run, option.optionId, target?.instanceId ?? null)
   }
   return stepExpedition(run, plan, counters)
 }
@@ -157,6 +199,7 @@ function assertEncounterEntered(run, node) {
   const fight = getCampaignFight(node.contentId)
   assert.equal(run.machineState, 'ready')
   assert.equal(run.encounter.id, fight.id)
+  assert.equal(run.encounter.tier, fight.tier)
   assert.equal(run.encounter.damage, fight.damage)
   assert.deepEqual(
     run.cards
@@ -179,10 +222,16 @@ function recordReward(ledger, prev, entry, node) {
     .filter(({ id }) => getCampaignModifier(id).lifetime !== 'encounter')
   if (kept.length !== ledger.modifiers.length) ledger.coverage.add('expired modifier')
   ledger.modifiers = kept
-  if (offer.kind === 'mend') heal(ledger, CAMPAIGN_MEND_HEALTH)
-  else if (offer.kind === 'modifier') gainModifier(ledger, offer.modifierId, node.id)
-  else editDeck(ledger, prev.hold, offer, entry)
-  ledger.flows.bounties += getCampaignFight(node.contentId).bounty
+  const { tier, bounty } = getCampaignFight(node.contentId)
+  if (offer.kind === 'mend') {
+    if (tier === 'elite') ledger.coverage.add('greater mend')
+    heal(ledger, CAMPAIGN_MEND_HEALTH_BY_TIER[tier])
+  } else if (offer.kind === 'modifier') {
+    gainModifier(ledger, offer.modifierId, node.id)
+  } else {
+    editDeck(ledger, prev.hold, offer, entry)
+  }
+  ledger.flows.bounties += bounty
 }
 
 function recordPurchase(ledger, prev, next, entry, node) {
@@ -202,11 +251,8 @@ function recordPurchase(ledger, prev, next, entry, node) {
   if (next.shop.items.every(({ sold }) => sold)) ledger.coverage.add('sold out')
 }
 
-function recordEvent(ledger, prev, entry, node) {
-  assert.equal(prev.machineState, 'awaitingEvent')
-  const option = getCampaignNodeEvent(node.contentId).options
-    .find(({ id }) => id === entry.optionId)
-  ledger.coverage.add(`event ${option.id}`)
+// Event and rest options share one shape that states every cost, gain, and deck edit.
+function recordOption(ledger, prev, entry, option, nodeId) {
   ledger.health -= option.healthCost
   ledger.flows.coinCosts += option.coinCost
   if (option.surrenderHold) {
@@ -220,9 +266,13 @@ function recordEvent(ledger, prev, entry, node) {
     assert.equal(entry.targetInstanceId, null)
     assert.equal(entry.createdInstanceId, null)
   }
-  if (option.modifierId !== null) gainModifier(ledger, option.modifierId, node.id)
+  if (option.modifierId !== null) gainModifier(ledger, option.modifierId, nodeId)
   heal(ledger, option.healthGain)
   ledger.flows.coinGains += option.coinGain
+}
+
+function findOption({ options }, optionId) {
+  return options.find(({ id }) => id === optionId)
 }
 
 function recordDecision(ledger, prev, next, entry) {
@@ -232,12 +282,17 @@ function recordDecision(ledger, prev, next, entry) {
     assert.equal(prev.machineState, 'awaitingRoute')
     assert.equal(stateOf(prev, node.id), 'available', `${node.id} is entered only when available`)
     ledger.visited.push(node.id)
-    if (node.kind === 'fight') assertEncounterEntered(next, node)
-    if (node.kind === 'shop') {
+    if (node.kind === 'fight') {
+      assertEncounterEntered(next, node)
+      if (next.encounter.tier === 'elite') ledger.coverage.add('elite')
+    } else if (node.kind === 'shop') {
       for (const item of next.shop.items) {
         assert.equal(item.sold, false)
         assert.equal(item.price, CAMPAIGN_SHOP_PRICES[slotOf(item.itemId)])
       }
+    } else if (node.kind === 'rest') {
+      assert.equal(next.machineState, 'awaitingRest')
+      assert.deepEqual(next.restSite, { nodeId: node.id, siteId: node.contentId })
     }
     return
   }
@@ -247,13 +302,62 @@ function recordDecision(ledger, prev, next, entry) {
     assertEncounterEntered(next, node)
     return
   }
-  if (entry.type === 'reward') recordReward(ledger, prev, entry, node)
-  else if (entry.type === 'purchase') recordPurchase(ledger, prev, next, entry, node)
-  else if (entry.type === 'event') recordEvent(ledger, prev, entry, node)
-  else assert.equal(prev.machineState, 'awaitingShop')
+  if (entry.type === 'reward') {
+    recordReward(ledger, prev, entry, node)
+  } else if (entry.type === 'purchase') {
+    recordPurchase(ledger, prev, next, entry, node)
+  } else if (entry.type === 'event') {
+    assert.equal(prev.machineState, 'awaitingEvent')
+    const option = findOption(getCampaignNodeEvent(node.contentId), entry.optionId)
+    ledger.coverage.add(`event ${option.id}`)
+    recordOption(ledger, prev, entry, option, node.id)
+  } else if (entry.type === 'rest') {
+    assert.equal(prev.machineState, 'awaitingRest')
+    const option = findOption(getCampaignRestSite(node.contentId), entry.optionId)
+    ledger.coverage.add(`rest ${option.healthGain > 0 ? 'heal' : option.id}`)
+    recordOption(ledger, prev, entry, option, node.id)
+  } else {
+    assert.equal(prev.machineState, 'awaitingShop')
+  }
   if (entry.type !== 'purchase') {
     assert.equal(next.machineState, 'awaitingRoute')
     assert.equal(stateOf(next, node.id), 'completed')
+  }
+}
+
+// Under burn rules the clash loser's revealed cards burn, unless the winner holds the
+// effect that claims them: Spoils of War for the player, or Plunder for the opponent.
+// Plunder suspends Spoils of War, so the player's wins against it always burn.
+function recordSettlement(ledger, prev, event) {
+  if (!prev.ruleset.burn.enabled) {
+    assert.deepEqual(event.burned, [])
+    return
+  }
+  const loser = event.winner === 'player' ? 'opponent' : 'player'
+  const lost = event.reveals
+    .filter(({ suppliedBy }) => suppliedBy === loser)
+    .map(({ instanceId: id }) => id)
+  const plunder = prev.encounter.traitIds.includes(PLUNDER_TRAIT_ID)
+  const claimed = event.winner === 'player'
+    ? !plunder && prev.activeModifiers.some(({ id }) => id === SPOILS_OF_WAR_MODIFIER_ID)
+    : plunder
+  assert.deepEqual(event.burned, claimed ? [] : lost)
+  if (claimed && lost.length > 0) {
+    ledger.coverage.add(event.winner === 'player' ? 'spoils' : 'plunder')
+  }
+}
+
+// Court Etiquette leaves only 2–10 Hold targets, withholding every J–A the player controls.
+function recordHoldTargets(ledger, run) {
+  if (!run.encounter.traitIds.includes(COURT_ETIQUETTE_TRAIT_ID)) return
+  for (const { cardId } of getEligibleHoldTargets(run)) {
+    assert.ok(ETIQUETTE_RANKS.includes(getCard(cardId).rank), `${cardId} is a 2–10`)
+  }
+  const { drawPile, wonPile } = run.encounter.zones.player
+  if ([...drawPile, ...wonPile].some((id) => (
+    ledger.cards.has(id) && !ETIQUETTE_RANKS.includes(getCard(ledger.cards.get(id)).rank)
+  ))) {
+    ledger.coverage.add('etiquette')
   }
 }
 
@@ -264,10 +368,103 @@ function recordStep(ledger, prev, next) {
     return
   }
   assert.notEqual(prev.encounter, null, 'only fights advance without a decision')
+  if (prev.machineState === 'ready') recordHoldTargets(ledger, prev)
+  if (next.turn !== prev.turn && next.pendingEvent.type === 'clashSettled') {
+    recordSettlement(ledger, prev, next.pendingEvent)
+  }
   if (next.machineState === 'awaitingRetry' || next.outcome?.result === 'defeat') {
-    const { damage } = getCampaignFight(getCampaignMapNode(activeNodeId(prev)).contentId)
     ledger.coverage.add('lost fight')
-    ledger.health = Math.max(0, ledger.health - damage)
+    ledger.health = Math.max(0, ledger.health - getCampaignFight(prev.encounter.id).damage)
+  }
+}
+
+function drawsBetween(before, after) {
+  return Math.imul((after.state - before.state) >>> 0, MULBERRY32_INVERSE) >>> 0
+}
+
+// Shuffling n cards draws n − 1 times.
+function shuffleDraws(count) {
+  return Math.max(count - 1, 0)
+}
+
+// Mirrors prepareSupply: once a side's source pile is spent, an empty draw pile is refilled
+// by shuffling that side's won pile.
+function recycleDraws(run, side) {
+  const { supplyMode, zones } = run.encounter
+  if (supplyMode[side] === 'source' && zones[`${side}SourcePile`].length > 0) return 0
+  return zones[side].drawPile.length === 0 ? shuffleDraws(zones[side].wonPile.length) : 0
+}
+
+// The draws a step may take, derived from visible state alone. Entering or retrying a fight
+// shuffles the non-held layout, then the opponent deck. Preparing a Hold decision prepares
+// the player's supply, and with Hold Insight the opponent's as well. A clash recycles a
+// side's won pile whenever that side reveals from an empty draw pile. Nothing else draws.
+function expectedDraws(prev, next) {
+  if (next.journal.length !== prev.journal.length) {
+    const { type, nodeId } = next.journal.at(-1)
+    if (type !== 'retry' && (type !== 'route' || getCampaignMapNode(nodeId).kind !== 'fight')) {
+      return 0
+    }
+    return shuffleDraws(next.deckLayout.filter((entry) => entry !== HOLD_POSITION).length)
+      + shuffleDraws(getCampaignFight(next.encounter.id).opponentCardIds.length)
+  }
+  if (CAMPAIGN_HOLD_DECISION_STATES.includes(next.machineState)) {
+    return recycleDraws(prev, 'player')
+      + (next.machineState === 'awaitingInformedHoldChoice' ? recycleDraws(prev, 'opponent') : 0)
+  }
+  if (next.turn === prev.turn) return 0
+  const piles = {}
+  for (const side of ['player', 'opponent']) {
+    const { drawPile, wonPile } = prev.encounter.zones[side]
+    piles[side] = { draw: drawPile.length, won: wonPile.length }
+  }
+  let draws = 0
+  for (const { suppliedBy, from } of next.pendingEvent.reveals) {
+    if (from !== `${suppliedBy}.drawPile`) continue
+    const pile = piles[suppliedBy]
+    if (pile.draw === 0) {
+      draws += shuffleDraws(pile.won)
+      pile.draw = pile.won
+      pile.won = 0
+    }
+    pile.draw -= 1
+  }
+  return draws
+}
+
+function assertRngStep(prev, next, where) {
+  assert.equal(drawsBetween(prev.rng, next.rng), expectedDraws(prev, next), `${where}: RNG draws`)
+}
+
+// Per-step invariants: the RNG ledger; traits exactly as authored and only on elites; no
+// trait among the modifiers or in the journal; and no step heals past the node limit or the
+// maximum.
+function assertStep(prev, next, where) {
+  assertRngStep(prev, next, where)
+  assert.ok(next.health - prev.health <= CAMPAIGN_NODE_HEAL_LIMIT, `${where}: heal limit`)
+  assert.ok(next.health <= next.maxHealth, `${where}: maximum health`)
+  assert.ok(
+    !next.activeModifiers.some(({ id }) => isOpponentTraitId(id)),
+    `${where}: traits are never player modifiers`,
+  )
+  if (next.journal.length !== prev.journal.length) {
+    assert.ok(
+      !Object.values(next.journal.at(-1)).some((value) => isOpponentTraitId(value)),
+      `${where}: the journal never names a trait`,
+    )
+  }
+  if (next.encounter !== null) {
+    const fight = getCampaignFight(next.encounter.id)
+    assert.equal(next.encounter.tier, fight.tier, `${where}: tier`)
+    assert.deepEqual(
+      next.encounter.traitIds,
+      encounterTraitIds(fight, next.ruleset),
+      `${where}: traits`,
+    )
+    assert.ok(
+      next.encounter.traitIds.length === 0 || fight.tier === 'elite',
+      `${where}: only elites have traits`,
+    )
   }
 }
 
@@ -331,78 +528,181 @@ function assertFinalRoute(run, ledger, route, where) {
   }), `${where}: route`)
 }
 
-function playExpedition(policyName, seed, route) {
-  const policy = POLICIES[policyName]
-  const where = `${policyName} seed ${seed} via ${route.join('/')}`
+// Plays from a new run until it ends, checking every step against the ledger.
+function playLedger(seed, route, step, where) {
   let run = createCampaignRun({
     runId: `campaign-expedition-${seed}`,
     seed,
     ruleset: BASELINE_RULESET,
   })
-  const counters = policy.counters()
+  assert.deepEqual(run.rng, createRng(seed).snapshot(), `${where}: a new run draws nothing`)
   const ledger = createLedger()
   assertLedger(ledger, run, where)
-  for (let step = 0; run.machineState !== 'ended'; step += 1) {
-    assert.ok(step < 5000, `${where} ends`)
-    const next = policy.step(run, route, counters)
+  for (let index = 0; run.machineState !== 'ended'; index += 1) {
+    assert.ok(index < 10000, `${where} ends`)
+    const next = step(run)
+    const at = `${where} step ${index}`
+    assertStep(run, next, at)
     recordStep(ledger, run, next)
-    assertLedger(ledger, next, `${where} step ${step}`)
+    assertLedger(ledger, next, at)
     run = next
   }
   ledger.coverage.add(run.outcome.result)
+  if (ledger.visited.at(-1) === CAMPAIGN_FINAL_NODE_ID) {
+    ledger.coverage.add(`boss ${run.outcome.result}`)
+  }
   assertFinalRoute(run, ledger, route, where)
   assert.doesNotThrow(() => validateCampaignState(run))
   const replayed = replayCampaignJournal({ seed, ruleset: BASELINE_RULESET, journal: run.journal })
   assert.equal(replayed.currency, run.currency)
   assert.deepEqual(cardEntries(replayed.playerCards), ledger.cards)
+  return { run, ledger }
+}
+
+function playExpedition(policyName, seed, route) {
+  const policy = POLICIES[policyName]
+  const counters = policy.counters()
+  const { run, ledger } = playLedger(
+    seed,
+    route,
+    (current) => policy.step(current, route, counters),
+    `${policyName} seed ${seed} via ${route.join('/')}`,
+  )
   return { run, ledger, counters }
 }
 
-test('every expedition route balances coins, health, cards, and modifiers with a content ledger', () => {
-  assert.equal(ROUTES.length, 8)
+const firstPlays = new Map()
+
+// The first play of an expedition, shared by the tests that inspect it.
+function firstPlay(policyName, seed, route) {
+  const key = `${policyName} ${seed} ${route.join('/')}`
+  if (!firstPlays.has(key)) firstPlays.set(key, playExpedition(policyName, seed, route))
+  return firstPlays.get(key)
+}
+
+// Wins every fight without playing a clash, takes Mend, and passes every other node.
+function structuralStep(run, route) {
+  switch (run.machineState) {
+    case 'awaitingRoute':
+      return chooseRoute(run, route.find((id) => stateOf(run, id) === 'available'))
+    case 'ready':
+      return winEncounter(run)
+    case 'awaitingReward':
+      return claimReward(run, 'mend')
+    case 'awaitingShop':
+      return leaveShop(run)
+    case 'awaitingEvent':
+      return chooseEventOption(run, 'walk-on')
+    case 'awaitingRest':
+      return chooseRestOption(run, 'walk-on')
+    default:
+      throw new Error(`A structural expedition cannot continue from ${run.machineState}`)
+  }
+}
+
+function links(route) {
+  return route.slice(1).map((id, index) => `${route[index]}>${id}`)
+}
+
+const MAP_LINKS = CAMPAIGN_MAP.nodes.flatMap(({ id, next }) => next.map((to) => `${id}>${to}`)).sort()
+
+test('every route alternates fights with other stops, climbs at most two elites, and ends at the boss', () => {
+  assert.equal(ROUTES.length, 24)
+  const tally = { elites: {}, rests: {} }
+  for (const route of ROUTES) {
+    const where = `structural via ${route.join('/')}`
+    const nodes = route.map((id) => getCampaignMapNode(id))
+    assert.deepEqual(nodes.map(({ stage }) => stage), [1, 2, 3, 4, 5, 6, 7])
+    assert.deepEqual(
+      nodes.map(({ kind }) => kind === 'fight'),
+      [true, false, true, false, true, false, true],
+    )
+    const { run } = playLedger(0, route, (current) => structuralStep(current, route), where)
+    assert.deepEqual(run.outcome, { result: 'victory', reason: 'campaignCompleted' })
+    const tiers = nodes
+      .filter(({ kind }) => kind === 'fight')
+      .map(({ contentId }) => getCampaignFight(contentId).tier)
+    assert.equal(tiers[0], 'normal', where)
+    assert.equal(tiers.at(-1), 'boss', where)
+    assert.equal(route.at(-1), CAMPAIGN_FINAL_NODE_ID)
+    const elites = tiers.filter((tier) => tier === 'elite').length
+    const rests = nodes.filter(({ kind }) => kind === 'rest').length
+    tally.elites[elites] = (tally.elites[elites] ?? 0) + 1
+    tally.rests[rests] = (tally.rests[rests] ?? 0) + 1
+  }
+  assert.deepEqual(tally, { elites: { 0: 6, 1: 12, 2: 6 }, rests: { 1: 16, 2: 8 } })
+
+  // The edge-covering routes together use every map link.
+  assert.ok(EDGE_COVERING_ROUTES.every((route) => (
+    ROUTES.some((candidate) => candidate.join() === route.join())
+  )))
+  assert.deepEqual([...new Set(EDGE_COVERING_ROUTES.flatMap(links))].sort(), MAP_LINKS)
+})
+
+// One seed per policy plays every edge-covering route.
+const FULL_PLAY_SEEDS = Object.freeze({ scripted: 12, contrasting: 40 })
+
+test('every map link balances coins, health, cards, modifiers, and RNG draws with a content ledger', () => {
   const outcomes = []
   const coverage = new Set()
-  for (const [policy, seed] of [['scripted', 3], ['contrasting', 0]]) {
-    for (const route of ROUTES) {
-      const { run, ledger, counters } = playExpedition(policy, seed, route)
-      outcomes.push(`${policy} ${route.slice(1, -1).join('/')}: ${run.outcome.result}, ${counters.retries} retries`)
+  const traversed = new Set()
+  for (const [policy, seed] of Object.entries(FULL_PLAY_SEEDS)) {
+    for (const route of EDGE_COVERING_ROUTES) {
+      const { run, ledger, counters } = firstPlay(policy, seed, route)
+      // Every route rests at the sanctum before the boss, so neither is listed.
+      const result = run.outcome.result === 'defeat'
+        ? `defeat at ${ledger.visited.at(-1)}`
+        : run.outcome.result
+      outcomes.push(`${policy} ${route.slice(1, -2).join('/')}: ${result}, ${counters.retries} retries`)
       for (const item of ledger.coverage) coverage.add(item)
+      for (const link of links(ledger.visited)) traversed.add(link)
     }
   }
+  // Each link between stages 3 and 5 lies on one route only, so a play that falls before
+  // the sanctum leaves its later links to the other policy.
+  assert.deepEqual([...traversed].sort(), MAP_LINKS)
   assert.deepEqual(outcomes, [
-    'scripted market/court/bazaar: victory, 0 retries',
-    'scripted market/court/vault: victory, 0 retries',
-    'scripted market/watch/bazaar: victory, 0 retries',
-    'scripted market/watch/vault: victory, 0 retries',
-    'scripted shrine/court/bazaar: victory, 0 retries',
-    'scripted shrine/court/vault: victory, 0 retries',
-    'scripted shrine/watch/bazaar: victory, 0 retries',
-    'scripted shrine/watch/vault: defeat, 0 retries',
-    'contrasting market/court/bazaar: victory, 1 retries',
-    'contrasting market/court/vault: victory, 1 retries',
-    'contrasting market/watch/bazaar: victory, 1 retries',
-    'contrasting market/watch/vault: victory, 1 retries',
-    'contrasting shrine/court/bazaar: victory, 1 retries',
-    'contrasting shrine/court/vault: victory, 1 retries',
-    'contrasting shrine/watch/bazaar: victory, 1 retries',
-    'contrasting shrine/watch/vault: victory, 1 retries',
+    'scripted market/court/bazaar/watch: victory, 1 retries',
+    'scripted shrine/court/vault/night-watch: victory, 2 retries',
+    'scripted market/court/camp/watch: victory, 0 retries',
+    'scripted shrine/high-court/bazaar/night-watch: defeat at night-watch, 1 retries',
+    'scripted market/high-court/vault/watch: defeat at high-court, 1 retries',
+    'scripted shrine/high-court/camp/night-watch: defeat at night-watch, 1 retries',
+    'contrasting market/court/bazaar/watch: defeat at finale, 1 retries',
+    'contrasting shrine/court/vault/night-watch: defeat at night-watch, 2 retries',
+    'contrasting market/court/camp/watch: defeat at finale, 1 retries',
+    'contrasting shrine/high-court/bazaar/night-watch: defeat at night-watch, 3 retries',
+    'contrasting market/high-court/vault/watch: defeat at finale, 2 retries',
+    'contrasting shrine/high-court/camp/night-watch: defeat at finale, 3 retries',
   ])
   assert.deepEqual([...coverage].sort(), [
+    'boss defeat',
+    'boss victory',
     'capped heal',
     'defeat',
+    'elite',
+    'etiquette',
     'event',
     'event bleed-for-fortune',
     'event burn-an-offering',
     'event pay-for-a-copy',
     'event surrender-held-card',
+    'expired modifier',
+    'greater mend',
     'leaveShop',
     'lost fight',
+    'plunder',
     'purchase',
     'purchase add',
     'purchase duplicate',
     'purchase modifier',
     'purchase remove',
     'purchase replace',
+    'rest',
+    'rest cleanse',
+    'rest heal',
+    'rest train',
+    'rest walk-on',
     'retry',
     'reward',
     'reward add',
@@ -411,19 +711,52 @@ test('every expedition route balances coins, health, cards, and modifiers with a
     'reward remove',
     'route',
     'sold out',
+    'spoils',
     'victory',
   ])
 })
 
+test('the RNG ledger rejects a step that draws once more or once less than visible state allows', () => {
+  const samples = new Map()
+  const route = EDGE_COVERING_ROUTES[0]
+  let run = createCampaignRun({
+    runId: 'campaign-expedition-ledger',
+    seed: FULL_PLAY_SEEDS.scripted,
+    ruleset: BASELINE_RULESET,
+  })
+  const counters = createExpeditionCounters()
+  while (samples.size < 4 && run.machineState !== 'ended') {
+    const next = stepExpedition(run, route, counters)
+    const draws = expectedDraws(run, next)
+    const decision = next.journal.length !== run.journal.length
+    const kind = `${decision ? 'decision' : 'fight step'} ${draws > 0 ? 'with' : 'without'} draws`
+    if (!samples.has(kind)) samples.set(kind, [run, next])
+    run = next
+  }
+  assert.deepEqual([...samples.keys()].sort(), [
+    'decision with draws',
+    'decision without draws',
+    'fight step with draws',
+    'fight step without draws',
+  ])
+  for (const [kind, [prev, next]] of samples) {
+    assert.doesNotThrow(() => assertRngStep(prev, next, kind))
+    for (const offset of [1, -1]) {
+      const state = (next.rng.state + offset * 0x6D2B79F5) >>> 0
+      const perturbed = { ...next, rng: { ...next.rng, state } }
+      assert.throws(() => assertRngStep(prev, perturbed, kind), /RNG draws/, `${kind} ${offset}`)
+    }
+  }
+})
+
 test('the same seed, route, and policy replay to an identical expedition', () => {
-  // Seed 3 bleeds at the shrine, surrenders Hold at the vault, and falls at the finale. Seed
-  // 6 drafts Spoils of War at the gate; it expires at the court reward and is bought again
-  // at the bazaar.
+  // The scripted play falls at the High Court elite after one retry; the contrasting play
+  // falls at the Ace Sovereign after one retry.
   for (const [policy, seed, route, highlight] of [
-    ['scripted', 3, ['gate', 'shrine', 'watch', 'vault', 'finale'], 'defeat'],
-    ['contrasting', 6, ['gate', 'market', 'court', 'bazaar', 'finale'], 'expired modifier'],
+    ['scripted', FULL_PLAY_SEEDS.scripted, EDGE_COVERING_ROUTES[4], 'elite'],
+    ['contrasting', FULL_PLAY_SEEDS.contrasting, EDGE_COVERING_ROUTES[0], 'boss defeat'],
   ]) {
-    const first = playExpedition(policy, seed, route)
+    const first = firstPlay(policy, seed, route)
     const second = playExpedition(policy, seed, route)
     assert.deepEqual(second.run, first.run)
     assert.deepEqual(second.counters, first.counters)

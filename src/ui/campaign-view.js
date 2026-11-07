@@ -1,14 +1,18 @@
 import {
   CAMPAIGN_DECK_SIZE_LIMITS,
-  CAMPAIGN_MEND_HEALTH,
+  CAMPAIGN_MEND_HEALTH_BY_TIER,
+  getCampaignArchetype,
   getCampaignFight,
   getCampaignNodeEvent,
+  getCampaignRestSite,
   getCampaignShop,
 } from '../domain/campaign-content.js'
 import { applyJournalEntry, createJournalReplay } from '../domain/campaign-journal.js'
 import {
   getCampaignEventOptions,
   getCampaignEventTargets,
+  getCampaignRestOptions,
+  getCampaignRestTargets,
   getCampaignRewardOffers,
   getCampaignRewardTargets,
   getCampaignShopOffers,
@@ -19,7 +23,7 @@ import {
   getCampaignMapNode,
   getCampaignNodeContent,
 } from '../domain/campaign-map.js'
-import { getCampaignModifier } from '../domain/campaign-modifiers.js'
+import { encounterTraitIds, getCampaignModifier } from '../domain/campaign-modifiers.js'
 import { getCard } from '../domain/cards.js'
 
 // Display-only text for Campaign overlays. Every value is derived from a validated,
@@ -50,7 +54,8 @@ function nodeName(nodeId) {
   return getCampaignNodeContent(getCampaignMapNode(nodeId)).name
 }
 
-const NODE_KIND_TEXT = Object.freeze({ fight: 'Fight', shop: 'Shop', event: 'Event' })
+const NODE_KIND_TEXT = Object.freeze({ shop: 'Shop', event: 'Event', rest: 'Rest' })
+const FIGHT_TIER_TEXT = Object.freeze({ normal: 'Fight', elite: 'Elite fight', boss: 'Boss fight' })
 const NODE_STATE_TEXT = Object.freeze({
   locked: 'Locked',
   available: 'Available',
@@ -60,7 +65,9 @@ const NODE_STATE_TEXT = Object.freeze({
 })
 
 function nodeKindText(node) {
-  return node.kind === 'fight' && node.next.length === 0 ? 'Final fight' : NODE_KIND_TEXT[node.kind]
+  return node.kind === 'fight'
+    ? FIGHT_TIER_TEXT[getCampaignFight(node.contentId).tier]
+    : NODE_KIND_TEXT[node.kind]
 }
 
 export function activeNodeId(match) {
@@ -137,14 +144,19 @@ function modifierText(modifierId) {
   return { title: `Modifier: ${modifier.name}`, detail: modifier.description }
 }
 
+function mendTitle(tier) {
+  return tier === 'elite' ? 'Greater Mend' : 'Mend'
+}
+
 function offerText(match, offer) {
   if (offer.kind === 'modifier') return modifierText(offer.modifierId)
   if (offer.kind !== 'mend') return deckEditText(offer.kind, offer.cardId)
+  const title = mendTitle(match.encounter.tier)
   return {
-    title: 'Mend',
+    title,
     detail: match.health < match.maxHealth
-      ? `Restore ${CAMPAIGN_MEND_HEALTH} health (now ${match.health}/${match.maxHealth}) and keep your deck unchanged.`
-      : 'Your health is full. Choose Mend to keep your deck unchanged.',
+      ? `Restore ${CAMPAIGN_MEND_HEALTH_BY_TIER[match.encounter.tier]} health (now ${match.health}/${match.maxHealth}) and keep your deck unchanged.`
+      : `Your health is full. Choose ${title} to keep your deck unchanged.`,
   }
 }
 
@@ -268,70 +280,140 @@ function eventOptionText(option, match, cards) {
   return `${capitalize(costs.join(', ') || 'no cost')} → ${gains.join(', ') || 'nothing'}.`
 }
 
+function expeditionSummary(match, cards = cardIdsByInstance(match)) {
+  return [
+    `Health ${match.health}/${match.maxHealth}`,
+    `Coins ${match.currency}`,
+    `Deck ${deckSize(match)} cards`,
+    heldCardText(match, cards),
+  ]
+}
+
+// Event and rest options share one rendering; only the text of each option differs.
+function nodeOptionViews(options, textFor) {
+  return options.map((option) => {
+    const text = textFor(option)
+    return {
+      optionId: option.optionId,
+      title: option.label,
+      detail: option.blocker === null ? text : `${text} ${blockerText(option.blocker)}`,
+      available: option.blocker === null,
+      reason: option.blocker,
+      needsTarget: option.deckEdit !== null
+        && TARGET_HEADINGS[option.deckEdit.kind] !== undefined,
+      surrenderHold: option.surrenderHold,
+    }
+  })
+}
+
+function nodeOptionTargetView(match, options, optionId, targets) {
+  const option = options.find((candidate) => candidate.optionId === optionId)
+  return targetView(
+    match,
+    TARGET_HEADINGS[option.deckEdit.kind](option.deckEdit.cardId),
+    targets,
+  )
+}
+
 export function eventView(match) {
   const event = getCampaignNodeEvent(match.nodeEvent.eventId)
   const cards = cardIdsByInstance(match)
   return {
     title: event.name,
     description: event.description,
-    summary: [
-      `Health ${match.health}/${match.maxHealth}`,
-      `Coins ${match.currency}`,
-      `Deck ${deckSize(match)} cards`,
-      heldCardText(match, cards),
-    ],
-    options: getCampaignEventOptions(match).map((option) => {
-      const text = eventOptionText(option, match, cards)
-      return {
-        optionId: option.optionId,
-        title: option.label,
-        detail: option.blocker === null ? text : `${text} ${blockerText(option.blocker)}`,
-        available: option.blocker === null,
-        reason: option.blocker,
-        needsTarget: option.deckEdit !== null
-          && TARGET_HEADINGS[option.deckEdit.kind] !== undefined,
-        surrenderHold: option.surrenderHold,
-      }
-    }),
+    summary: expeditionSummary(match, cards),
+    options: nodeOptionViews(
+      getCampaignEventOptions(match),
+      (option) => eventOptionText(option, match, cards),
+    ),
     modifiers: activeModifierLines(match),
   }
 }
 
 export function eventTargetView(match, optionId) {
-  const option = getCampaignEventOptions(match).find((candidate) => (
-    candidate.optionId === optionId
-  ))
-  return targetView(
+  return nodeOptionTargetView(
     match,
-    TARGET_HEADINGS[option.deckEdit.kind](option.deckEdit.cardId),
+    getCampaignEventOptions(match),
+    optionId,
     getCampaignEventTargets(match, optionId),
   )
 }
 
-function fightDetail(fight) {
+// Rest options cost nothing: each restores health or edits the deck. Resting at full
+// health is allowed and changes nothing, which the option says as Mend does.
+function restOptionText(option, match) {
+  if (option.healthGain > 0) {
+    return match.health < match.maxHealth
+      ? `Restore ${option.healthGain} health (now ${match.health}/${match.maxHealth}).`
+      : 'Your health is full. Resting here restores nothing.'
+  }
+  if (option.deckEdit !== null) {
+    return deckEditText(option.deckEdit.kind, option.deckEdit.cardId).detail
+  }
+  return 'Leave without changing anything.'
+}
+
+export function restView(match) {
+  const site = getCampaignRestSite(match.restSite.siteId)
+  return {
+    title: site.name,
+    description: site.description,
+    summary: expeditionSummary(match),
+    options: nodeOptionViews(
+      getCampaignRestOptions(match),
+      (option) => restOptionText(option, match),
+    ),
+    modifiers: activeModifierLines(match),
+  }
+}
+
+export function restTargetView(match, optionId) {
+  return nodeOptionTargetView(
+    match,
+    getCampaignRestOptions(match),
+    optionId,
+    getCampaignRestTargets(match, optionId),
+  )
+}
+
+function traitText(traitId) {
+  const trait = getCampaignModifier(traitId)
+  return `${trait.name}: ${trait.description}`
+}
+
+const FIGHT_REWARD_TEXT = Object.freeze({
+  normal: null,
+  elite: 'Elite reward: a high card or Greater Mend.',
+  boss: 'Defeat to complete the expedition.',
+})
+
+// The archetype, damage, and bounty, then the node state, the reward tier, and every
+// trait that applies under this run's rules.
+function fightDetail(fight, match, kind, state) {
   const bounty = fight.bounty > 0 ? ` · ${fight.bounty}-coin bounty` : ''
-  return `${fight.damage} damage on a loss${bounty}`
+  const summary = `${kind} · ${getCampaignArchetype(fight.archetypeId).name} archetype · ${fight.damage} damage on a loss${bounty} · ${state}`
+  const notes = [
+    FIGHT_REWARD_TEXT[fight.tier],
+    ...encounterTraitIds(fight, match.ruleset).map(traitText),
+  ].filter((note) => note !== null)
+  return notes.length === 0 ? summary : `${summary}. ${notes.join(' ')}`
 }
 
 export function routeMapView(match) {
   return {
     title: `Route map · Stage ${routeProgressText(match)}`,
     description: 'Choose your next stop. Paths you leave behind close for this run.',
-    summary: [
-      `Health ${match.health}/${match.maxHealth}`,
-      `Coins ${match.currency}`,
-      `Deck ${deckSize(match)} cards`,
-      heldCardText(match),
-    ],
+    summary: expeditionSummary(match),
     nodes: match.route.nodes.map(({ id, state }) => {
       const node = getCampaignMapNode(id)
       const content = getCampaignNodeContent(node)
       const kind = nodeKindText(node)
-      const detail = node.kind === 'fight' ? `${kind} · ${fightDetail(content)}` : kind
       return {
         nodeId: id,
         title: `Stage ${node.stage} · ${content.name}`,
-        detail: `${detail} · ${NODE_STATE_TEXT[state]}`,
+        detail: node.kind === 'fight'
+          ? fightDetail(content, match, kind, NODE_STATE_TEXT[state])
+          : `${kind} · ${NODE_STATE_TEXT[state]}`,
         state,
         available: state === 'available',
       }
@@ -347,22 +429,38 @@ function deckEditLogText(kind, cardId, targetCardId) {
   return `replaced ${cardText(targetCardId)} with ${cardText(cardId)}`
 }
 
-function rewardLogText(entry, targetCardId) {
+function rewardLogText(entry, targetCardId, fight) {
   if (entry.kind === 'modifier') return `gained ${getCampaignModifier(entry.modifierId).name}`
-  if (entry.kind === 'mend') return 'chose Mend'
+  if (entry.kind === 'mend') return `chose ${mendTitle(fight.tier)}`
   return deckEditLogText(entry.kind, entry.cardId, targetCardId)
 }
 
-function journalLine(entry, targetCardId) {
+function restLogText(option, targetCardId, healed) {
+  if (option.deckEdit !== null) {
+    return deckEditLogText(option.deckEdit.kind, option.deckEdit.cardId, targetCardId)
+  }
+  if (option.healthGain > 0) {
+    return healed > 0 ? `rested and restored ${healed} health` : 'rested at full health'
+  }
+  return 'walked on'
+}
+
+// `healed` is the health the entry restored, which the rest line reports.
+function journalLine(entry, targetCardId, healed) {
   const node = getCampaignMapNode(entry.nodeId)
   const name = nodeName(entry.nodeId)
   if (entry.type === 'route') return `Stage ${node.stage}: entered ${name}`
   if (entry.type === 'retry') return `${name}: retried the encounter`
   if (entry.type === 'leaveShop') return `${name}: left the shop`
   if (entry.type === 'reward') {
-    const { bounty } = getCampaignNodeContent(node)
-    const paid = bounty > 0 ? ` and collected ${coinText(bounty)}` : ''
-    return `${name}: ${rewardLogText(entry, targetCardId)}${paid}`
+    const fight = getCampaignNodeContent(node)
+    const paid = fight.bounty > 0 ? ` and collected ${coinText(fight.bounty)}` : ''
+    return `${name}: ${rewardLogText(entry, targetCardId, fight)}${paid}`
+  }
+  if (entry.type === 'rest') {
+    const option = getCampaignRestSite(node.contentId).options
+      .find(({ id }) => id === entry.optionId)
+    return `${name}: ${restLogText(option, targetCardId, healed)}`
   }
   if (entry.type === 'purchase') {
     const bought = entry.kind === 'modifier'
@@ -376,16 +474,17 @@ function journalLine(entry, targetCardId) {
   return `${name}: ${option.label}${target}`
 }
 
-// Replays the validated journal only to name each decision's target card.
+// Replays the validated journal only to name each decision's target card and the health
+// each rest restored.
 export function expeditionLogLines(match) {
   const replay = createJournalReplay({ seed: match.rng.seed, ruleset: match.ruleset })
   return match.journal.map((entry, index) => {
     const target = replay.playerCards.find(({ instanceId }) => (
       instanceId === entry.targetInstanceId
     ))
-    const line = journalLine(entry, target?.cardId ?? null)
+    const healthBefore = replay.health
     applyJournalEntry(replay, entry, index)
-    return line
+    return journalLine(entry, target?.cardId ?? null, replay.health - healthBefore)
   })
 }
 
@@ -394,6 +493,11 @@ function routeLines(match) {
     const node = getCampaignMapNode(id)
     return `Stage ${node.stage} · ${nodeName(id)} (${nodeKindText(node)}): ${NODE_STATE_TEXT[state]}`
   })
+}
+
+// The opponent traits of the current encounter. Only elite fights carry traits.
+export function encounterTraitLines(match) {
+  return (match.encounter?.traitIds ?? []).map(traitText)
 }
 
 export function campaignInspectView(match) {
@@ -407,8 +511,17 @@ export function campaignInspectView(match) {
     ],
     route: routeLines(match),
     modifiers: activeModifierLines(match),
+    traits: encounterTraitLines(match),
     log: expeditionLogLines(match),
   }
+}
+
+// Notes for the encounter's traits that narrow which cards Hold can capture.
+export function holdCaptureNotes(match) {
+  return (match.encounter?.traitIds ?? [])
+    .map(getCampaignModifier)
+    .filter(({ effect }) => effect.type === 'capture-ranks')
+    .map(({ name, effect }) => `${name}: Hold can capture only a ${effect.ranks[0]}–${effect.ranks.at(-1)}`)
 }
 
 // The nodes the run entered, in route order, for the end-of-campaign summary.

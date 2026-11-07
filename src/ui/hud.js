@@ -8,7 +8,7 @@ import { createAutoRevealCoordinator } from '../app/auto-reveal-coordinator.js'
 import { createEventPlayer } from '../presentation/event-player.js'
 import { createInputController } from '../presentation/input.js'
 import { getCard } from '../domain/cards.js'
-import { getCampaignNodeEvent } from '../domain/campaign-content.js'
+import { getCampaignNodeEvent, getCampaignRestSite } from '../domain/campaign-content.js'
 import { deckEditRequiresTarget } from '../domain/campaign-deck.js'
 import {
   CAMPAIGN_HOLD_DECISION_STATES,
@@ -20,7 +20,10 @@ import {
   campaignInspectView,
   eventTargetView,
   eventView,
+  holdCaptureNotes,
   informedChoiceLines,
+  restTargetView,
+  restView,
   rewardDraftView,
   rewardTargetView,
   routeMapView,
@@ -33,13 +36,19 @@ import {
 const ACTIVE_PRESENTATION_STATUSES = new Set(['queued', 'playing', 'paused'])
 const RENDER_CONTEXT_STATUSES = new Set(['ready', 'lost', 'restoring', 'failed'])
 // Campaign boundaries between encounters, each with its own overlay.
-const CAMPAIGN_NODE_STATES = Object.freeze(['awaitingRoute', 'awaitingShop', 'awaitingEvent'])
+const CAMPAIGN_NODE_STATES = Object.freeze([
+  'awaitingRoute',
+  'awaitingShop',
+  'awaitingEvent',
+  'awaitingRest',
+])
 const CAMPAIGN_INSPECT_STATES = Object.freeze(['ready', 'paused', ...CAMPAIGN_NODE_STATES])
 // The machine state at which each kind of deck-target picker is valid.
 const TARGET_PICKER_STATES = Object.freeze({
   reward: 'awaitingReward',
   shop: 'awaitingShop',
   event: 'awaitingEvent',
+  rest: 'awaitingRest',
 })
 const BOUNDARY_SAVE_FAILURES = Object.freeze({
   awaitingRetry: 'The lost encounter could not be saved. Try again.',
@@ -47,6 +56,7 @@ const BOUNDARY_SAVE_FAILURES = Object.freeze({
   awaitingRoute: 'The route map could not be saved. Try again.',
   awaitingShop: 'The shop could not be saved. Try again.',
   awaitingEvent: 'The event could not be saved. Try again.',
+  awaitingRest: 'The rest site could not be saved. Try again.',
 })
 const NO_AUTO_REVEAL_COORDINATOR = Object.freeze({
   continueAfterPresentation: () => Promise.resolve(null),
@@ -760,6 +770,15 @@ export function createGameScreen({
       targetInstanceId,
     }),
   )
+  const commitRestOption = (optionId, targetInstanceId) => commitDecision(
+    'rest choice',
+    'The rest option could not be chosen. Try again.',
+    (boundary) => runController?.chooseRestOption({
+      ...nodeDecision(boundary),
+      optionId,
+      targetInstanceId,
+    }),
+  )
   const handleRewardOffer = (offerId) => {
     if (!decisionSelectable('awaitingReward')) return
     const offer = latestSnapshot.match.pendingReward.offers
@@ -819,6 +838,17 @@ export function createGameScreen({
     // Surrendering Hold always names the held card; no picker is needed.
     commitEventOption(optionId, option.surrenderHold ? match.hold : null)
   }
+  const handleRestOption = (optionId) => {
+    if (!decisionSelectable('awaitingRest')) return
+    const option = getCampaignRestSite(latestSnapshot.match.restSite.siteId).options
+      .find((candidate) => candidate.id === optionId)
+    if (option === undefined) return
+    if (option.deckEdit !== null && deckEditRequiresTarget(option.deckEdit.kind)) {
+      openTargetPicker('rest', optionId)
+      return
+    }
+    commitRestOption(optionId, null)
+  }
   const handleDecisionTarget = (instanceId) => {
     if (pendingTarget === null || !decisionSelectable(TARGET_PICKER_STATES[pendingTarget.kind])) {
       return
@@ -826,6 +856,7 @@ export function createGameScreen({
     const { kind, id } = pendingTarget
     if (kind === 'reward') commitReward(id, instanceId)
     else if (kind === 'shop') commitPurchase(id, instanceId)
+    else if (kind === 'rest') commitRestOption(id, instanceId)
     else commitEventOption(id, instanceId)
   }
   const handleTargetBack = () => {
@@ -876,6 +907,7 @@ export function createGameScreen({
     onBuyItem: handleShopItem,
     onLeaveShop: handleLeaveShop,
     onChooseEventOption: handleEventOption,
+    onChooseRestOption: handleRestOption,
     onInspect: handleOverlayInspect,
     onMainMenu: handleEndMain,
     onRestart: handleRestart,
@@ -1158,6 +1190,8 @@ export function createGameScreen({
       message = 'Buy from the shop, or leave to continue.'
     } else if (match.machineState === 'awaitingEvent') {
       message = 'Choose an event option to continue.'
+    } else if (match.machineState === 'awaitingRest') {
+      message = 'Choose a rest option to continue.'
     } else if (isCampaignState(match) && match.status === 'ended') {
       message = match.outcome.result === 'victory'
         ? 'Campaign complete. The final encounter is won.'
@@ -1271,7 +1305,7 @@ export function createGameScreen({
           label: `${card.rank}${card.suit} · ${pile} pile ${target.index + 1}`,
         }
       })
-      return { mode: 'hold-capture', targets }
+      return { mode: 'hold-capture', targets, view: { notes: holdCaptureNotes(match) } }
     }
     if (inspectOpen && CAMPAIGN_INSPECT_STATES.includes(match.machineState)) {
       return { mode: 'inspect', targets: [], view: campaignInspectView(match) }
@@ -1302,6 +1336,12 @@ export function createGameScreen({
       return optionId === null
         ? { mode: 'event', targets: [], view: eventView(match) }
         : { mode: 'event-target', targets: [], view: eventTargetView(match, optionId) }
+    }
+    if (match.machineState === 'awaitingRest') {
+      const optionId = targetPickerFor('rest', match)
+      return optionId === null
+        ? { mode: 'rest', targets: [], view: restView(match) }
+        : { mode: 'rest-target', targets: [], view: restTargetView(match, optionId) }
     }
     if (
       ['awaitingRetry', 'awaitingReward', 'ended'].includes(match.machineState)

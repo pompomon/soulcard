@@ -8,18 +8,24 @@ import {
   assertCampaignJournalShape,
   replayCampaignJournal,
 } from '../../src/domain/campaign-journal.js'
-import { chooseCampaignEventOption, createCampaignRun } from '../../src/domain/campaign-machine.js'
+import {
+  chooseCampaignEventOption,
+  createCampaignRun,
+  getCampaignRestTargets,
+} from '../../src/domain/campaign-machine.js'
 import { completeRouteNode, getCampaignMapNode } from '../../src/domain/campaign-map.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import {
   EXPEDITION_PLANS,
   activeNodeId,
+  chooseRestOption,
   chooseRoute,
   claimReward,
   createExpeditionCounters,
   holdCard,
   loseEncounter,
   passThrough,
+  restFixtureRun,
   retryEncounter,
   startCampaign,
   stepExpedition,
@@ -31,6 +37,7 @@ const STATE_FOR_PHASE = Object.freeze({
   fight: 'ready',
   shop: 'awaitingShop',
   event: 'awaitingEvent',
+  rest: 'awaitingRest',
 })
 
 function gate(runId = 'campaign-journal') {
@@ -51,6 +58,10 @@ function nodeEntry(type, nodeId) {
 
 function event(nodeId, optionId, targetInstanceId = null, createdInstanceId = null) {
   return { type: 'event', nodeId, optionId, targetInstanceId, createdInstanceId }
+}
+
+function rest(nodeId, optionId, targetInstanceId = null, createdInstanceId = null) {
+  return { type: 'rest', nodeId, optionId, targetInstanceId, createdInstanceId }
 }
 
 function purchaseOf(item, nodeId, targetInstanceId = null, createdInstanceId = null) {
@@ -94,9 +105,16 @@ function assertReplayMatches(run) {
 }
 
 test('journal entries have fixed types and exact keys', () => {
-  assert.deepEqual(JOURNAL_ENTRY_TYPES, ['route', 'retry', 'reward', 'purchase', 'leaveShop', 'event'])
+  assert.deepEqual(
+    JOURNAL_ENTRY_TYPES,
+    ['route', 'retry', 'reward', 'purchase', 'leaveShop', 'event', 'rest'],
+  )
   assert.deepEqual(Object.keys(JOURNAL_ENTRY_KEYS), JOURNAL_ENTRY_TYPES)
-  assert.deepEqual(JOURNAL_PHASES, ['route', 'fight', 'shop', 'event'])
+  assert.deepEqual(
+    JOURNAL_ENTRY_KEYS.rest,
+    ['type', 'nodeId', 'optionId', 'targetInstanceId', 'createdInstanceId'],
+  )
+  assert.deepEqual(JOURNAL_PHASES, ['route', 'fight', 'shop', 'event', 'rest'])
 
   const reward = {
     type: 'reward',
@@ -120,6 +138,7 @@ test('journal entries have fixed types and exact keys', () => {
     createdInstanceId: 'player-027',
   }
   const walkOn = event('shrine', 'walk-on')
+  const trained = rest('camp', 'train', 'player-002', 'player-027')
   const valid = [
     route('gate'),
     nodeEntry('retry', 'gate'),
@@ -128,6 +147,7 @@ test('journal entries have fixed types and exact keys', () => {
     purchase,
     nodeEntry('leaveShop', 'market'),
     walkOn,
+    trained,
   ]
   assert.equal(assertCampaignJournalShape(valid), valid)
   assert.deepEqual(assertCampaignJournalShape([]), [])
@@ -163,9 +183,15 @@ test('journal entries have fixed types and exact keys', () => {
     ['a string price', [{ ...purchase, price: '3' }], /price must be a nonnegative safe integer/],
     ['an empty option', [{ ...walkOn, optionId: '' }], /optionId must be a nonempty trimmed string/],
     ['a numeric target', [{ ...walkOn, targetInstanceId: 7 }], /targetInstanceId must be a nonempty trimmed string/],
+    ['an empty rest option', [{ ...trained, optionId: '' }], /optionId must be a nonempty trimmed string/],
+    ['a rest without its created card', [{ type: 'rest', nodeId: 'camp', optionId: 'rest', targetInstanceId: null }],
+      /\[0\] must contain only type, nodeId, optionId, targetInstanceId, createdInstanceId/],
+    ['a rest with an item', [{ ...trained, itemId: 'card-1' }], /must contain only type, nodeId, optionId/],
+    ['an untrimmed rest target', [{ ...trained, targetInstanceId: 'player-002 ' }],
+      /targetInstanceId must be a nonempty trimmed string/],
     ['an untrimmed card', [{ ...purchase, cardId: ' c-3S' }], /\[0\]\.cardId must be a nonempty trimmed string/],
     ['an empty created card', [{ ...purchase, createdInstanceId: '' }], /createdInstanceId must be a nonempty/],
-    ['a later bad entry', [...valid, { ...walkOn, nodeId: 4 }], /campaign\.journal\[7\]\.nodeId/],
+    ['a later bad entry', [...valid, { ...walkOn, nodeId: 4 }], /campaign\.journal\[8\]\.nodeId/],
   ]
   for (const [name, journal, message] of cases) {
     assert.throws(() => assertCampaignJournalShape(journal), message, name)
@@ -176,7 +202,7 @@ test('journal entries have fixed types and exact keys', () => {
 test('replay rebuilds the live run after every decision of scripted expeditions', () => {
   const recorded = new Set()
   const outcomes = []
-  for (const [seed, plan] of [[0, 'market'], [6, 'shrine'], [1, 'soldOut'], [2, 'market']]) {
+  for (const [seed, plan] of [[0, 'market'], [7, 'shrine'], [1, 'soldOut'], [2, 'market']]) {
     let run = createCampaignRun({ runId: `campaign-journal-${seed}`, seed, ruleset: BASELINE_RULESET })
     const counters = createExpeditionCounters()
     let decisions = 0
@@ -207,8 +233,8 @@ test('replay rebuilds the live run after every decision of scripted expeditions'
     outcomes.push([seed, plan, run.outcome.result, decisions === run.journal.length])
   }
   assert.deepEqual(outcomes, [
-    [0, 'market', 'victory', true],
-    [6, 'shrine', 'victory', true],
+    [0, 'market', 'defeat', true],
+    [7, 'shrine', 'victory', true],
     [1, 'soldOut', 'victory', true],
     [2, 'market', 'defeat', true],
   ])
@@ -240,7 +266,14 @@ test('replay rejects entries that were not legal at their point in the run', () 
     while (run.machineState !== 'ended') run = stepExpedition(run, EXPEDITION_PLANS.market, counters)
     return run
   })()
-  assert.deepEqual(finished.journal.at(-1), route('finale'))
+  assert.deepEqual(finished.journal.at(-1), nodeEntry('retry', 'finale'))
+  assert.equal(replay(finished.journal).phase, 'fight')
+  const camp = restFixtureRun()
+  assert.deepEqual(camp.journal.at(-1), route('camp'))
+  const campStep = camp.journal.length
+  const trainTarget = getCampaignRestTargets(camp, 'train')[0].instanceId
+  const trained = chooseRestOption(camp, 'train', trainTarget).journal.at(-1)
+  assert.match(trained.createdInstanceId, /^player-\d{3}$/)
 
   const cases = [
     ['an unknown node', [route('moon')], /entry 0 names an unknown route node/],
@@ -271,7 +304,7 @@ test('replay rejects entries that were not legal at their point in the run', () 
     ['an untargeted removal', [route('gate'), { ...removed, targetInstanceId: null }],
       /must target an eligible player card/],
     ['a reward for the final fight', [...finished.journal, { ...base[1], nodeId: 'finale' }],
-      new RegExp(`entry ${finished.journal.length} claims a reward for the final fight`)],
+      new RegExp(`entry ${finished.journal.length} claims a reward for the boss, which offers none`)],
     ['an unknown item', [...market.journal, purchaseOf({ ...stock['card-1'], itemId: 'card-9' }, 'market')],
       /entry 3 must match its regenerated shop stock/],
     ['another price', [...market.journal, purchaseOf({ ...stock['card-1'], price: 2 }, 'market')],
@@ -303,9 +336,40 @@ test('replay rejects entries that were not legal at their point in the run', () 
       /entry 3 must not record a created card/],
     ['an untargeted burn', [...base, route('shrine'), event('shrine', 'burn-an-offering')],
       /entry 3 must target an eligible player card/],
+    ['a rest at the shrine', [...base, route('shrine'), rest('shrine', 'walk-on')],
+      /entry 3 must act on the active rest node/],
   ]
   for (const [name, journal, message] of cases) {
     assert.throws(() => replay(journal), message, name)
+  }
+
+  // The camp fixture follows its own seed, so its cases replay with that seed.
+  const campCases = [
+    ['an event at the camp', [...camp.journal, event('camp', 'walk-on')],
+      new RegExp(`entry ${campStep} must act on the active event node`)],
+    ['leaving the camp like a shop', [...camp.journal, nodeEntry('leaveShop', 'camp')],
+      new RegExp(`entry ${campStep} must act on the active shop node`)],
+    ['an unknown rest option', [...camp.journal, rest('camp', 'pray')],
+      new RegExp(`entry ${campStep} must choose an option of its rest site`)],
+    ['a sanctum option at the camp', [...camp.journal, rest('camp', 'cleanse', trainTarget)],
+      /must choose an option of its rest site/],
+    ['a target on a rest', [...camp.journal, rest('camp', 'rest', trainTarget)],
+      new RegExp(`entry ${campStep} must not record a target`)],
+    ['a card from a rest', [...camp.journal, rest('camp', 'rest', null, trained.createdInstanceId)],
+      new RegExp(`entry ${campStep} must not record a created card`)],
+    ['an untargeted training', [...camp.journal, rest('camp', 'train')],
+      new RegExp(`entry ${campStep} must target an eligible player card`)],
+    ['a training without its copy', [...camp.journal, { ...trained, createdInstanceId: null }],
+      new RegExp(`entry ${campStep} must record the next player instance ID`)],
+    ['a training at the sanctum', [...camp.journal, { ...trained, nodeId: 'sanctum' }],
+      new RegExp(`entry ${campStep} must act on the active rest node`)],
+  ]
+  for (const [name, journal, message] of campCases) {
+    assert.throws(
+      () => replayCampaignJournal({ seed: camp.rng.seed, ruleset: camp.ruleset, journal }),
+      message,
+      name,
+    )
   }
 
   const bought = replay([

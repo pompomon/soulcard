@@ -286,14 +286,29 @@ function appendTargets(host, view, dataKey, onChooseTarget, enabled) {
   }
 }
 
-// Route, shop, and event boundaries offer Run details and, once saved, the main menu,
-// because the rest of the HUD is unavailable while their overlay is open.
-const NODE_MODES = new Set(['route-map', 'shop', 'event'])
+// Route, shop, event, and rest boundaries offer Run details and, once saved, the main
+// menu, because the rest of the HUD is unavailable while their overlay is open.
+const NODE_MODES = new Set(['route-map', 'shop', 'event', 'rest'])
 
 const TARGET_DATA_KEYS = Object.freeze({
   'reward-target': 'rewardTarget',
   'shop-target': 'shopTarget',
   'event-target': 'eventTarget',
+  'rest-target': 'restTarget',
+})
+
+// Event and rest sites list their options the same way.
+const NODE_OPTION_MODES = Object.freeze({
+  event: {
+    idPrefix: 'campaign-event',
+    dataKey: 'eventOption',
+    unsaved: 'An option can be chosen once this event is saved.',
+  },
+  rest: {
+    idPrefix: 'campaign-rest',
+    dataKey: 'restOption',
+    unsaved: 'An option can be chosen once this rest site is saved.',
+  },
 })
 
 function capitalize(text) {
@@ -323,6 +338,7 @@ export function createCampaignOverlay({
   onBuyItem,
   onLeaveShop,
   onChooseEventOption,
+  onChooseRestOption,
   onInspect,
   onMainMenu,
   onRestart,
@@ -342,6 +358,7 @@ export function createCampaignOverlay({
     onBuyItem,
     onLeaveShop,
     onChooseEventOption,
+    onChooseRestOption,
     onInspect,
     onMainMenu,
     onRestart,
@@ -434,6 +451,7 @@ export function createCampaignOverlay({
         button.disabled = options.busy
         choiceHost.append(button)
       }
+      if (view.notes.length > 0) appendLineSection(detailHost, 'Opponent traits', view.notes)
       buttons.cancel.hidden = false
       buttons.cancel.disabled = options.busy
     } else if (mode === 'retry') {
@@ -522,19 +540,18 @@ export function createCampaignOverlay({
       appendLineSection(detailHost, 'Active modifiers', view.modifiers)
       buttons.leave.hidden = false
       buttons.leave.disabled = options.busy || !boundarySaved
-    } else if (mode === 'event') {
+    } else if (NODE_OPTION_MODES[mode] !== undefined) {
+      const { idPrefix, dataKey, unsaved } = NODE_OPTION_MODES[mode]
       heading.textContent = view.title
-      description.textContent = boundarySaved
-        ? view.description
-        : 'An option can be chosen once this event is saved.'
+      description.textContent = boundarySaved ? view.description : unsaved
       for (const option of view.options) {
         appendChoice(choiceHost, {
           title: option.title,
           detail: option.detail,
-          idPrefix: 'campaign-event',
+          idPrefix,
           id: option.optionId,
-          dataKey: 'eventOption',
-          onChoose: onChooseEventOption,
+          dataKey,
+          onChoose: mode === 'event' ? onChooseEventOption : onChooseRestOption,
           enabled: !options.busy && boundarySaved && option.available,
         })
       }
@@ -556,6 +573,7 @@ export function createCampaignOverlay({
       description.textContent = view.summary.join(' · ')
       appendLineSection(detailHost, 'Route', view.route)
       appendLineSection(detailHost, 'Active modifiers', view.modifiers)
+      if (view.traits.length > 0) appendLineSection(detailHost, 'Opponent traits', view.traits)
       appendLineSection(detailHost, 'Expedition log', view.log, {
         ordered: true,
         emptyText: 'No decisions recorded yet.',
@@ -565,7 +583,7 @@ export function createCampaignOverlay({
     } else if (mode === 'campaign-end') {
       heading.textContent = match.outcome.result === 'victory' ? 'Campaign victory' : 'Campaign defeat'
       description.textContent = match.outcome.result === 'victory'
-        ? 'You won the final encounter of the expedition.'
+        ? 'You defeated the Ace Sovereign and completed the expedition.'
         : 'Your health was depleted. Start a new campaign to try again.'
       appendLineSection(detailHost, 'Expedition', [view.route])
       buttons.main.hidden = false

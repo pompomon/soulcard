@@ -291,17 +291,17 @@ async function openTargets(selector, targetSelector, name) {
 
 async function run() {
   const fixtures = {
-    route: await loadFixture('campaign-save-route-v6.json'),
-    event: await loadFixture('campaign-save-event-v6.json'),
-    exhausted: await loadFixture('campaign-save-shop-exhausted-v6.json'),
+    route: await loadFixture('campaign-save-route-v7.json'),
+    event: await loadFixture('campaign-save-event-v7.json'),
+    exhausted: await loadFixture('campaign-save-shop-exhausted-v7.json'),
   }
 
   // Route map: only available nodes are buttons, and closed nodes say why.
   let app = await mountApp(fixtures.route, 'route map')
-  await waitForBoundary(app, 'Route map · Stage 2/5', 'restored route map')
+  await waitForBoundary(app, 'Route map · Stage 2/7', 'restored route map')
   const dialog = dialogSemantics()
   assert(dialog.role === 'dialog' && dialog.modal === 'true', 'Route map must be a modal dialog')
-  assert(dialog.label === 'Route map · Stage 2/5', 'Route map must be labelled by its heading')
+  assert(dialog.label === 'Route map · Stage 2/7', 'Route map must be labelled by its heading')
   const stage2Nodes = choiceRows('#app [data-route-node]', 'routeNode')
   const nodeStates = new Map(app.runSnapshot.match.route.nodes.map(({ id, state }) => [id, state]))
   assert(stage2Nodes.length === nodeStates.size, 'Route map must list every node')
@@ -315,13 +315,14 @@ async function run() {
     sameJson(availableNodeIds(stage2Nodes), ['market', 'shrine']),
     'The won start fight must open both stage-2 paths',
   )
+  // Elite and boss details add a sentence after the node state.
   assert(
     stage2Nodes.filter(({ button }) => !button).every(({ detail }) => (
-      detail.endsWith('· Completed') || detail.endsWith('· Locked')
+      / · (Completed|Locked)(\.|$)/.test(detail)
     )),
     'Closed nodes must state why they cannot be chosen',
   )
-  assert(metricText('campaign-route') === '2/5', 'Route metric must show stage 2')
+  assert(metricText('campaign-route') === '2/7', 'Route metric must show stage 2')
   checkVisibleControls('Route map')
   const routeButtons = visibleOverlayButtonLabels()
   const market = query('#app button[data-route-node="market"]', 'Wayside Market route')
@@ -434,23 +435,23 @@ async function run() {
     sameJson(leaveFailure.buttons, ['Retry save', 'Main Menu']),
     'A failed exit save must offer only Retry save and Main Menu',
   )
-  assert(leaveFailure.route === '2/5', 'The next stage must stay hidden until the exit saves')
+  assert(leaveFailure.route === '2/7', 'The next stage must stay hidden until the exit saves')
   assert(document.querySelector('#app [data-route-node]') === null, 'The map must stay hidden')
   checkVisibleControls('Failed shop exit save')
   const retrySave = query('#app [data-action="campaign-save"]', 'Retry save action')
   assertButton(retrySave, 'Retry save')
   retrySave.click()
-  await waitForBoundary(app, 'Route map · Stage 3/5', 'saved stage-3 route map')
+  await waitForBoundary(app, 'Route map · Stage 3/7', 'saved stage-3 route map')
 
   // Reload at the route boundary, then review the log in Run details.
   app = await remount(app, storage.record, 'saved route map')
-  await waitForBoundary(app, 'Route map · Stage 3/5', 'resumed stage-3 route map')
+  await waitForBoundary(app, 'Route map · Stage 3/7', 'resumed stage-3 route map')
   const stage3Nodes = choiceRows('#app [data-route-node]', 'routeNode')
   assert(
-    sameJson(availableNodeIds(stage3Nodes), ['court', 'watch']),
+    sameJson(availableNodeIds(stage3Nodes), ['court', 'high-court']),
     'The market must open both stage-3 fights',
   )
-  assert(metricText('campaign-route') === '3/5', 'Route metric must show stage 3')
+  assert(metricText('campaign-route') === '3/7', 'Route metric must show stage 3')
   const inspect = query('#app [data-action="campaign-inspect"]', 'Run details action')
   assertButton(inspect, 'Run details')
   inspect.click()
@@ -465,7 +466,7 @@ async function run() {
   const close = query('#app [data-action="campaign-close"]', 'Close action')
   assertButton(close, 'Close')
   close.click()
-  await waitForBoundary(app, 'Route map · Stage 3/5', 'route map after Run details')
+  await waitForBoundary(app, 'Route map · Stage 3/7', 'route map after Run details')
 
   // Event: an option with a target, through the list and Back.
   app = await remount(app, fixtures.event, 'event')
@@ -496,7 +497,7 @@ async function run() {
   const offeredInstanceId = offering.dataset.eventTarget
   const chosenEventTarget = offering.textContent.trim()
   offering.click()
-  await waitForBoundary(app, 'Route map · Stage 3/5', 'route map after the event')
+  await waitForBoundary(app, 'Route map · Stage 3/7', 'route map after the event')
   const eventEntry = app.runSnapshot.match.journal.at(-1)
   assert(
     eventEntry.type === 'event'
@@ -528,9 +529,12 @@ async function run() {
   checkVisibleControls('Ember Bazaar')
   const exhaustedButtons = visibleOverlayButtonLabels()
   exhaustedLeave.click()
-  await waitForBoundary(app, 'Route map · Stage 5/5', 'route map after the sold-out shop')
+  await waitForBoundary(app, 'Route map · Stage 5/7', 'route map after the sold-out shop')
   const finalNodes = availableNodeIds(choiceRows('#app [data-route-node]', 'routeNode'))
-  assert(sameJson(finalNodes, ['finale']), 'Leaving the bazaar must open the finale')
+  assert(
+    sameJson(finalNodes, ['watch', 'night-watch']),
+    'Leaving the bazaar must open both stage-5 fights',
+  )
   assert(document.querySelectorAll('#app canvas').length === 1, 'Campaign must retain one canvas')
   assert(consoleErrors.length === 0, 'Expedition check reported a relevant console error')
 

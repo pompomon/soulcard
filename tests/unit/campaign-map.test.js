@@ -24,6 +24,7 @@ import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import {
   chooseRoute,
   claimReward,
+  EDGE_COVERING_ROUTES,
   leaveShop,
   routeStates,
   winEncounter,
@@ -50,13 +51,13 @@ function availableNodes(run) {
   return run.route.nodes.filter(({ state }) => state === 'available').map(({ id }) => id)
 }
 
-test('the expedition map has eight five-stage routes that alternate fights and stops', () => {
+test('the expedition map has 24 seven-stage routes that alternate fights and stops', () => {
   assert.equal(validateCampaignContent(), CAMPAIGN_MAP)
   assert.deepEqual(validateCampaignMap(structuredClone(CAMPAIGN_MAP)), CAMPAIGN_MAP)
   assert.ok(Object.isFrozen(CAMPAIGN_MAP.nodes[0].next))
-  assert.deepEqual(CAMPAIGN_NODE_KINDS, ['fight', 'shop', 'event'])
+  assert.deepEqual(CAMPAIGN_NODE_KINDS, ['fight', 'shop', 'event', 'rest'])
   assert.deepEqual(CAMPAIGN_NODE_STATES, ['locked', 'available', 'active', 'completed', 'bypassed'])
-  assert.equal(CAMPAIGN_MAP.id, 'expedition-v1')
+  assert.equal(CAMPAIGN_MAP.id, 'expedition-v2')
   assert.ok(CAMPAIGN_MAP.nodes.length <= CAMPAIGN_MAP_NODE_LIMIT)
   assert.deepEqual(
     CAMPAIGN_MAP.nodes.map((node) => [
@@ -64,51 +65,85 @@ test('the expedition map has eight five-stage routes that alternate fights and s
       node.stage,
       node.kind,
       getCampaignNodeContent(node).name,
+      node.kind === 'fight' ? getCampaignNodeContent(node).tier : null,
     ]),
     [
-      ['gate', 1, 'fight', 'Suit Opposition'],
-      ['market', 2, 'shop', 'Wayside Market'],
-      ['shrine', 2, 'event', 'Crossroads Shrine'],
-      ['court', 3, 'fight', 'Royal Court'],
-      ['watch', 3, 'fight', 'Watch of Tens'],
-      ['bazaar', 4, 'shop', 'Ember Bazaar'],
-      ['vault', 4, 'event', "Oathkeeper's Vault"],
-      ['finale', 5, 'fight', 'Ace Assembly'],
+      ['gate', 1, 'fight', 'Suit Opposition', 'normal'],
+      ['market', 2, 'shop', 'Wayside Market', null],
+      ['shrine', 2, 'event', 'Crossroads Shrine', null],
+      ['court', 3, 'fight', 'Royal Court', 'normal'],
+      ['high-court', 3, 'fight', 'High Court', 'elite'],
+      ['bazaar', 4, 'shop', 'Ember Bazaar', null],
+      ['vault', 4, 'event', "Oathkeeper's Vault", null],
+      ['camp', 4, 'rest', 'Roadside Camp', null],
+      ['watch', 5, 'fight', 'Watch of Tens', 'normal'],
+      ['night-watch', 5, 'fight', 'Night Watch', 'elite'],
+      ['sanctum', 6, 'rest', 'Last Light Sanctum', null],
+      ['finale', 7, 'fight', 'Ace Sovereign', 'boss'],
     ],
   )
   assert.equal(CAMPAIGN_START_NODE_ID, 'gate')
   assert.equal(CAMPAIGN_FINAL_NODE_ID, 'finale')
-  assert.equal(CAMPAIGN_STAGE_COUNT, 5)
+  assert.equal(CAMPAIGN_STAGE_COUNT, 7)
+  assert.equal(CAMPAIGN_MAP.nodes.flatMap(({ next }) => next).length, 21)
 
   const paths = routePaths()
-  assert.equal(paths.length, 8)
-  assert.equal(new Set(paths.map((path) => path.join('>'))).size, 8)
+  assert.equal(paths.length, 24)
+  assert.equal(new Set(paths.map((path) => path.join('>'))).size, 24)
+  const eliteCounts = new Set()
+  const restCounts = new Set()
   for (const path of paths) {
     const nodes = path.map(getCampaignMapNode)
-    assert.deepEqual(nodes.map(({ stage }) => stage), [1, 2, 3, 4, 5], path.join('>'))
+    const tiers = nodes
+      .filter(({ kind }) => kind === 'fight')
+      .map((node) => getCampaignNodeContent(node).tier)
+    assert.deepEqual(nodes.map(({ stage }) => stage), [1, 2, 3, 4, 5, 6, 7], path.join('>'))
     assert.deepEqual(
       nodes.map(({ kind }) => kind === 'fight'),
-      [true, false, true, false, true],
+      [true, false, true, false, true, false, true],
       path.join('>'),
     )
+    assert.equal(tiers[0], 'normal', path.join('>'))
+    assert.equal(tiers.at(-1), 'boss', path.join('>'))
+    assert.ok(!tiers.slice(0, -1).includes('boss'), path.join('>'))
+    eliteCounts.add(tiers.filter((tier) => tier === 'elite').length)
+    restCounts.add(nodes.filter(({ kind }) => kind === 'rest').length)
+    assert.equal(nodes[5].id, 'sanctum', path.join('>'))
   }
+  assert.deepEqual([...eliteCounts].sort(), [0, 1, 2])
+  assert.deepEqual([...restCounts].sort(), [1, 2])
   for (const node of CAMPAIGN_MAP.nodes) {
-    if (node.kind === 'fight' && node.next.length > 0) {
-      assert.deepEqual(
-        node.next.map((id) => getCampaignMapNode(id).kind).sort(),
-        ['event', 'shop'],
-        `${node.id} offers a shop and an event`,
+    if (node.kind === 'fight') {
+      assert.ok(
+        node.next.every((id) => getCampaignMapNode(id).kind !== 'fight'),
+        `${node.id} leads only to stops`,
       )
     }
   }
+  assert.deepEqual(getCampaignMapNode('gate').next.map((id) => getCampaignMapNode(id).kind), ['shop', 'event'])
+  assert.deepEqual(
+    getCampaignMapNode('court').next.map((id) => getCampaignMapNode(id).kind),
+    ['shop', 'event', 'rest'],
+  )
+})
+
+// Together these routes use every link, so full play over them covers the whole map.
+test('six edge-covering routes use all 21 links and end at the sanctum and boss', () => {
+  const links = new Set(CAMPAIGN_MAP.nodes.flatMap(({ id, next }) => next.map((to) => `${id}>${to}`)))
+  const covered = new Set()
+  for (const route of EDGE_COVERING_ROUTES) {
+    assert.ok(routePaths().some((path) => path.join('>') === route.join('>')), route.join('>'))
+    route.slice(1).forEach((id, index) => covered.add(`${route[index]}>${id}`))
+  }
+  assert.deepEqual([...covered].sort(), [...links].sort())
 })
 
 test('map lookups index nodes in map order and name unknown nodes', () => {
   assert.deepEqual(
     CAMPAIGN_MAP.nodes.map(({ id }) => getCampaignMapNodeIndex(id)),
-    [0, 1, 2, 3, 4, 5, 6, 7],
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
   )
-  assert.equal(getCampaignMapNode('watch'), CAMPAIGN_MAP.nodes[4])
+  assert.equal(getCampaignMapNode('watch'), CAMPAIGN_MAP.nodes[8])
   assert.equal(isCampaignMapNodeId('watch'), true)
   for (const id of ['nowhere', 'Watch', '', null, undefined, 4]) {
     assert.equal(isCampaignMapNodeId(id), false, String(id))
@@ -159,6 +194,28 @@ test('map validation rejects malformed expedition graphs', () => {
     [/event node vault cannot grant coins without a later shop/, (map, node) => {
       node('vault').contentId = 'crossroads-shrine'
     }],
+    [/Unknown campaign rest site: nowhere/, (map, node) => { node('camp').contentId = 'nowhere' }],
+    [/Unknown campaign rest site: ember-bazaar/, (map, node) => { node('bazaar').kind = 'rest' }],
+    [/must start with a normal fight/, (map, node) => { node('gate').contentId = 'high-court' }],
+    [/exactly one boss fight, as its final node/, (map, node) => {
+      node('watch').contentId = 'ace-sovereign'
+    }],
+    [/exactly one boss fight, as its final node/, (map, node) => {
+      node('finale').contentId = 'royal-court'
+      node('watch').contentId = 'ace-sovereign'
+    }],
+    [/exactly one boss fight, as its final node/, (map, node) => {
+      node('finale').contentId = 'night-watch'
+    }],
+    [/elite node court needs a normal fight in stage 3/, (map, node) => {
+      node('court').contentId = 'high-court'
+    }],
+    [/elite node high-court needs a normal twin that every predecessor offers/, (map, node) => {
+      node('market').next = ['high-court']
+    }],
+    [/fight node watch cannot pay a bounty without a later shop/, (map, node) => {
+      node('watch').contentId = 'royal-court'
+    }],
   ]
   for (const [message, edit] of cases) {
     assert.throws(() => validateCampaignMap(mutatedMap(edit)), message)
@@ -172,9 +229,13 @@ test('route states follow each path and bypass every node it can no longer reach
     market: 'locked',
     shrine: 'locked',
     court: 'locked',
-    watch: 'locked',
+    'high-court': 'locked',
     bazaar: 'locked',
     vault: 'locked',
+    camp: 'locked',
+    watch: 'locked',
+    'night-watch': 'locked',
+    sanctum: 'locked',
     finale: 'locked',
   })
 
@@ -223,15 +284,16 @@ test('route choices refuse locked, bypassed, completed, and unknown nodes', () =
   assert.throws(() => chooseRoute(stageTwo, 'court'), /Route node court is locked, not available/)
 
   const stageThree = leaveShop(chooseRoute(stageTwo, 'market'))
-  assert.deepEqual(availableNodes(stageThree), ['court', 'watch'])
+  assert.deepEqual(availableNodes(stageThree), ['court', 'high-court'])
   assert.equal(routeStates(stageThree).shrine, 'bypassed')
   assert.throws(
     () => chooseRoute(stageThree, 'shrine'),
     /Route node shrine is bypassed, not available/,
   )
+  assert.throws(() => chooseRoute(stageThree, 'watch'), /Route node watch is locked, not available/)
 
-  const watch = chooseRoute(stageThree, 'watch')
-  assert.equal(watch.encounter.id, 'watch-of-tens')
-  assert.equal(routeStates(watch).court, 'bypassed')
-  assert.throws(() => chooseRoute(watch, 'court'), /Campaign is not on the route map/)
+  const elite = chooseRoute(stageThree, 'high-court')
+  assert.equal(elite.encounter.id, 'high-court')
+  assert.equal(routeStates(elite).court, 'bypassed')
+  assert.throws(() => chooseRoute(elite, 'court'), /Campaign is not on the route map/)
 })

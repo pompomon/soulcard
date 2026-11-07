@@ -16,6 +16,7 @@ import {
   createRunRepository,
 } from '../../src/persistence/run-repository.js'
 import { restoreRunSave } from '../../src/persistence/run-schema.js'
+import { CAMPAIGN_SAVE_FIXTURES } from '../fixtures/campaign-route.js'
 
 const FIXTURE_ROOT = new URL('../fixtures/', import.meta.url)
 const SAVED_AT = '2026-09-21T08:00:00.000Z'
@@ -307,7 +308,7 @@ test('save, load, and replacement atomically preserve valid stable snapshots', a
     status: 'saved',
     savedAt: SAVED_AT,
   })
-  assert.equal(indexedDB.read(ACTIVE_RUN_KEY).saveSchemaVersion, 6)
+  assert.equal(indexedDB.read(ACTIVE_RUN_KEY).saveSchemaVersion, 7)
   assert.equal(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
 
   const loaded = await repository.load()
@@ -341,7 +342,7 @@ test('paused snapshots save and restore without changing RNG or the pending even
     status: 'saved',
     savedAt: SAVED_AT,
   })
-  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-paused-v6.json'))
+  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-paused-v7.json'))
   const loaded = await repository.load()
   assert.equal(loaded.status, 'resumable')
   assert.deepEqual(loaded.match, paused)
@@ -368,7 +369,7 @@ test('load deliberately quarantines legacy schema versions', async () => {
   }
 })
 
-test('schema 4 and 5 Classic saves load unchanged and are rewritten as schema 6', async () => {
+test('schema 4, 5, and 6 Classic saves load unchanged and are rewritten as schema 7', async () => {
   for (const name of [
     'run-save-v4.json',
     'run-save-paused-v4.json',
@@ -376,8 +377,11 @@ test('schema 4 and 5 Classic saves load unchanged and are rewritten as schema 6'
     'run-save-v5.json',
     'run-save-paused-v5.json',
     'run-save-terminal-v5.json',
+    'run-save-v6.json',
+    'run-save-paused-v6.json',
+    'run-save-terminal-v6.json',
   ]) {
-    const current = fixture(name.replace(/-v[45]\.json$/, '-v6.json'))
+    const current = fixture(name.replace(/-v[456]\.json$/, '-v7.json'))
     const indexedDB = new FakeIndexedDB()
     indexedDB.seed(ACTIVE_RUN_KEY, fixture(name))
     const repository = createRunRepository({
@@ -396,12 +400,20 @@ test('schema 4 and 5 Classic saves load unchanged and are rewritten as schema 6'
   }
 })
 
-test('schema 4 and 5 Campaign saves are quarantined as incompatible game rules', async () => {
+test('schema 4, 5, and 6 Campaign saves are quarantined as incompatible game rules', async () => {
   for (const [name, schema, rules] of [
     ['campaign-save-v4.json', 4, 3],
     ['campaign-save-reward-v5.json', 5, 4],
     ['campaign-save-informed-v5.json', 5, 4],
     ['campaign-save-modifiers-v5.json', 5, 4],
+    ['campaign-save-route-v6-rules5.json', 6, 5],
+    ['campaign-save-reward-v6.json', 6, 6],
+    ['campaign-save-route-v6.json', 6, 6],
+    ['campaign-save-shop-v6.json', 6, 6],
+    ['campaign-save-shop-exhausted-v6.json', 6, 6],
+    ['campaign-save-event-v6.json', 6, 6],
+    ['campaign-save-informed-v6.json', 6, 6],
+    ['campaign-save-modifiers-v6.json', 6, 6],
   ]) {
     const indexedDB = new FakeIndexedDB()
     const legacy = fixture(name)
@@ -429,11 +441,11 @@ test('schema 4 and 5 Campaign saves are quarantined as incompatible game rules',
   }
 })
 
-test('schema 6 Campaign saves from rules 5 are quarantined until discarded', async () => {
+test('schema 6 Campaign saves from the five-stage expedition stay quarantined until discarded', async () => {
   const indexedDB = new FakeIndexedDB()
-  const legacy = fixture('campaign-save-route-v6-rules5.json')
+  const legacy = fixture('campaign-save-route-v6.json')
   assert.equal(legacy.saveSchemaVersion, 6)
-  assert.equal(legacy.gameRulesVersion, 5)
+  assert.equal(legacy.gameRulesVersion, 6)
   indexedDB.seed(ACTIVE_RUN_KEY, legacy)
   const repository = createRunRepository({ indexedDB, now: () => SAVED_AT })
 
@@ -456,16 +468,8 @@ test('schema 6 Campaign saves from rules 5 are quarantined until discarded', asy
   assert.deepEqual(await repository.load(), { status: 'empty' })
 })
 
-test('schema 6 Campaign saves load without migration', async () => {
-  for (const name of [
-    'campaign-save-reward-v6.json',
-    'campaign-save-route-v6.json',
-    'campaign-save-shop-v6.json',
-    'campaign-save-shop-exhausted-v6.json',
-    'campaign-save-event-v6.json',
-    'campaign-save-informed-v6.json',
-    'campaign-save-modifiers-v6.json',
-  ]) {
+test('schema 7 Campaign saves load without migration', async () => {
+  for (const [name] of CAMPAIGN_SAVE_FIXTURES) {
     const indexedDB = new FakeIndexedDB()
     indexedDB.seed(ACTIVE_RUN_KEY, fixture(name))
     const repository = createRunRepository({ indexedDB })
@@ -480,7 +484,7 @@ test('schema 6 Campaign saves load without migration', async () => {
 
 test('invalid saves are quarantined once and require explicit discard', async () => {
   const indexedDB = new FakeIndexedDB()
-  const corrupt = fixture('run-save-v6.json')
+  const corrupt = fixture('run-save-v7.json')
   corrupt.match.sourceDeck.pop()
   indexedDB.seed(ACTIVE_RUN_KEY, corrupt)
   const repository = createRunRepository({
@@ -506,7 +510,8 @@ test('invalid saves are quarantined once and require explicit discard', async ()
 
 test('future, incompatible, and malformed legacy saves expose distinct recovery reasons', async () => {
   for (const [fixtureName, field, value, reason] of [
-    ['run-save-v6.json', 'saveSchemaVersion', 99, 'unsupported-save-version'],
+    ['run-save-v7.json', 'saveSchemaVersion', 99, 'unsupported-save-version'],
+    ['run-save-v7.json', 'gameRulesVersion', 1, 'incompatible-game-rules'],
     ['run-save-v6.json', 'gameRulesVersion', 1, 'incompatible-game-rules'],
     ['run-save-v5.json', 'gameRulesVersion', 1, 'incompatible-game-rules'],
     ['run-save-v4.json', 'gameRulesVersion', 1, 'incompatible-game-rules'],
@@ -614,7 +619,7 @@ test('an unexpected close invalidates the cached connection for reopening', asyn
 
 test('quota and abort failures never report success or partially replace a save', async () => {
   const indexedDB = new FakeIndexedDB()
-  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v6.json'))
+  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v7.json'))
   indexedDB.seed(QUARANTINED_RUN_KEY, {
     quarantinedAt: SAVED_AT,
     reason: 'invalid-save',
@@ -629,7 +634,7 @@ test('quota and abort failures never report success or partially replace a save'
     operation: 'save',
     reason: 'quota-exceeded',
   })
-  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v6.json'))
+  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v7.json'))
   assert.notEqual(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
 
   indexedDB.abortNextTransaction()
@@ -638,13 +643,13 @@ test('quota and abort failures never report success or partially replace a save'
     operation: 'save',
     reason: 'transaction-aborted',
   })
-  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v6.json'))
+  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v7.json'))
   assert.notEqual(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
 })
 
 test('synchronous execution failures abort queued transaction writes', async () => {
   const indexedDB = new FakeIndexedDB()
-  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v6.json'))
+  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v7.json'))
   indexedDB.seed(QUARANTINED_RUN_KEY, {
     quarantinedAt: SAVED_AT,
     reason: 'invalid-save',
@@ -660,13 +665,13 @@ test('synchronous execution failures abort queued transaction writes', async () 
     operation: 'save',
     reason: 'storage-error',
   })
-  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v6.json'))
+  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v7.json'))
   assert.notEqual(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
 })
 
 test('failed reads and quarantine writes preserve the original active record', async () => {
   const indexedDB = new FakeIndexedDB()
-  const corrupt = fixture('run-save-v6.json')
+  const corrupt = fixture('run-save-v7.json')
   corrupt.match.sourceDeck.pop()
   indexedDB.seed(ACTIVE_RUN_KEY, corrupt)
   const repository = createRunRepository({

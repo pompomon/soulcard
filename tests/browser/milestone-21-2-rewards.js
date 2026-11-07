@@ -123,7 +123,7 @@ function createUpdateController() {
 }
 
 async function loadRewardDraft() {
-  const response = await fetch(new URL('../fixtures/campaign-save-reward-v6.json', import.meta.url))
+  const response = await fetch(new URL('../fixtures/campaign-save-reward-v7.json', import.meta.url))
   if (!response.ok) throw new Error('The saved reward draft fixture could not be loaded')
   return restoreRunSave(await response.json())
 }
@@ -194,7 +194,7 @@ async function run() {
   )
   assert(overlay.hidden === false, 'Reward draft overlay must be visible')
   assert(heading.textContent === 'Encounter won', 'Reward draft must announce the win')
-  assert(routeMetric.textContent === '1/5', 'Draft must keep the won stage visible')
+  assert(routeMetric.textContent === '1/7', 'Draft must keep the won stage visible')
   const offers = queryAll(offerSelector)
   for (const offer of offers) {
     assertButton(offer)
@@ -259,15 +259,15 @@ async function run() {
     buttons: visibleOverlayButtons(),
   })
   assert(whileSaving.heading === 'Saving reward', 'Reward save must be announced')
-  assert(whileSaving.route === '1/5', 'The next stage must stay hidden while saving')
+  assert(whileSaving.route === '1/7', 'The next stage must stay hidden while saving')
   assert(whileSaving.saveStatus === 'saving', 'Reward save must still be pending')
   heldSave.resolve()
   await waitFor(
-    () => routeMetric.textContent === '2/5' && heading.textContent === 'Route map · Stage 2/5',
+    () => routeMetric.textContent === '2/7' && heading.textContent === 'Route map · Stage 2/7',
     'route map after the reward save',
   )
   metricObserver.disconnect()
-  const nextStageShown = metricChanges.find(({ text }) => text === '2/5')
+  const nextStageShown = metricChanges.find(({ text }) => text === '2/7')
   assert(nextStageShown?.saveStatus === 'saved', 'The next stage must follow a saved reward')
   assert(
     nextStageShown.savedStates.includes('2:awaitingRoute'),
@@ -295,7 +295,7 @@ async function run() {
     ),
     'saved Royal Court encounter',
   )
-  assert(routeMetric.textContent === '3/5', 'The Royal Court must show stage 3')
+  assert(routeMetric.textContent === '3/7', 'The Royal Court must show stage 3')
 
   const reveal = query('#app [data-action="reveal"]', 'Reveal action')
   await waitFor(() => reveal.disabled === false, 'enabled reveal in the next encounter')
