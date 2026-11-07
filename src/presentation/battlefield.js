@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 import {
+  ACTIVE_DECK_HALO_RING,
   BATTLEFIELD_ZONE_IDS,
+  CARD_SIZE,
   MINIMUM_VIEWPORT,
   createBattlefieldLayout,
 } from './layout.js'
@@ -273,7 +275,7 @@ export function mountBattlefield(host, {
   floor.position.z = -0.1
   scene.add(floor)
 
-  const placeholderGeometry = new THREE.PlaneGeometry(1.05, 1.45)
+  const placeholderGeometry = new THREE.PlaneGeometry(CARD_SIZE.width, CARD_SIZE.height)
   const placeholderMaterial = new THREE.MeshBasicMaterial({
     color: 0x8b64bb,
     transparent: true,
@@ -293,7 +295,23 @@ export function mountBattlefield(host, {
     zoneGroups.set(zoneId, group)
     scene.add(group)
   }
-  const cardGeometry = new THREE.PlaneGeometry(1.05, 1.45)
+  const activeDeckHaloGeometry = new THREE.PlaneGeometry(
+    CARD_SIZE.width + ACTIVE_DECK_HALO_RING * 2,
+    CARD_SIZE.height + ACTIVE_DECK_HALO_RING * 2,
+  )
+  const activeDeckHaloMaterial = new THREE.MeshBasicMaterial({
+    color: 0x75eef5,
+    transparent: true,
+    opacity: 0.5,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  })
+  const activeDeckHalo = new THREE.Mesh(activeDeckHaloGeometry, activeDeckHaloMaterial)
+  activeDeckHalo.name = 'battlefield-active-deck-halo'
+  activeDeckHalo.position.z = 0.01
+  activeDeckHalo.visible = false
+  zoneGroups.get(BATTLEFIELD_ZONE_IDS[0]).add(activeDeckHalo)
+  const cardGeometry = new THREE.PlaneGeometry(CARD_SIZE.width, CARD_SIZE.height)
   const deckPointer = new THREE.Vector2()
   const deckRaycaster = new THREE.Raycaster()
   const deckCenter = new THREE.Vector3()
@@ -399,14 +417,9 @@ export function mountBattlefield(host, {
 
   function visualScale(visual) {
     if (currentLayout === null) return 1
-    if (visual.scaleMode === PILE_SCALE_MODE) {
-      return currentLayout.visuals.secondaryPileScale
-    }
-    if (visual.transient) return currentLayout.visuals.revealScale
-    if (visual.zoneId === activeDeckZoneId) {
-      return currentLayout.visuals.activeDeckScale
-    }
-    return currentLayout.visuals.secondaryPileScale
+    return visual.transient && visual.scaleMode !== PILE_SCALE_MODE
+      ? currentLayout.visuals.revealScale
+      : currentLayout.visuals.pileScale
   }
 
   function applyVisualAppearance(visual) {
@@ -428,7 +441,21 @@ export function mountBattlefield(host, {
     for (const visual of [...staticVisuals, ...transientVisuals.values()]) {
       applyVisualAppearance(visual)
     }
+    syncActiveDeckHalo()
     publishDeckInput()
+  }
+
+  function syncActiveDeckHalo() {
+    if (activeDeckZoneId !== null) {
+      const activeGroup = zoneGroups.get(activeDeckZoneId)
+      if (activeGroup && activeDeckHalo.parent !== activeGroup) {
+        activeGroup.add(activeDeckHalo)
+      }
+    }
+    const scale = currentLayout?.visuals.pileScale ?? 1
+    activeDeckHalo.scale.set(scale, scale, 1)
+    activeDeckHalo.position.set(0, 0, 0.01)
+    activeDeckHalo.visible = activeDeckVisual !== null
   }
 
   function hitTestActiveDeck(event) {
@@ -673,6 +700,7 @@ export function mountBattlefield(host, {
     tweens.clear()
     settledVisuals.clear()
     activeDeckVisual = null
+    activeDeckHalo.visible = false
   }
 
   function createCardVisual({
@@ -825,7 +853,7 @@ export function mountBattlefield(host, {
         ? null
         : {
             from: visual.mesh.scale.x,
-            to: currentLayout?.visuals.secondaryPileScale ?? 1,
+            to: currentLayout?.visuals.pileScale ?? 1,
             mode: scaleMode,
           },
       elapsedMs: 0,
@@ -1192,6 +1220,7 @@ export function mountBattlefield(host, {
     for (const visual of [...staticVisuals, ...transientVisuals.values()]) {
       applyVisualAppearance(visual)
     }
+    syncActiveDeckHalo()
     for (const visual of transientVisuals.values()) {
       if (visual.tween === null) {
         placeTransient(visual)
@@ -1199,7 +1228,7 @@ export function mountBattlefield(host, {
         const tween = rebaseTween(visual)
         tween.to = zoneWorldPosition(visual.zoneId, visual.offset)
         if (tween.scale !== null) {
-          tween.scale.to = currentLayout.visuals.secondaryPileScale
+          tween.scale.to = currentLayout.visuals.pileScale
         }
       }
     }
@@ -1456,6 +1485,8 @@ export function mountBattlefield(host, {
       attempt(() => floorMaterial.dispose())
       attempt(() => placeholderGeometry.dispose())
       attempt(() => placeholderMaterial.dispose())
+      attempt(() => activeDeckHaloGeometry.dispose())
+      attempt(() => activeDeckHaloMaterial.dispose())
       attempt(() => cardGeometry.dispose())
       attempt(disposeRenderer)
       scene.clear()

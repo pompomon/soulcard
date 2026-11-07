@@ -9,6 +9,10 @@ import {
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { restoreRunSave } from '../../src/persistence/run-schema.js'
+import {
+  ACTIVE_DECK_HALO_RING,
+  CARD_SIZE,
+} from '../../src/presentation/layout.js'
 import { mountBattlefield } from '../../src/presentation/battlefield.js'
 import { createEventTimeline } from '../../src/presentation/event-player.js'
 import {
@@ -416,7 +420,7 @@ test('quality rebuilds the renderer while pause and reduced motion stop presenta
     if (object.geometry) sceneResources.add(object.geometry)
     if (object.material) sceneResources.add(object.material)
   })
-  assert.equal(sceneResources.size, 4)
+  assert.equal(sceneResources.size, 6)
   const resourceDisposals = new Map(
     [...sceneResources].map((resource) => [resource, 0]),
   )
@@ -532,6 +536,9 @@ test('context loss suspends rendering and input, then rebuilds resources from re
   })
   assert.equal(handle.getPresentationState().turn, transition.match.turn)
   assert.ok(handle.getPresentationState().staticCards > 0)
+  const restoredHalo = renderers[1].scene.getObjectByName('battlefield-active-deck-halo')
+  assert.ok(restoredHalo.visible)
+  assert.equal(restoredHalo.parent.name, 'battlefield-zone:sourceDeck')
   assert.equal(renderers[1].domElement.disabled, false)
   assert.equal(host.children.length, 1)
   assert.equal(firstCanvas.listeners.get('webglcontextlost')?.size ?? 0, 0)
@@ -755,7 +762,7 @@ test('opponent winning card scales down while moving to its pile', () => {
   const start = winningMesh.position.clone()
   const destination = handle.layout.zones.opponentWonPile
   const revealScale = handle.layout.visuals.revealScale
-  const pileScale = handle.layout.visuals.secondaryPileScale
+  const pileScale = handle.layout.visuals.pileScale
   assert.equal(winningMesh.scale.x, revealScale)
 
   renderer.animationLoop(0)
@@ -824,7 +831,7 @@ test('tied player win scales only its decisive card across speed and resize chan
   renderer.animationLoop(250)
   const scaleBeforeResize = decisiveMesh.scale.x
   assert.ok(scaleBeforeResize < handle.layout.visuals.revealScale)
-  assert.ok(scaleBeforeResize > handle.layout.visuals.secondaryPileScale)
+  assert.ok(scaleBeforeResize > handle.layout.visuals.pileScale)
 
   settings.emit({ animationSpeed: 2 })
   host.width = 844
@@ -839,7 +846,7 @@ test('tied player win scales only its decisive card across speed and resize chan
   renderer.animationLoop(251)
   assert.ok(Math.abs(decisiveMesh.scale.x - scaleBeforeResize) < 0.01)
   renderer.animationLoop(325)
-  assert.equal(decisiveMesh.scale.x, handle.layout.visuals.secondaryPileScale)
+  assert.equal(decisiveMesh.scale.x, handle.layout.visuals.pileScale)
   assert.equal(decisiveMesh.position.x, handle.layout.zones.playerWonPile.x)
   assert.equal(decisiveMesh.position.y, handle.layout.zones.playerWonPile.y)
 
@@ -873,15 +880,15 @@ test('one-sided terminal winning card scales immediately for a zero-duration tra
     `battlefield-card:${decisiveCardId}:front`,
   )
   assert.equal(transition.event.reveals.length % 2, 1)
-  assert.equal(decisiveMesh.scale.x, handle.layout.visuals.secondaryPileScale)
-  assert.equal(decisiveMesh.scale.y, handle.layout.visuals.secondaryPileScale)
+  assert.equal(decisiveMesh.scale.x, handle.layout.visuals.pileScale)
+  assert.equal(decisiveMesh.scale.y, handle.layout.visuals.pileScale)
   assert.equal(decisiveMesh.position.x, handle.layout.zones.playerWonPile.x)
   assert.equal(decisiveMesh.position.y, handle.layout.zones.playerWonPile.y)
 
   handle.teardown()
 })
 
-test('battlefield scales prominent cards and hit tests only the enabled active deck', () => {
+test('battlefield piles share one scale and the active deck halo follows its zone', () => {
   const host = createHost(768, 1024)
   const windowObject = createWindow({ width: 768, height: 1024 })
   const observer = createObserverHarness()
@@ -907,10 +914,25 @@ test('battlefield scales prominent cards and hit tests only the enabled active d
   const source = renderer.scene.getObjectByName(
     `battlefield-card:${initial.zones.sourceDeck[0]}:back`,
   )
+  const halo = renderer.scene.getObjectByName('battlefield-active-deck-halo')
   assert.ok(source)
-  assert.equal(source.scale.x, 1.75)
-  assert.equal(source.scale.y, 1.75)
+  assert.equal(source.scale.x, handle.layout.visuals.pileScale)
+  assert.equal(source.scale.y, handle.layout.visuals.pileScale)
   assert.equal(source.material.color.getHex(), 0xd9fbff)
+  assert.equal(halo.parent.name, 'battlefield-zone:sourceDeck')
+  assert.equal(halo.visible, true)
+  assert.equal(halo.scale.x, handle.layout.visuals.pileScale)
+  assert.equal(halo.scale.y, handle.layout.visuals.pileScale)
+  assert.equal(halo.material.color.getHex(), 0x75eef5)
+  assert.equal(halo.material.opacity, 0.5)
+  assert.equal(
+    halo.geometry.parameters.width,
+    CARD_SIZE.width + ACTIVE_DECK_HALO_RING * 2,
+  )
+  assert.equal(
+    halo.geometry.parameters.height,
+    CARD_SIZE.height + ACTIVE_DECK_HALO_RING * 2,
+  )
   assert.deepEqual(handle.getDeckInputState(), {
     activeZone: 'sourceDeck',
     enabled: false,
@@ -942,9 +964,11 @@ test('battlefield scales prominent cards and hit tests only the enabled active d
     }
   })
   assert.ok(secondary.length > 0)
-  assert.equal(activeSource.scale.x, 1.75)
-  assert.ok(secondary.every((mesh) => mesh.scale.x === 1.2))
+  assert.equal(activeSource.scale.x, handle.layout.visuals.pileScale)
+  assert.ok(secondary.every((mesh) => mesh.scale.x === handle.layout.visuals.pileScale))
   assert.ok(secondary.every((mesh) => mesh.material.color.getHex() === 0xffffff))
+  assert.equal(halo.parent.name, 'battlefield-zone:sourceDeck')
+  assert.equal(halo.visible, true)
 
   handle.setDeckInputState({ enabled: true, busy: true })
   const busyPoint = clientPointFor(activeSource, renderer, host)
@@ -957,8 +981,12 @@ test('battlefield scales prominent cards and hit tests only the enabled active d
   observer.instances[0].callback()
   windowObject.flushFrames()
   assert.equal(handle.layout.mode, 'phone-landscape')
-  assert.equal(activeSource.scale.x, 1.4)
-  assert.ok(secondary.every((mesh) => mesh.scale.x === 1.02))
+  assert.equal(activeSource.scale.x, handle.layout.visuals.pileScale)
+  assert.ok(secondary.every((mesh) => mesh.scale.x === handle.layout.visuals.pileScale))
+  assert.equal(halo.scale.x, handle.layout.visuals.pileScale)
+  assert.equal(halo.scale.y, handle.layout.visuals.pileScale)
+  assert.equal(halo.parent.name, 'battlefield-zone:sourceDeck')
+  assert.equal(halo.visible, true)
 
   handle.setDeckInputState({ enabled: true, busy: false })
   const resizedPoint = clientPointFor(activeSource, renderer, host)
@@ -977,8 +1005,11 @@ test('battlefield scales prominent cards and hit tests only the enabled active d
     `battlefield-card:${personal.zones.player.drawPile[0]}:back`,
   )
   assert.ok(playerDraw)
-  assert.equal(playerDraw.scale.x, 1.4)
+  assert.equal(playerDraw.scale.x, handle.layout.visuals.pileScale)
   assert.equal(playerDraw.material.color.getHex(), 0xd9fbff)
+  assert.equal(halo.parent.name, 'battlefield-zone:playerDrawPile')
+  assert.equal(halo.visible, true)
+  assert.equal(halo.scale.x, handle.layout.visuals.pileScale)
 
   while (
     personal.status === 'active'
@@ -996,8 +1027,10 @@ test('battlefield scales prominent cards and hit tests only the enabled active d
     `battlefield-card:${personal.zones.player.wonPile.at(-1)}:back`,
   )
   assert.ok(recyclableWonPile)
-  assert.equal(recyclableWonPile.scale.x, 1.4)
+  assert.equal(recyclableWonPile.scale.x, handle.layout.visuals.pileScale)
   assert.equal(recyclableWonPile.material.color.getHex(), 0xd9fbff)
+  assert.equal(halo.parent.name, 'battlefield-zone:playerWonPile')
+  assert.equal(halo.visible, true)
 
   assert.throws(() => handle.setDeckInputState({ enabled: true }), /booleans/)
 
@@ -1076,15 +1109,25 @@ test('battlefield drags only the active top card to the player reveal target and
     const start = clientPointFor(mesh, renderer, host)
     const originalParent = mesh.parent
     const originalPosition = mesh.position.clone()
+    const halo = renderer.scene.getObjectByName('battlefield-active-deck-halo')
+    const originalHaloPosition = halo.position.clone()
+    assert.equal(halo.parent, originalParent)
+    assert.equal(halo.visible, true)
     canvas.dispatch('pointerdown', { ...start, pointerId })
     canvas.dispatch('pointermove', { ...dropPoint, pointerId })
     assert.equal(mesh.parent, renderer.scene)
+    assert.equal(halo.parent, originalParent)
+    assert.deepEqual(halo.position.toArray(), originalHaloPosition.toArray())
+    assert.equal(halo.visible, true)
     assert.equal(host.dataset.deckDragging, 'true')
     assert.equal(canvas.dataset.deckDragging, 'true')
     canvas.dispatch('pointerup', { ...dropPoint, pointerId })
     canvas.dispatch('click', { ...dropPoint, detail: 1 })
     assert.equal(mesh.parent, originalParent)
     assert.deepEqual(mesh.position.toArray(), originalPosition.toArray())
+    assert.equal(halo.parent, originalParent)
+    assert.deepEqual(halo.position.toArray(), originalHaloPosition.toArray())
+    assert.equal(halo.visible, true)
     assert.equal(host.dataset.deckDragging, 'false')
     assert.equal(canvas.dataset.deckDragging, 'false')
     assert.equal(activations, expectedActivations)
@@ -1403,6 +1446,7 @@ test('campaign boundaries between encounters render only the held card without d
 
   handle.syncSnapshot(map)
   assert.deepEqual(cardNames(), [`battlefield-card:${heldCardId}:front`])
+  assert.equal(renderer.scene.getObjectByName('battlefield-active-deck-halo').visible, false)
   assert.equal(host.dataset.presentationPhase, 'snapshot')
   assert.deepEqual(handle.getDeckInputState(), { activeZone: null, enabled: false, busy: false })
 

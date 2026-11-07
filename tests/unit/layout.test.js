@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  ACTIVE_DECK_HALO_RING,
   BATTLEFIELD_LAYOUT_MODES,
   BATTLEFIELD_ZONE_IDS,
+  CARD_SIZE,
   MINIMUM_VIEWPORT,
   classifyBattlefieldLayout,
   createBattlefieldLayout,
@@ -43,10 +45,11 @@ test('layout exposes immutable logical anchors for every battlefield zone', () =
   assert.ok(layout.zones.opponentDrawPile.y > 0)
   assert.ok(layout.zones.playerDrawPile.y < 0)
   assert.deepEqual(layout.visuals, {
-    activeDeckScale: 1.75,
+    pileScale: 1.3,
     revealScale: 1.75,
-    secondaryPileScale: 1.2,
   })
+  assert.deepEqual(CARD_SIZE, { width: 1.05, height: 1.45 })
+  assert.equal(ACTIVE_DECK_HALO_RING, 0.08)
   assert.ok(allObjects(layout).every(Object.isFrozen))
 })
 
@@ -57,25 +60,164 @@ test('prominent cards fit their world and reveal zones remain separated in every
     { width: 768, height: 1024 },
     { width: 1440, height: 900 },
   ]
-  const activeZones = ['sourceDeck', 'playerDrawPile', 'playerWonPile']
+  const activeZones = [
+    'sourceDeck',
+    'playerSourcePile',
+    'playerDrawPile',
+    'playerWonPile',
+    'hold',
+  ]
 
   for (const viewport of viewports) {
     const layout = createBattlefieldLayout(viewport)
-    const halfActiveWidth = 1.05 * layout.visuals.activeDeckScale / 2
-    const halfActiveHeight = 1.45 * layout.visuals.activeDeckScale / 2
-    assert.ok(layout.visuals.activeDeckScale > layout.visuals.secondaryPileScale)
-    assert.ok(layout.visuals.revealScale > layout.visuals.secondaryPileScale)
+    const halfPileWidth = CARD_SIZE.width * layout.visuals.pileScale / 2
+    const halfPileHeight = CARD_SIZE.height * layout.visuals.pileScale / 2
+    assert.ok(layout.visuals.revealScale > layout.visuals.pileScale)
 
     for (const zoneId of activeZones) {
       const zone = layout.zones[zoneId]
-      assert.ok(Math.abs(zone.x) + halfActiveWidth <= layout.world.width / 2)
-      assert.ok(Math.abs(zone.y) + halfActiveHeight <= layout.world.height / 2)
+      assert.ok(Math.abs(zone.x) + halfPileWidth <= layout.world.width / 2)
+      assert.ok(Math.abs(zone.y) + halfPileHeight <= layout.world.height / 2)
     }
+  }
+})
 
-    const revealHeight = 1.45 * layout.visuals.revealScale
-    assert.ok(
-      layout.zones.opponentReveal.y - layout.zones.playerReveal.y >= revealHeight,
-    )
+function zoneBox(layout, zoneId, halo = 0) {
+  const anchor = layout.zones[zoneId]
+  const scale = layout.visuals.revealScale && zoneId.endsWith('Reveal')
+    ? layout.visuals.revealScale
+    : layout.visuals.pileScale
+  let minOffsetX = 0
+  let maxOffsetX = 0
+  let minOffsetY = 0
+  let maxOffsetY = 0
+  if (zoneId.endsWith('Reveal')) {
+    // Transient reveal offsets span x ±0.195 and y 0…0.105 (battlefield.js:888-894).
+    minOffsetX = -0.195
+    maxOffsetX = 0.195
+    maxOffsetY = 0.105
+  } else if (zoneId === 'contestedPile') {
+    // The last four contested cards spread by at most +0.105 x / +0.075 y (732-751).
+    maxOffsetX = 0.105
+    maxOffsetY = 0.075
+  }
+  const halfWidth = CARD_SIZE.width * scale / 2 + halo
+  const halfHeight = CARD_SIZE.height * scale / 2 + halo
+  const centerX = anchor.x + (minOffsetX + maxOffsetX) / 2
+  const centerY = anchor.y + (minOffsetY + maxOffsetY) / 2
+  return {
+    minX: centerX - halfWidth - (maxOffsetX - minOffsetX) / 2,
+    maxX: centerX + halfWidth + (maxOffsetX - minOffsetX) / 2,
+    minY: centerY - halfHeight - (maxOffsetY - minOffsetY) / 2,
+    maxY: centerY + halfHeight + (maxOffsetY - minOffsetY) / 2,
+  }
+}
+
+function boxClearance(left, right) {
+  const x = Math.max(left.minX - right.maxX, right.minX - left.maxX)
+  const y = Math.max(left.minY - right.maxY, right.minY - left.maxY)
+  if (x < 0 && y < 0) return Math.max(x, y)
+  return Math.hypot(Math.max(0, x), Math.max(0, y))
+}
+
+test('box clearance distinguishes overlap, touching, and separation', () => {
+  const box = (minX, maxX, minY, maxY) => ({ minX, maxX, minY, maxY })
+  const base = box(0, 2, 0, 2)
+
+  assert.ok(boxClearance(base, box(1, 3, 1, 3)) < 0)
+  assert.equal(boxClearance(base, box(2, 4, 0, 2)), 0)
+  assert.equal(boxClearance(base, box(3, 4, 0, 2)), 1)
+  assert.equal(boxClearance(base, box(3, 4, 3, 4)), Math.sqrt(2))
+})
+
+test('pile, reveal, and active halo geometry remains clear in every mode', () => {
+  const viewports = [
+    { width: 320, height: 480 },
+    { width: 844, height: 390 },
+    { width: 768, height: 1024 },
+    { width: 1440, height: 900 },
+  ]
+  const classicZones = [
+    'sourceDeck',
+    'opponentDrawPile',
+    'opponentWonPile',
+    'opponentReveal',
+    'playerReveal',
+    'playerDrawPile',
+    'playerWonPile',
+    'contestedPile',
+    'burnPile',
+  ]
+  const campaignZones = [
+    'playerSourcePile',
+    'opponentSourcePile',
+    'hold',
+    'opponentDrawPile',
+    'opponentWonPile',
+    'opponentReveal',
+    'playerReveal',
+    'playerDrawPile',
+    'playerWonPile',
+    'contestedPile',
+    'burnPile',
+  ]
+  const activeZones = {
+    classic: ['sourceDeck', 'playerDrawPile', 'playerWonPile'],
+    campaign: ['playerSourcePile', 'playerDrawPile', 'playerWonPile', 'hold'],
+  }
+
+  for (const viewport of viewports) {
+    const layout = createBattlefieldLayout(viewport)
+    for (const [scenario, zones] of Object.entries({
+      classic: classicZones,
+      campaign: campaignZones,
+    })) {
+      const boxes = new Map(zones.map((zoneId) => [zoneId, zoneBox(layout, zoneId)]))
+      for (const [index, zoneId] of zones.entries()) {
+        const box = boxes.get(zoneId)
+        assert.ok(
+          box.minX >= -layout.world.width / 2 + 0.05
+          && box.maxX <= layout.world.width / 2 - 0.05
+          && box.minY >= -layout.world.height / 2 + 0.05
+          && box.maxY <= layout.world.height / 2 - 0.05,
+          `${layout.mode} ${scenario} ${zoneId} clears the world edge`,
+        )
+        for (const otherZoneId of zones.slice(index + 1)) {
+          const mutuallyExclusiveCampaignSourceAndDraw = scenario === 'campaign'
+            && (
+              (zoneId === 'playerSourcePile' && otherZoneId === 'playerDrawPile')
+              || (zoneId === 'playerDrawPile' && otherZoneId === 'playerSourcePile')
+              || (zoneId === 'opponentSourcePile' && otherZoneId === 'opponentDrawPile')
+              || (zoneId === 'opponentDrawPile' && otherZoneId === 'opponentSourcePile')
+            )
+          if (mutuallyExclusiveCampaignSourceAndDraw) continue
+          assert.ok(
+            boxClearance(box, boxes.get(otherZoneId)) >= 0.08,
+            `${layout.mode} ${scenario} ${zoneId} clears ${otherZoneId}`,
+          )
+        }
+      }
+
+      const haloExpansion = ACTIVE_DECK_HALO_RING * layout.visuals.pileScale
+      for (const activeZoneId of activeZones[scenario]) {
+        const haloBox = zoneBox(layout, activeZoneId, haloExpansion)
+        for (const otherZoneId of zones) {
+          if (otherZoneId === activeZoneId) continue
+          const mutuallyExclusiveCampaignSourceAndDraw = scenario === 'campaign'
+            && (
+              (activeZoneId === 'playerSourcePile' && otherZoneId === 'playerDrawPile')
+              || (activeZoneId === 'playerDrawPile' && otherZoneId === 'playerSourcePile')
+              || (otherZoneId === 'opponentSourcePile' && activeZoneId === 'opponentDrawPile')
+              || (otherZoneId === 'opponentDrawPile' && activeZoneId === 'opponentSourcePile')
+            )
+          if (mutuallyExclusiveCampaignSourceAndDraw) continue
+          assert.ok(
+            boxClearance(haloBox, boxes.get(otherZoneId)) > 0,
+            `${layout.mode} ${scenario} ${activeZoneId} halo clears ${otherZoneId}`,
+          )
+        }
+      }
+    }
   }
 })
 

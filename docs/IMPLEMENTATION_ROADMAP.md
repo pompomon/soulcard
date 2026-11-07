@@ -1105,8 +1105,9 @@ reviewable PR.
   cancels invalid, interrupted, disabled, busy, and multi-pointer interactions,
   suppresses compatibility clicks, preserves native button click fallback, gates
   enabled/busy state synchronously, and removes target/document listeners idempotently.
-  `src/presentation/layout.js` and `src/presentation/battlefield.js` enlarge active decks
-  and revealed cards per responsive mode, keep secondary piles bounded, identify the
+  `src/presentation/layout.js` and `src/presentation/battlefield.js` draw every pile
+  at one bounded scale per responsive mode, enlarge revealed cards, mark the active
+  deck with a tint and a focus-colour halo, identify the
   source deck or the player's drawable/recyclable pile from stable snapshots, and
   raycast that one visual with a 44×44 CSS-pixel minimum screen-space target. Battlefield
   drag state moves only that visual, accepts release over the player reveal area, and
