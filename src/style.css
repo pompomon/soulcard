@@ -628,14 +628,15 @@ button:disabled {
 
 .screen--game[data-layout-mode="phone-portrait"] .game-hud {
   grid-template:
-    "header header" var(--hud-header-reserve, 4.5rem)
-    "comparison comparison" var(--hud-comparison-reserve, 5rem)
-    ". ." minmax(0, 1fr)
-    "opponent player" 64px
-    "piles piles" 36px
-    "status status" 48px
-    "controls controls" calc(var(--hud-footer-reserve, 210px) - 148px)
-    / 1fr 1fr;
+    "header" var(--hud-header-reserve, 4.5rem)
+    "comparison" var(--hud-comparison-reserve, 5rem)
+    "." minmax(0, 1fr)
+    "opponent" 42px
+    "player" 42px
+    "piles" 28px
+    "status" 36px
+    "controls" calc(var(--hud-footer-reserve, 210px) - 148px)
+    / minmax(0, 1fr);
 }
 
 .screen--game[data-layout-mode="phone-landscape"] .game-hud {
@@ -666,7 +667,8 @@ button:disabled {
 
 .screen--game[data-layout-mode="phone-portrait"] .game-controls {
   justify-content: stretch;
-  padding: 8px;
+  gap: 4px;
+  padding: 4px;
 }
 
 /* Campaign shows five controls. Keep the primary action wide enough to wrap to at most
@@ -680,28 +682,82 @@ button:disabled {
 
 .screen--game[data-layout-mode="phone-portrait"] .zone-panel {
   align-self: stretch;
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.4rem;
+  padding: 0.15rem 0.55rem;
 }
 
 .screen--game[data-layout-mode="phone-portrait"] .zone-panel__title {
-  margin-bottom: 0.2rem;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.screen--game[data-layout-mode="phone-portrait"] .zone-panel .hud-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.screen--game[data-layout-mode="phone-portrait"]
+  :is(.zone-panel, .hud-metrics--piles) .hud-metric {
+  gap: 0;
+}
+
+.screen--game[data-layout-mode="phone-portrait"]
+  :is(.zone-panel, .hud-metrics--piles) .hud-metric dt {
+  font-size: 0.75rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.screen--game[data-layout-mode="phone-portrait"]
+  :is(.zone-panel, .hud-metrics--piles) .hud-metric dd {
+  font-size: 1rem;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
 .screen--game[data-layout-mode="phone-portrait"] .hud-metrics--piles {
   align-items: center;
-  padding-block: 0.15rem;
+  padding-block: 0;
+}
+
+.screen--game[data-layout-mode="phone-portrait"] .hud-metrics--piles .hud-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
 }
 
 .screen--game[data-layout-mode="phone-portrait"] .game-feedback {
   align-self: stretch;
   align-content: start;
-  padding-block: 0.25rem;
+  padding-block: 2px;
 }
 
 .screen--game[data-layout-mode="phone-portrait"] .game-status,
 .screen--game[data-layout-mode="phone-portrait"] .game-save-warning,
 .screen--game[data-layout-mode="phone-landscape"] .game-status,
 .screen--game[data-layout-mode="phone-landscape"] .game-save-warning {
-  font-size: 0.65rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.screen--game[data-layout-mode="phone-landscape"] .game-feedback {
+  padding-block: 0.25rem;
+}
+
+.screen--game[data-layout-mode="phone-portrait"]
+  .game-hud:has(.game-save-warning:not([hidden])) .game-feedback {
+  grid-row: piles-start / status-end;
+  gap: 0;
+  padding-block: 0;
+}
+
+.screen--game[data-layout-mode="phone-portrait"]
+  .game-hud:has(.game-save-warning:not([hidden])) .hud-metrics--piles {
+  visibility: hidden;
 }
 
 .screen--game[data-layout-mode="tablet"] .game-controls {
@@ -842,7 +898,7 @@ button:disabled {
 
 .screen--game[data-layout-mode="phone-landscape"] .game-controls {
   gap: 4px;
-  padding: 4px;
+  padding: 3px 4px;
   min-height: 44px;
 }
 

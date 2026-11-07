@@ -26,3 +26,21 @@ test('document language and viewport support the declared accessible layout base
   assert.match(html, /<html\s+lang="en">/)
   assert.match(html, /name="viewport"[^>]+viewport-fit=cover/)
 })
+
+test('phone footer keeps readable rows within its battlefield reserve', async () => {
+  const css = await readFile(new URL('src/style.css', root), 'utf8')
+  const portrait = '.screen--game[data-layout-mode="phone-portrait"]'
+  const grid = rule(css, `${portrait} .game-hud`)
+  const heights = [...grid.matchAll(/"(?:opponent|player|piles|status)"\s+(\d+)px/g)]
+    .map((match) => Number(match[1]))
+  assert.deepEqual(heights, [42, 42, 28, 36])
+  assert.equal(heights.reduce((sum, height) => sum + height, 0), 148)
+  assert.match(grid, /calc\(var\(--hud-footer-reserve,\s*210px\)\s*-\s*148px\)/)
+  const labels = rule(css, `${portrait}\n  :is(.zone-panel, .hud-metrics--piles) .hud-metric dt`)
+  assert.match(labels, /font-size:\s*0\.75rem/)
+  assert.match(labels, /white-space:\s*nowrap/)
+  assert.match(css, /phone-portrait"\]\s+\.game-status,[^{]+\{\s*font-size:\s*0\.75rem/)
+  const warning = rule(css,
+    `${portrait}\n  .game-hud:has(.game-save-warning:not([hidden])) .game-feedback`)
+  assert.match(warning, /grid-row:\s*piles-start\s*\/\s*status-end/)
+})

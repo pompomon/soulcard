@@ -3,7 +3,7 @@
 Source: a user report with a screenshot of Soulcard installed as an Edge PWA on the
 Galaxy Z Fold4 cover screen, taken during a Campaign fight. The request is to draw every
 deck at the same size and to make the bottom status panel readable on that small screen.
-Baseline: `main` at `c6ea2d0`, after PR #42. Status: **proposed**. This plan was
+Baseline: `main` at `c6ea2d0`, after PR #42. Status: **implemented** (see §11). This plan was
 prepared without interactive answers. Each decision in §5 therefore states a recommended
 default with its alternatives, and §10 lists the questions to settle before
 implementation starts. The change is presentation-only and is not a roadmap milestone.
@@ -818,4 +818,33 @@ Each question names the default this plan assumes.
 
 ## 11. Implementation notes
 
-Not started. Record any difference from §5 here when the plan is implemented.
+Implemented with the recommended defaults, including D7. Domain, rules, saves, events,
+and RNG are unchanged; no milestone completion state or version changed.
+
+Differences from the proposal:
+
+- The halo is static rather than pulsing (the pulse was optional). This keeps the cue
+  visible without additional motion or frame work.
+- Phone-landscape reveal anchors move from y ±1.1 to ±1.12. Including reveal jitter,
+  ±1.1 leaves only 0.065 world units between the reveals; ±1.12 meets the required
+  0.08 clearance. Reveal scale is unchanged.
+- The browser fixture reports header overflow and asserts that it equals the previous
+  two-column grid's overflow. The restored Campaign modifier fixture has longer header
+  content than the measured route-1 fight: up to 25 px of existing header overflow.
+  The header remains out of scope; its 72 px portrait reserve is unchanged.
+- Physical control bounds allow 0.02 px of layout rounding in letterboxed mode;
+  the CSS target remains 44 px. Classic's measured 43.989 px rounds to 44 px.
+
+Automated evidence under Node 24:
+
+- `npm test`: 497 passed.
+- `npm run build`: passed; the existing large-chunk warning remains (785.81 kB).
+- `phone-hud-layout.html`: 158 measurement cases across Classic and Campaign, including
+  failed saves and long messages; no asserted footer overflow and no console errors.
+- Existing milestone 19 and Campaign 21.1–21.4 browser checks completed, with preserved
+  context-recovery state and no relevant console errors.
+
+Large-text scaling, the header, the 480×320 landscape layout, and landscape save-warning
+overflow remain explicitly deferred as described above. A real Fold4 device check is
+still needed to confirm the perceived halo contrast and Hold placement; no screenshots
+were generated for automated validation.

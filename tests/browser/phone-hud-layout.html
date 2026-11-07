@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Soulcard phone HUD layout check</title>
+    <link rel="icon" href="../../icon.svg" />
+    <link rel="stylesheet" href="../../src/style.css" />
+    <style>
+      #app[data-pwa-inset] .battlefield { --safe-area-top: 34px; }
+      #phone-hud-results {
+        position: fixed;
+        bottom: 0;
+        right: 0;
+        z-index: 100;
+        max-width: 40rem;
+        max-height: 40vh;
+        overflow: auto;
+        white-space: pre-wrap;
+        pointer-events: none;
+        background: #080514;
+        color: white;
+        font: 12px/1.4 monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <pre id="phone-hud-results" data-status="running">Checking phone HUD layout...</pre>
+    <script type="module" src="./phone-hud-layout.js"></script>
+  </body>
+</html>

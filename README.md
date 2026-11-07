@@ -38,6 +38,15 @@ errors as text. To check the elite ladder by hand, take the High Court or Night 
 elite, rest at the Roadside Camp or Last Light Sanctum, and fight the Ace Sovereign at
 stage 7.
 
+## Responsive HUD verification
+
+With `npm run dev`, open `/tests/browser/phone-hud-layout.html`. This text-only check
+restores Classic and Campaign fights and reports footer bounds, label wrapping, text
+sizes, control targets, save warnings, canvas presence, and console errors across phone,
+tablet, desktop, and letterboxed layouts, including the Fold4 cover screen's safe area.
+It also reports the deferred large-text and small-landscape limitations. Header wrapping
+is unchanged and is compared with the previous grid rather than required to disappear.
+
 ## Texture cache ownership
 
 Keep an acquired texture lease while a material references its texture. Release it only
