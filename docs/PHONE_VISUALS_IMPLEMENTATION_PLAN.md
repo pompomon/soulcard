@@ -782,14 +782,14 @@ Done when the fixture reports success.
 
 ## 9. Definition of done
 
-- [ ] Every §4 criterion has passing evidence.
-- [ ] `npm test` and `npm run build` pass under Node 24, with only the existing
+- [x] Every §4 criterion has passing evidence.
+- [x] `npm test` and `npm run build` pass under Node 24, with only the existing
       chunk-size warning.
-- [ ] The phone HUD fixture passes across the matrix with one canvas and no relevant
+- [x] The phone HUD fixture passes across the matrix with one canvas and no relevant
       console errors, reported as text.
-- [ ] The existing battlefield and Campaign browser fixtures still pass.
-- [ ] The roadmap evidence and README are updated, and §11 is filled in.
-- [ ] Code review is complete with the `soulcard-code-review` skill.
+- [x] The existing battlefield and Campaign browser fixtures still pass.
+- [x] The roadmap evidence and README are updated, and §11 is filled in.
+- [x] Code review is complete with the `soulcard-code-review` skill.
 
 ## 10. Questions for sign-off
 
@@ -837,12 +837,16 @@ Differences from the proposal:
 
 Automated evidence under Node 24:
 
-- `npm test`: 497 passed.
+- `npm test`: 498 passed, including signed-clearance helper coverage added after review.
 - `npm run build`: passed; the existing large-chunk warning remains (785.81 kB).
 - `phone-hud-layout.html`: 158 measurement cases across Classic and Campaign, including
   failed saves and long messages; no asserted footer overflow and no console errors.
 - Existing milestone 19 and Campaign 21.1–21.4 browser checks completed, with preserved
   context-recovery state and no relevant console errors.
+- Automated code/roadmap review found no significant issues. GitHub Copilot found that
+  the original halo-clearance test accepted overlaps because its distance helper clamped
+  axis gaps to zero. The helper now returns signed clearance and has overlapping,
+  touching, and separated-box regression cases; halos require strictly positive gaps.
 
 Large-text scaling, the header, the 480×320 landscape layout, and landscape save-warning
 overflow remain explicitly deferred as described above. A real Fold4 device check is

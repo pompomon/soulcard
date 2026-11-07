@@ -114,10 +114,21 @@ function zoneBox(layout, zoneId, halo = 0) {
 }
 
 function boxClearance(left, right) {
-  const x = Math.max(0, left.minX - right.maxX, right.minX - left.maxX)
-  const y = Math.max(0, left.minY - right.maxY, right.minY - left.maxY)
-  return Math.hypot(x, y)
+  const x = Math.max(left.minX - right.maxX, right.minX - left.maxX)
+  const y = Math.max(left.minY - right.maxY, right.minY - left.maxY)
+  if (x < 0 && y < 0) return Math.max(x, y)
+  return Math.hypot(Math.max(0, x), Math.max(0, y))
 }
+
+test('box clearance distinguishes overlap, touching, and separation', () => {
+  const box = (minX, maxX, minY, maxY) => ({ minX, maxX, minY, maxY })
+  const base = box(0, 2, 0, 2)
+
+  assert.ok(boxClearance(base, box(1, 3, 1, 3)) < 0)
+  assert.equal(boxClearance(base, box(2, 4, 0, 2)), 0)
+  assert.equal(boxClearance(base, box(3, 4, 0, 2)), 1)
+  assert.equal(boxClearance(base, box(3, 4, 3, 4)), Math.sqrt(2))
+})
 
 test('pile, reveal, and active halo geometry remains clear in every mode', () => {
   const viewports = [
@@ -201,7 +212,7 @@ test('pile, reveal, and active halo geometry remains clear in every mode', () =>
             )
           if (mutuallyExclusiveCampaignSourceAndDraw) continue
           assert.ok(
-            boxClearance(haloBox, boxes.get(otherZoneId)) >= 0,
+            boxClearance(haloBox, boxes.get(otherZoneId)) > 0,
             `${layout.mode} ${scenario} ${activeZoneId} halo clears ${otherZoneId}`,
           )
         }
