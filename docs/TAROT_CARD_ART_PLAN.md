@@ -1017,8 +1017,9 @@ default.
     preview 128.0 kB.
   - resvg rasterizes at 1200×1680. sharp downsamples with Lanczos3 and encodes WebP
     at quality 82 (75 for the preview), with lossless alpha and effort 6.
-  - The index-plate check is clip-aware. The worst measured values are 3.8 off-line,
-    0.15 overshoot, 6.9 ink drift, 1.8 ground drift and 5.20:1 contrast.
+  - The index-plate check is clip-aware. The worst measured values are 3.8 off the
+    ground-to-ink colour line (limit 6), 0.15 overshoot (0.2), 6.9 ink drift (24),
+    1.8 ground drift (6) and 5.20:1 contrast (at least 4.5:1).
   - The back must match itself rotated 180°: a mean difference of at most 0.05, and at
     most 16 pixels that differ by more than 32. With sharp the measured values are
     0.0064 and 2 pixels; Chrome's decoder gives 4 pixels.
@@ -1065,3 +1066,10 @@ default.
     preview to 596 after refinement.
   - A Classic game still renders the pixel deck: `#app` contains a canvas, and the
     console shows no errors.
+- **Profile.** `milestone-19-profile` completes. Context recovery preserves state, and
+  the console shows the same 55 WebGL warnings as PR1.
+  - Its pixel timings vary widely between runs in this 2-core container. At scale 2,
+    six PR2 runs took 112–206 ms; PR1's head took 86–128 ms in the same session.
+  - An interleaved A/B of the cache path against PR1's head shows no difference. Over
+    30 rounds, both have minimums of 51–53 ms at scales 2 and 3. PR2 was faster in 13
+    of 30 pairs at scale 2 and 19 of 30 at scale 3.
