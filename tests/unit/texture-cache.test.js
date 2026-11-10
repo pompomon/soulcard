@@ -67,6 +67,82 @@ function frontOptions(cardId, scale = 1) {
   }
 }
 
+const REFINED_FRONT_ID = 'refined-front-v1'
+const REFINED_BACK_ID = 'refined-back-v1'
+const THROWING_FRONT_ID = 'throwing-front-v1'
+
+class CountingTexture extends FakeTexture {
+  constructor(canvas) {
+    super(canvas)
+    this.uploads = 0
+  }
+
+  get needsUpdate() {
+    return false
+  }
+
+  set needsUpdate(value) {
+    if (value === true) this.uploads += 1
+  }
+}
+
+function flush() {
+  return new Promise((resolve) => setImmediate(resolve))
+}
+
+function createRefiningHarness(options = {}) {
+  const textures = []
+  const calls = []
+  const updates = []
+  const diagnostics = []
+  function recordRefinement(kind) {
+    return (...args) => {
+      const call = { kind, args, ...Promise.withResolvers() }
+      calls.push(call)
+      return call.promise
+    }
+  }
+  const registry = createThemeRegistry({
+    frontThemes: [
+      ALTERNATE_FRONT_THEME,
+      {
+        id: REFINED_FRONT_ID,
+        create: ALTERNATE_FRONT_THEME.create,
+        refine: recordRefinement('front'),
+      },
+      {
+        id: THROWING_FRONT_ID,
+        create: ALTERNATE_FRONT_THEME.create,
+        refine() {
+          throw new Error('refine threw')
+        },
+      },
+    ],
+    backThemes: [{
+      id: REFINED_BACK_ID,
+      create: ALTERNATE_BACK_THEME.create,
+      refine: recordRefinement('back'),
+    }],
+  })
+  const cache = createTextureCache({
+    registry,
+    createCanvas,
+    textureFactory(canvas) {
+      const texture = new CountingTexture(canvas)
+      textures.push(texture)
+      return texture
+    },
+    onTextureUpdate: (update) => updates.push(update),
+    onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    ...options,
+  })
+  return { cache, calls, diagnostics, textures, updates }
+}
+
+function refinedFront(cardId, scale = 1) {
+  return { themeId: REFINED_FRONT_ID, cardId, scale }
+}
+
 test('cache lazily reuses keyed textures and applies documented sampler settings', () => {
   const { cache, textures } = createHarness({
     maxEntries: 4,
@@ -82,6 +158,7 @@ test('cache lazily reuses keyed textures and applies documented sampler settings
     maxEntries: 4,
     activeLeases: 0,
     leasedEntries: 0,
+    refining: 0,
     anisotropy: 3,
     destroyed: false,
   })
@@ -335,6 +412,8 @@ test('cache validates adapters, limits, acquisition data, and invalidation data'
   assert.throws(() => createTextureCache({ anisotropy: 0 }), /anisotropy/)
   assert.throws(() => createTextureCache({ createCanvas: null }), /createCanvas/)
   assert.throws(() => createTextureCache({ textureFactory: null }), /textureFactory/)
+  assert.throws(() => createTextureCache({ onTextureUpdate: null }), /onTextureUpdate/)
+  assert.throws(() => createTextureCache({ onDiagnostic: 1 }), /onDiagnostic/)
   assert.throws(
     () => createTextureCache({ renderer: {} }),
     /getMaxAnisotropy/,
@@ -355,5 +434,185 @@ test('cache validates adapters, limits, acquisition data, and invalidation data'
   assert.throws(() => cache.acquireFront(frontOptions('c-2S', 0)), /scale/)
   assert.throws(() => cache.invalidateTheme('side', ALTERNATE_FRONT_THEME.id), /kind/)
   assert.throws(() => cache.invalidateTheme('front', 'bad id'), /themeId/)
+  cache.destroy()
+})
+
+test('refinement redraws the drawn canvas later, marks one upload, and notifies once', async () => {
+  const { cache, calls, diagnostics, textures, updates } = createRefiningHarness()
+  const front = cache.acquireFront(refinedFront('c-QH', 2))
+  const canvas = front.texture.image
+  assert.equal(calls.length, 0, 'refinement must not run inside acquire()')
+  assert.equal(cache.getStats().refining, 1)
+  assert.equal(front.texture.uploads, 1)
+
+  await flush()
+  assert.equal(calls.length, 1)
+  const [cardId, options] = calls[0].args
+  assert.equal(cardId, 'c-QH')
+  assert.deepEqual(Object.keys(options).sort(), ['canvas', 'scale', 'signal'])
+  assert.equal(options.canvas, canvas)
+  assert.equal(options.scale, 2)
+  assert.equal(options.signal.aborted, false)
+
+  calls[0].resolve()
+  await flush()
+  assert.equal(front.texture.uploads, 2)
+  assert.equal(front.texture.image, canvas)
+  assert.deepEqual([canvas.width, canvas.height], [96, 144])
+  assert.deepEqual(updates, [{
+    kind: 'front',
+    themeId: REFINED_FRONT_ID,
+    cardId: 'c-QH',
+    scale: 2,
+  }])
+  assert.ok(Object.isFrozen(updates[0]))
+  assert.equal(cache.getStats().refining, 0)
+
+  const repeated = cache.acquireFront(refinedFront('c-QH', 2))
+  assert.equal(repeated.texture, front.texture)
+  const back = cache.acquireBack({ themeId: REFINED_BACK_ID, cardId: 'c-2S', scale: 1 })
+  await flush()
+  assert.equal(calls.length, 2, 'cached entries are not refined again')
+  assert.equal(calls[1].kind, 'back')
+  assert.equal(calls[1].args.length, 1, 'backs receive only the options')
+  assert.equal(calls[1].args[0].canvas, back.texture.image)
+  calls[1].resolve()
+  await flush()
+  assert.deepEqual(updates.at(-1), {
+    kind: 'back',
+    themeId: REFINED_BACK_ID,
+    cardId: null,
+    scale: 1,
+  })
+  assert.equal(back.texture.uploads, 2)
+
+  const plain = cache.acquireFront(frontOptions('c-2S'))
+  await flush()
+  assert.equal(plain.texture.uploads, 1, 'themes without refine upload once')
+  assert.equal(calls.length, 2)
+  assert.equal(updates.length, 2)
+  assert.deepEqual(diagnostics, [])
+  assert.equal(textures.length, 3)
+  for (const lease of [front, repeated, back, plain]) lease.release()
+  cache.destroy()
+})
+
+test('eviction, invalidation, clear, and destroy abort refinement without notifying', async () => {
+  const { cache, calls, diagnostics, textures, updates } = createRefiningHarness({
+    maxEntries: 1,
+  })
+  async function pendingRefinement(acquire) {
+    const lease = acquire()
+    lease.release()
+    await flush()
+    const call = calls.at(-1)
+    assert.equal(call.args.at(-1).signal.aborted, false)
+    return call
+  }
+
+  const evicted = await pendingRefinement(() => cache.acquireFront(refinedFront('c-2S')))
+  const invalidated = await pendingRefinement(() => cache.acquireFront(refinedFront('c-3S')))
+  assert.equal(evicted.args[1].signal.aborted, true, 'eviction aborts')
+  assert.equal(cache.invalidateTheme('front', REFINED_FRONT_ID), 1)
+  assert.equal(invalidated.args[1].signal.aborted, true, 'invalidation aborts')
+  const cleared = await pendingRefinement(() => cache.acquireBack({ themeId: REFINED_BACK_ID }))
+  cache.clear()
+  assert.equal(cleared.args[0].signal.aborted, true, 'clear aborts')
+  const destroyed = await pendingRefinement(() => cache.acquireFront(refinedFront('c-4S')))
+
+  // Disposal before the deferred start skips the refine call entirely.
+  cache.acquireFront(refinedFront('c-5S')).release()
+  cache.clear()
+  await flush()
+  assert.equal(calls.length, 4)
+
+  cache.destroy()
+  assert.equal(destroyed.args[1].signal.aborted, true, 'destroy aborts')
+  evicted.resolve()
+  invalidated.reject(new Error('late failure'))
+  cleared.resolve()
+  destroyed.resolve()
+  await flush()
+  assert.deepEqual(updates, [])
+  assert.deepEqual(diagnostics, [])
+  assert.equal(cache.getStats().refining, 0)
+  assert.ok(textures.every(({ uploads, image }) => uploads === 1 && image === null))
+})
+
+test('refinement failures emit one diagnostic and keep the drawn texture usable', async () => {
+  const { cache, calls, diagnostics, updates } = createRefiningHarness()
+  const decodeFailure = cache.acquireFront(refinedFront('c-AS'))
+  const valueFailure = cache.acquireFront(refinedFront('c-KS'))
+  const aborted = cache.acquireFront(refinedFront('c-JS'))
+  const thrown = cache.acquireFront({ themeId: THROWING_FRONT_ID, cardId: 'c-2D', scale: 1 })
+  await flush()
+  assert.equal(calls.length, 3)
+  calls[0].reject(Object.assign(new Error('decode failed'), { code: 'decode' }))
+  calls[1].reject(undefined)
+  calls[2].reject(new DOMException('stopped', 'AbortError'))
+  await flush()
+
+  assert.deepEqual(diagnostics, [
+    {
+      type: 'texture-refine-failed',
+      kind: 'front',
+      themeId: THROWING_FRONT_ID,
+      cardId: 'c-2D',
+      reason: 'Error',
+    },
+    {
+      type: 'texture-refine-failed',
+      kind: 'front',
+      themeId: REFINED_FRONT_ID,
+      cardId: 'c-AS',
+      reason: 'decode',
+    },
+    {
+      type: 'texture-refine-failed',
+      kind: 'front',
+      themeId: REFINED_FRONT_ID,
+      cardId: 'c-KS',
+      reason: 'unknown',
+    },
+  ])
+  assert.deepEqual(updates, [])
+  assert.equal(cache.getStats().refining, 0)
+  for (const lease of [decodeFailure, valueFailure, aborted, thrown]) {
+    assert.equal(lease.texture.uploads, 1)
+    assert.notEqual(lease.texture.image, null)
+  }
+  const reused = cache.acquireFront(refinedFront('c-AS'))
+  assert.equal(reused.texture, decodeFailure.texture)
+  await flush()
+  assert.equal(calls.length, 3, 'a failed refinement is not retried for a cached entry')
+  assert.equal(diagnostics.length, 3)
+  cache.destroy()
+})
+
+test('throwing update and diagnostic listeners do not break the cache', async () => {
+  const seen = []
+  const { cache, calls } = createRefiningHarness({
+    onTextureUpdate(update) {
+      seen.push(update.cardId)
+      throw new Error('update listener failed')
+    },
+    onDiagnostic(diagnostic) {
+      seen.push(diagnostic.reason)
+      throw new Error('diagnostic listener failed')
+    },
+  })
+  const refined = cache.acquireFront(refinedFront('c-9C'))
+  const failed = cache.acquireFront(refinedFront('c-8C'))
+  await flush()
+  calls[0].resolve()
+  calls[1].reject(Object.assign(new Error('missing'), { code: 'missing' }))
+  await flush()
+  assert.deepEqual(seen, ['c-9C', 'missing'])
+  assert.equal(refined.texture.uploads, 2)
+  assert.equal(cache.getStats().refining, 0)
+
+  const next = cache.acquireFront(refinedFront('c-7C'))
+  assert.equal(cache.getStats().entries, 3)
+  for (const lease of [refined, failed, next]) lease.release()
   cache.destroy()
 })

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import {
+  mkdir,
   mkdtemp,
   readFile,
   rm,
@@ -8,7 +9,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { createServiceWorkerPlugin } from '../../vite.config.js'
+import viteConfig, { createServiceWorkerPlugin } from '../../vite.config.js'
 
 const ROOT = new URL('../../', import.meta.url)
 const PUBLIC_FILES = [
@@ -72,11 +73,16 @@ test('manifest and document expose relative install metadata and complete icons'
 test('build plugin injects a deterministic complete shell and content revision', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'soulcard-pwa-build-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
+  const hdChunk = 'assets/tarot-hd-Cq1x9ZpA.js'
+  const hdArt = 'assets/tarot-hd-art-c-2S-B4xkF2aQ.webp'
+  await mkdir(join(directory, 'assets'))
   await Promise.all([
     writeFile(join(directory, 'sw.js'), WORKER_TEMPLATE),
     writeFile(join(directory, 'index.html'), '<main>first</main>'),
     writeFile(join(directory, 'assets-app.js'), 'console.log("app")'),
     writeFile(join(directory, 'assets-app.css'), 'body{}'),
+    writeFile(join(directory, hdChunk), 'export const hd = true'),
+    writeFile(join(directory, hdArt), 'first art'),
     ...PUBLIC_FILES.map((fileName) => writeFile(
       join(directory, fileName),
       `${fileName}-content`,
@@ -86,6 +92,8 @@ test('build plugin injects a deterministic complete shell and content revision',
     'assets-app.js': {},
     'index.html': {},
     'assets-app.css': {},
+    [hdChunk]: {},
+    [hdArt]: {},
   }
   const plugin = createServiceWorkerPlugin()
 
@@ -104,8 +112,20 @@ test('build plugin injects a deterministic complete shell and content revision',
     './manifest.webmanifest',
     './assets-app.css',
     './assets-app.js',
+    `./${hdChunk}`,
   ])
   const firstRevision = first.match(/const BUILD_REVISION = "([a-f0-9]{12})"/)[1]
+
+  // The opt-in art pack is neither precached nor part of the shell revision.
+  await writeFile(join(directory, hdArt), 'revised art')
+  await writeFile(join(directory, 'sw.js'), WORKER_TEMPLATE)
+  await plugin.writeBundle({ dir: directory }, bundle)
+  const revisedArt = await readFile(join(directory, 'sw.js'), 'utf8')
+  assert.equal(
+    revisedArt.match(/const BUILD_REVISION = "([a-f0-9]{12})"/)[1],
+    firstRevision,
+  )
+  assert.doesNotMatch(revisedArt, /tarot-hd-art-/)
 
   await writeFile(join(directory, 'index.html'), '<main>second</main>')
   await writeFile(join(directory, 'sw.js'), WORKER_TEMPLATE)
@@ -119,4 +139,17 @@ test('build plugin injects a deterministic complete shell and content revision',
     plugin.writeBundle({ dir: directory }, bundle),
     /placeholders are missing/,
   )
+})
+
+test('card art is always emitted as a file instead of being inlined', () => {
+  const inline = viteConfig.build.assetsInlineLimit
+  assert.equal(typeof inline, 'function')
+  const content = Buffer.alloc(16)
+  assert.equal(inline('/repo/src/assets/card-art/tarot-hd/tarot-hd-art-back.webp', content), false)
+  assert.equal(
+    inline('C:\\repo\\src\\assets\\card-art\\tarot-hd\\tarot-hd-art-back.webp', content),
+    false,
+  )
+  assert.equal(inline('/repo/src/assets/other.png', content), undefined)
+  assert.equal(inline('/repo/public/icon.svg', content), undefined)
 })

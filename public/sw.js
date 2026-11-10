@@ -6,6 +6,9 @@ const ACTIVE_CACHE_PREFIX = `${CACHE_PREFIX}active-`
 const ACTIVE_CACHE = `${ACTIVE_CACHE_PREFIX}${BUILD_REVISION}`
 const SHELL_CACHE_PREFIX = `${CACHE_PREFIX}shell-`
 const RUNTIME_CACHE_PREFIX = `${CACHE_PREFIX}runtime-`
+// Opt-in art packs persist across app revisions; src/persistence/art-pack-store.js
+// repeats this prefix because a static worker cannot import it.
+const ART_CACHE_PREFIX = `${CACHE_PREFIX}art-`
 const BUILD_ASSETS = /* INJECT_BUILD_ASSETS */ []
 const APP_SHELL = BUILD_ASSETS.length > 0
   ? BUILD_ASSETS
@@ -40,6 +43,10 @@ function isScopedUrl(url) {
   return url.origin === SCOPE_URL.origin && url.href.startsWith(SCOPE_URL.href)
 }
 
+function isRevisionCache(key) {
+  return key.startsWith(CACHE_PREFIX) && !key.startsWith(ART_CACHE_PREFIX)
+}
+
 async function precacheShell() {
   try {
     const cache = await caches.open(SHELL_CACHE)
@@ -59,7 +66,7 @@ async function cleanSupersededInstallCaches() {
   const legacyCache = activeMarker
     ? null
     : keys.find((key) => (
-        key.startsWith(CACHE_PREFIX)
+        isRevisionCache(key)
         && !key.startsWith(ACTIVE_CACHE_PREFIX)
         && !key.startsWith(SHELL_CACHE_PREFIX)
         && !key.startsWith(RUNTIME_CACHE_PREFIX)
@@ -88,7 +95,7 @@ async function cleanSupersededInstallCaches() {
 
   await Promise.all(
     keys
-      .filter((key) => key.startsWith(CACHE_PREFIX) && !preservedCaches.has(key))
+      .filter((key) => isRevisionCache(key) && !preservedCaches.has(key))
       .map((key) => caches.delete(key)),
   )
 }
@@ -106,7 +113,7 @@ async function cleanObsoleteCaches() {
   for (const nextShell of nextShells) currentCaches.add(nextShell)
   await Promise.all(
     keys
-      .filter((key) => key.startsWith(CACHE_PREFIX) && !currentCaches.has(key))
+      .filter((key) => isRevisionCache(key) && !currentCaches.has(key))
       .map((key) => caches.delete(key)),
   )
   await caches.open(ACTIVE_CACHE)

@@ -6,6 +6,8 @@ import {
 } from './classic.js'
 
 const THEME_KINDS = Object.freeze(['front', 'back'])
+// `refine` is optional: it improves an already drawn canvas asynchronously.
+const DESCRIPTOR_KEYS = Object.freeze(['id', 'create', 'refine'])
 const THEME_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const MAX_THEME_ID_LENGTH = 64
 
@@ -33,12 +35,11 @@ function assertDescriptor(descriptor, kind) {
   assertPlainObject(descriptor, `${kind} theme`)
   const keys = Reflect.ownKeys(descriptor)
   if (
-    keys.length !== 2
-    || !keys.includes('id')
+    !keys.includes('id')
     || !keys.includes('create')
-    || keys.some((key) => typeof key !== 'string')
+    || keys.some((key) => !DESCRIPTOR_KEYS.includes(key))
   ) {
-    throw new TypeError(`${kind} theme must contain only id and create`)
+    throw new TypeError(`${kind} theme must contain only id, create, and an optional refine`)
   }
   for (const key of keys) {
     const property = Object.getOwnPropertyDescriptor(descriptor, key)
@@ -51,6 +52,9 @@ function assertDescriptor(descriptor, kind) {
   }
   if (typeof descriptor.create !== 'function') {
     throw new TypeError(`${kind} theme create must be a function`)
+  }
+  if (Object.hasOwn(descriptor, 'refine') && typeof descriptor.refine !== 'function') {
+    throw new TypeError(`${kind} theme refine must be a function`)
   }
 }
 
@@ -109,6 +113,7 @@ export function createThemeRegistry({
       kind,
       id: descriptor.id,
       create: descriptor.create,
+      ...(Object.hasOwn(descriptor, 'refine') ? { refine: descriptor.refine } : {}),
     })
     registry.set(registered.id, registered)
     return registered

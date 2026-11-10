@@ -1,0 +1,18 @@
+{
+  "name": "soulcard-card-art-tools",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Builds Soulcard's prerendered Tarot (HD) card art pack from the SVG sources in art/tarot-hd/.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build:hd": "node build-hd.mjs",
+    "check:hd": "node build-hd.mjs --check"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "sharp": "0.35.5"
+  }
+}

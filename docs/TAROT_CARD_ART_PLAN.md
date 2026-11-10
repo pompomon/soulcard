@@ -997,3 +997,71 @@ default.
   - WP11 adds this comparison to the card-art fixture.
 - **Wiring.** Bootstrap binds the card-art registry and a fixed pixel selection into
   every Game battlefield, and classic stays the registry fallback.
+
+### PR2: HD infrastructure (WP3–WP7)
+
+- **Scope.** PR2 adds the HD pack, its store and its theme, but no setting or UI.
+  Nothing imports `tarot-hd.js` yet. The shipped app changes only through the
+  refinement support, the service worker's art-cache exclusion and the build's inline
+  limit. PR3 wires the rest in.
+- **Art.** 46 original SVG components in `art/tarot-hd/`. `art/provenance.json` lists
+  them (93 records in total), and `art/README.md` documents them.
+  - `hd-compose.mjs` checks every component against an element and attribute
+    allow-list before composing.
+  - Any `url()` value must reference a local ID, which blocks external references
+    such as `clip-path="url(http://…)"`.
+- **Pack (WP4).** 54 files: 52 fronts and the back at 600×840, plus the 1200×1470
+  preview.
+  - They total 1,025,826 bytes, against the 3–8 MB estimate and the 8 MB budget.
+    Fronts are 10.9–25.0 kB each (871.4 kB in total), the back is 26.4 kB and the
+    preview 128.0 kB.
+  - resvg rasterizes at 1200×1680. sharp downsamples with Lanczos3 and encodes WebP
+    at quality 82 (75 for the preview), with lossless alpha and effort 6.
+  - The index-plate check is clip-aware. The worst measured values are 3.8 off-line,
+    0.15 overshoot, 6.9 ink drift, 1.8 ground drift and 5.20:1 contrast.
+  - The back must match itself rotated 180°: a mean difference of at most 0.05, and at
+    most 16 pixels that differ by more than 32. With sharp the measured values are
+    0.0064 and 2 pixels; Chrome's decoder gives 4 pixels.
+  - `TAROT_HD_SOURCE_SHA256` digests the components, the composition and layout
+    modules, the tool scripts and the lockfile. `tarot-hd-assets.test.js` recomputes
+    it, so a source edit without `build:hd` fails `npm test`.
+  - libwebp output can vary by platform, so `check:hd`'s byte comparison holds only
+    on one platform. The source digest is the portable check.
+  - `HD_PACK_BUDGET_BYTES` lives in `hd-compose.mjs`, because tests can't import
+    `build-hd.mjs`: it loads sharp and resvg.
+- **Build (WP5).** A probe build that dynamically imported the HD modules did the
+  following:
+  - It emitted all 54 `tarot-hd-art-*.webp` files with content hashes and inlined
+    none.
+  - Its `sw.js` listed the `tarot-hd-*.js` chunk (4.53 kB, 2.04 kB gzip) and the
+    `tarot-hd-assets-*.js` chunk (9.94 kB, 3.34 kB gzip), and no HD art.
+- **Store (WP6).** The store adds two things to the WP6 signature:
+  - an injectable `storage` for the `estimate()` pre-check
+  - a `totalBytes` getter for progress.
+
+  Cache keys append `soulcard-sha256=<digest>` to the URL, so a revised file never
+  matches a stale entry. The failure codes are `network`, `integrity`, `quota`,
+  `unsupported` and `missing`.
+- **Theme (WP7).**
+  - `activate()` uses the manifest only to check IDs and their order. The images
+    come from the store.
+  - A later `activate()` or `release()` supersedes an activation in flight, which
+    then rejects with an `AbortError`. A failed re-activation keeps the previous one.
+  - Only the front descriptor has `refine`. The back draws from its full bitmap.
+  - Read and decode failures become a `TarotHdArtError` with code `missing` or
+    `decode`. The texture cache reports the code as the diagnostic's `reason`.
+- **Size.**
+  - Vite reports that the JS bundle grew from 821.13 kB (210.25 kB gzip) to
+    822.55 kB (210.66 kB gzip).
+  - Summing the `BUILD_ASSETS` files in `dist`, the precache grew from 938,832 to
+    940,253 bytes. PR1's head was re-measured with this method.
+  - `npm test` grew from 529 to 570 tests.
+- **Browser (text-only).** On the Vite dev server in headless Chrome:
+  - All 54 files are served as `image/webp`, and their sizes and SHA-256 digests match
+    the manifest.
+  - Activation took 48 ms. The first refinement of `c-QH` took 20 ms, with one
+    `onTextureUpdate` and no diagnostics.
+  - In a 56×56 index sample, pixels matching the ink colour rose from 58 in the
+    preview to 596 after refinement.
+  - A Classic game still renders the pixel deck: `#app` contains a canvas, and the
+    console shows no errors.
