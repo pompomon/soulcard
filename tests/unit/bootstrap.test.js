@@ -683,6 +683,51 @@ test('bootstrap injects the input controller factory into Game', async (t) => {
   assert.equal(destroyed, 2)
 })
 
+test('bootstrap gives every Game battlefield the Tarot pixel card art', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const mounts = []
+  const app = bootstrap({
+    root: new FakeElement('div'),
+    runRepository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => assert.fail('Unexpected save'),
+    },
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    mountBattlefield(host, options) {
+      mounts.push({ host, options })
+    },
+  })
+  await app.ready
+  app.navigate('game')
+  app.navigate('main')
+  app.navigate('game')
+
+  assert.equal(mounts.length, 2)
+  const [{ host, options }] = mounts
+  assert.ok(host instanceof FakeElement)
+  assert.equal(typeof options.onLayout, 'function')
+  assert.equal(typeof options.settingsController?.subscribe, 'function')
+  assert.deepEqual(options.themeSelection, {
+    frontThemeId: 'tarot-pixel-front-v1',
+    backThemeId: 'tarot-pixel-back-v1',
+  })
+  assert.deepEqual(
+    options.themeRegistry.resolveSelection(options.themeSelection),
+    options.themeSelection,
+  )
+  assert.equal(mounts[1].options.themeRegistry, options.themeRegistry)
+  await app.destroy()
+})
+
 test('bootstrap enables Resume for restored and pre-populated runs', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {

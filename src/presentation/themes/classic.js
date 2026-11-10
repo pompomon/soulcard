@@ -1,14 +1,16 @@
 import { getCard } from '../../domain/cards.js'
+import {
+  CARD_TEXTURE_LOGICAL_SIZE,
+  assertTextureOptions,
+  createBrowserCanvas,
+  prepareCardSurface,
+} from './canvas.js'
 
 export const CLASSIC_FRONT_THEME_ID = 'classic-front-v1'
 export const CLASSIC_BACK_THEME_ID = 'classic-back-v1'
-export const CLASSIC_CARD_LOGICAL_SIZE = Object.freeze({
-  width: 300,
-  height: 420,
-})
+export const CLASSIC_CARD_LOGICAL_SIZE = CARD_TEXTURE_LOGICAL_SIZE
 export const DEFAULT_CLASSIC_TEXTURE_SCALE = 2
 
-const MAX_TEXTURE_SCALE = 4
 const RED_SUIT_COLOR = '#b42336'
 const DARK_SUIT_COLOR = '#18141f'
 const SUIT_SYMBOLS = Object.freeze({
@@ -51,55 +53,7 @@ const PIP_LAYOUTS = Object.freeze({
 })
 
 function assertOptions(options) {
-  if (
-    options === null
-    || typeof options !== 'object'
-    || Array.isArray(options)
-  ) {
-    throw new TypeError('Classic texture options must be an object')
-  }
-}
-
-function assertScale(scale) {
-  if (!Number.isInteger(scale) || scale < 1 || scale > MAX_TEXTURE_SCALE) {
-    throw new TypeError(`scale must be an integer from 1 through ${MAX_TEXTURE_SCALE}`)
-  }
-}
-
-function createBrowserCanvas(width, height) {
-  const canvas = globalThis.document?.createElement?.('canvas')
-  if (!canvas) {
-    throw new Error('Canvas creation is unavailable')
-  }
-  canvas.width = width
-  canvas.height = height
-  return canvas
-}
-
-function prepareSurface({ scale, createCanvas }) {
-  assertScale(scale)
-  if (typeof createCanvas !== 'function') {
-    throw new TypeError('createCanvas must be a function')
-  }
-
-  const width = CLASSIC_CARD_LOGICAL_SIZE.width * scale
-  const height = CLASSIC_CARD_LOGICAL_SIZE.height * scale
-  const canvas = createCanvas(width, height)
-  if (
-    canvas === null
-    || typeof canvas !== 'object'
-    || typeof canvas.getContext !== 'function'
-  ) {
-    throw new TypeError('createCanvas must return a canvas-like object')
-  }
-  canvas.width = width
-  canvas.height = height
-  const context = canvas.getContext('2d')
-  if (context === null || typeof context !== 'object') {
-    throw new Error('Canvas 2D context is unavailable')
-  }
-  context.scale(scale, scale)
-  return { canvas, context }
+  assertTextureOptions(options, 'Classic')
 }
 
 function roundedRectangle(context, x, y, width, height, radius) {
@@ -275,7 +229,7 @@ export function generateClassicFront(cardId, options = {}) {
     scale = DEFAULT_CLASSIC_TEXTURE_SCALE,
     createCanvas = createBrowserCanvas,
   } = options
-  const { canvas, context } = prepareSurface({ scale, createCanvas })
+  const { canvas, context } = prepareCardSurface({ scale, createCanvas })
   const symbol = SUIT_SYMBOLS[card.suit]
   const color = card.suit === 'H' || card.suit === 'D'
     ? RED_SUIT_COLOR
@@ -299,7 +253,7 @@ export function generateClassicBack(options = {}) {
     scale = DEFAULT_CLASSIC_TEXTURE_SCALE,
     createCanvas = createBrowserCanvas,
   } = options
-  const { canvas, context } = prepareSurface({ scale, createCanvas })
+  const { canvas, context } = prepareCardSurface({ scale, createCanvas })
   const { width, height } = CLASSIC_CARD_LOGICAL_SIZE
 
   drawCardSurface(context)
