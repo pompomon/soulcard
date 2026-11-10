@@ -228,7 +228,31 @@ export function createArtPackStore({
     }
   }
 
+  // caches.open() creates a missing cache, so inspection checks first and never
+  // leaves an empty art cache behind for a player who hasn't downloaded the pack.
+  async function cacheMissing() {
+    if (backendPromise !== null || caches === null || typeof caches.has !== 'function') {
+      return false
+    }
+    try {
+      return (await caches.has(cacheName)) === false && backendPromise === null
+    } catch {
+      return false
+    }
+  }
+
   async function inspect() {
+    if (await cacheMissing()) {
+      return Object.freeze({
+        complete: false,
+        storedFiles: 0,
+        totalFiles: entries.length,
+        storedBytes: 0,
+        totalBytes,
+        staleEntries: 0,
+        persistent,
+      })
+    }
     const backend = await openBackend()
     const keys = await storedKeys(backend)
     let storedFiles = 0

@@ -130,6 +130,22 @@ test('burning, quality, render cap, and speed updates persist and notify subscri
   assert.equal(snapshots.length, 5)
 })
 
+test('card art choice persists across reloads and notifies subscribers', () => {
+  const storage = createStorage()
+  const { controller } = createController({ storage })
+  const snapshots = []
+  controller.subscribe((settings) => snapshots.push(settings.cardArt))
+
+  assert.equal(controller.getSnapshot().cardArt, 'tarot-pixel')
+  controller.setCardArt('tarot-hd')
+  assert.equal(controller.getSnapshot().cardArt, 'tarot-hd')
+  assert.equal(createController({ storage }).controller.getSnapshot().cardArt, 'tarot-hd')
+
+  controller.setCardArt('tarot-pixel')
+  assert.deepEqual(snapshots, ['tarot-pixel', 'tarot-hd', 'tarot-pixel'])
+  assert.equal(createController({ storage }).controller.getSnapshot().cardArt, 'tarot-pixel')
+})
+
 test('invalid updates and subscribers are rejected without changing settings', () => {
   const { controller } = createController()
   const initial = controller.getSnapshot()
@@ -140,6 +156,8 @@ test('invalid updates and subscribers are rejected without changing settings', (
   assert.throws(() => controller.setRenderScaleCap(Number.NaN), TypeError)
   assert.throws(() => controller.setAnimationSpeed(3), TypeError)
   assert.throws(() => controller.setReducedMotionOverride('system'), TypeError)
+  assert.throws(() => controller.setCardArt('classic'), TypeError)
+  assert.throws(() => controller.setCardArt(undefined), TypeError)
   assert.equal(controller.getSnapshot(), initial)
 })
 
@@ -171,5 +189,6 @@ test('destroy removes media and subscriber listeners and prevents later updates'
   assert.equal(calls, 1)
   assert.throws(() => controller.setBurnEnabled(false), /has been destroyed/)
   assert.throws(() => controller.setQuality('high'), /has been destroyed/)
+  assert.throws(() => controller.setCardArt('tarot-hd'), /has been destroyed/)
   assert.throws(() => controller.subscribe(() => {}), /has been destroyed/)
 })

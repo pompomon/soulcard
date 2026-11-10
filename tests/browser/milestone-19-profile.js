@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import {
+  TAROT_HD_THEME_SELECTION,
   TAROT_PIXEL_THEME_SELECTION,
   bindCardArt,
   createCardArtRegistry,
@@ -7,6 +8,7 @@ import {
 import { CARD_IDS } from '../../src/domain/cards.js'
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
+import { createArtPackStore } from '../../src/persistence/art-pack-store.js'
 import { mountBattlefield } from '../../src/presentation/battlefield.js'
 import { createEventTimeline } from '../../src/presentation/event-player.js'
 import { createTextureCache } from '../../src/presentation/texture-cache.js'
@@ -14,6 +16,9 @@ import {
   CLASSIC_BACK_THEME_ID,
   CLASSIC_FRONT_THEME_ID,
 } from '../../src/presentation/themes/classic.js'
+import { TAROT_HD_ASSETS } from '../../src/presentation/themes/tarot-hd-assets.js'
+import { createTarotHdThemes } from '../../src/presentation/themes/tarot-hd.js'
+import tarotPixelSpritesSource from '../../src/presentation/themes/tarot-pixel-sprites.js?raw'
 
 const ZERO_TIMING = Object.freeze({
   revealMs: 0,
@@ -143,10 +148,14 @@ function profileMatch(handle, seed) {
   }
 }
 
-function profileTextures(scale, { frontThemeId, backThemeId } = CLASSIC_SELECTION) {
+function profileTextures(
+  scale,
+  { frontThemeId, backThemeId } = CLASSIC_SELECTION,
+  registry = createCardArtRegistry(),
+) {
   const renderer = new THREE.WebGLRenderer({ alpha: true })
   const cache = createTextureCache({
-    registry: createCardArtRegistry(),
+    registry,
     maxEntries: 24,
     renderer,
   })
@@ -167,6 +176,133 @@ function profileTextures(scale, { frontThemeId, backThemeId } = CLASSIC_SELECTIO
     elapsedMs,
     residentEntries,
     bound: 24,
+  })
+}
+
+function withTimeout(promise, name, timeoutMs = 30_000) {
+  let timer
+  return Promise.race([
+    promise,
+    new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`Timed out waiting for ${name}`)), timeoutMs)
+    }),
+  ]).finally(() => clearTimeout(timer))
+}
+
+// Refines HD fronts held in one texture cache: one at a time for the latency of a
+// single reveal, then all 52 at once for the burst of a full table.
+async function profileTarotHdRefine(registry, scale) {
+  const renderer = new THREE.WebGLRenderer({ alpha: true })
+  const waiting = new Map()
+  const diagnostics = []
+  const cache = createTextureCache({
+    registry,
+    maxEntries: CARD_IDS.length + 1,
+    renderer,
+    onTextureUpdate({ cardId }) {
+      waiting.get(cardId)?.()
+      waiting.delete(cardId)
+    },
+    onDiagnostic(diagnostic) {
+      diagnostics.push(diagnostic)
+    },
+  })
+  const refined = (cardId) => new Promise((resolve) => {
+    waiting.set(cardId, resolve)
+  })
+  const acquire = (cardId) => cache.acquireFront({
+    themeId: TAROT_HD_THEME_SELECTION.frontThemeId,
+    cardId,
+    scale,
+  })
+  try {
+    const latencies = []
+    for (const cardId of CARD_IDS) {
+      const done = refined(cardId)
+      const startedAt = performance.now()
+      const lease = acquire(cardId)
+      await withTimeout(done, `HD refinement of ${cardId}`)
+      latencies.push(performance.now() - startedAt)
+      lease.release()
+    }
+    cache.clear()
+
+    const burstStartedAt = performance.now()
+    const burstDone = Promise.all(CARD_IDS.map(refined))
+    const leases = CARD_IDS.map(acquire)
+    await withTimeout(burstDone, 'HD burst refinement')
+    const burstMs = performance.now() - burstStartedAt
+    for (const lease of leases) lease.release()
+
+    return Object.freeze({
+      scale,
+      single: Object.freeze({
+        samples: latencies.length,
+        p50Ms: percentile(latencies, 0.5),
+        p95Ms: percentile(latencies, 0.95),
+        maxMs: Math.max(...latencies),
+      }),
+      burst: Object.freeze({ textures: CARD_IDS.length, elapsedMs: burstMs }),
+      diagnostics: diagnostics.length,
+    })
+  } finally {
+    cache.destroy()
+    renderer.dispose()
+  }
+}
+
+// Downloads the HD pack into an in-memory store, so the profile never touches the
+// player's art cache, then times activation, previews and refinement.
+async function profileTarotHd() {
+  const heapBefore = heapObservation()
+  const store = createArtPackStore({ manifest: TAROT_HD_ASSETS, caches: null })
+  const downloadStartedAt = performance.now()
+  await store.download()
+  const downloadMs = performance.now() - downloadStartedAt
+  const themes = createTarotHdThemes()
+  const registry = createCardArtRegistry()
+  registry.registerFront(themes.frontTheme)
+  registry.registerBack(themes.backTheme)
+  const activationStartedAt = performance.now()
+  await themes.activate({ store, manifest: TAROT_HD_ASSETS })
+  const activationMs = performance.now() - activationStartedAt
+  const heapActive = heapObservation()
+  let result
+  try {
+    const preview = [1, 2].map((scale) => (
+      profileTextures(scale, TAROT_HD_THEME_SELECTION, registry)
+    ))
+    const refine = await profileTarotHdRefine(registry, 2)
+    result = {
+      selection: TAROT_HD_THEME_SELECTION,
+      packFiles: TAROT_HD_ASSETS.length,
+      packBytes: TAROT_HD_ASSETS.reduce((total, { bytes }) => total + bytes, 0),
+      downloadMs,
+      activationMs,
+      preview,
+      refine,
+    }
+  } finally {
+    themes.release()
+    await store.clear()
+  }
+  // Heap figures are observations only: nothing forces a collection between them.
+  return Object.freeze({
+    ...result,
+    heap: { before: heapBefore, active: heapActive, released: heapObservation() },
+  })
+}
+
+async function gzipSize(text) {
+  const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))
+  return (await new Response(stream).arrayBuffer()).byteLength
+}
+
+async function profilePixelModule() {
+  return Object.freeze({
+    module: 'src/presentation/themes/tarot-pixel-sprites.js',
+    bytes: new TextEncoder().encode(tarotPixelSpritesSource).byteLength,
+    gzipBytes: await gzipSize(tarotPixelSpritesSource),
   })
 }
 
@@ -320,6 +456,9 @@ async function run() {
     handle.teardown()
   }
 
+  const tarotHd = await profileTarotHd()
+  const pixelModule = await profilePixelModule()
+
   const report = Object.freeze({
     reportVersion: 1,
     generatedAt: new Date().toISOString(),
@@ -335,11 +474,13 @@ async function run() {
     },
     frameIntervals,
     cardArt: TAROT_PIXEL_THEME_SELECTION,
+    pixelModule,
     textureGeneration: [
       profileTextures(1),
       profileTextures(3),
       ...[1, 2, 3].map((scale) => profileTextures(scale, TAROT_PIXEL_THEME_SELECTION)),
     ],
+    tarotHd,
     viewportResults,
     motion: {
       reduced: reducedMotion,
