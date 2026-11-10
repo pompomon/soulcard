@@ -188,3 +188,34 @@ test('registrations validate IDs and contracts and reject collisions per kind', 
     assert.throws(() => registry.registerFront(descriptor), /theme/)
   }
 })
+
+test('registrations keep an optional refine function and reject other extensions', () => {
+  const registry = createThemeRegistry()
+  const create = () => {}
+  const refine = async () => {}
+  const front = registry.registerFront({ id: 'refined-v1', create, refine })
+  const back = registry.registerBack({ id: 'refined-v1', create, refine })
+  const plain = registry.registerFront({ id: 'plain-v1', create })
+
+  assert.equal(front.refine, refine)
+  assert.equal(back.refine, refine)
+  assert.ok(Object.isFrozen(front))
+  assert.equal(Object.hasOwn(plain, 'refine'), false)
+  assert.equal(registry.resolveFront('refined-v1'), front)
+  assert.equal(registry.resolveBack('refined-v1'), back)
+
+  for (const [descriptor, message] of [
+    [{ id: 'bad-v1', create, refine: true }, /refine must be a function/],
+    [{ id: 'bad-v1', create, refine: undefined }, /refine must be a function/],
+    [{ id: 'bad-v1', create, refine, extra: true }, /optional refine/],
+    [{ id: 'bad-v1', refine }, /optional refine/],
+    [{ id: 'bad-v1', create, [Symbol('refine')]: refine }, /optional refine/],
+    [{ id: 'bad-v1', create, get refine() { return refine } }, /enumerable data property/],
+  ]) {
+    assert.throws(() => registry.registerFront(descriptor), message)
+  }
+  assert.deepEqual(
+    registry.listFrontThemes().map(({ id }) => id),
+    [CLASSIC_FRONT_THEME_ID, 'refined-v1', 'plain-v1'],
+  )
+})
