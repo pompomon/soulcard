@@ -1,4 +1,5 @@
 import { createScreenCoordinator } from './screen-coordinator.js'
+import { bindCardArt } from './card-art.js'
 import { createRunController } from './run-controller.js'
 import { createNewMatch } from './new-match.js'
 import { createNewCampaign } from './new-campaign.js'
@@ -132,6 +133,7 @@ export function bootstrap({
   if (typeof confirmStartOver !== 'function') {
     throw new TypeError('confirmStartOver must be a function')
   }
+  const mountCardArtBattlefield = bindCardArt(mountBattlefield)
   const settingsController = createSettingsController({
     repository: settingsRepository,
     matchMedia,
@@ -266,7 +268,7 @@ export function bootstrap({
         ),
         game: () => attachUpdateNotice(
           createGameScreen({
-            mountBattlefield,
+            mountBattlefield: mountCardArtBattlefield,
             settingsController,
             runController: activeRunController,
             eventPlayerFactory,

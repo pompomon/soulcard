@@ -1,0 +1,160 @@
+{
+  "transparent": ".",
+  "colors": [
+    {
+      "key": "N",
+      "hex": "#28204f",
+      "name": "night"
+    },
+    {
+      "key": "n",
+      "hex": "#171331",
+      "name": "night deep"
+    },
+    {
+      "key": "P",
+      "hex": "#f2e6c9",
+      "name": "parchment"
+    },
+    {
+      "key": "p",
+      "hex": "#fbf5e6",
+      "name": "vellum"
+    },
+    {
+      "key": "q",
+      "hex": "#e3d3ac",
+      "name": "parchment shade"
+    },
+    {
+      "key": "G",
+      "hex": "#d7bb72",
+      "name": "gold"
+    },
+    {
+      "key": "g",
+      "hex": "#a8863a",
+      "name": "gold deep"
+    },
+    {
+      "key": "Y",
+      "hex": "#f3e3a6",
+      "name": "gold light"
+    },
+    {
+      "key": "R",
+      "hex": "#b42336",
+      "name": "index red"
+    },
+    {
+      "key": "K",
+      "hex": "#18141f",
+      "name": "index dark"
+    },
+    {
+      "key": "B",
+      "hex": "#2f6f8f",
+      "name": "cups"
+    },
+    {
+      "key": "b",
+      "hex": "#6fa8c6",
+      "name": "cups light"
+    },
+    {
+      "key": "U",
+      "hex": "#1f4a60",
+      "name": "cups deep"
+    },
+    {
+      "key": "O",
+      "hex": "#c08a2e",
+      "name": "pentacles"
+    },
+    {
+      "key": "o",
+      "hex": "#e8c46a",
+      "name": "pentacles light"
+    },
+    {
+      "key": "W",
+      "hex": "#4f7a3a",
+      "name": "wands"
+    },
+    {
+      "key": "w",
+      "hex": "#86b062",
+      "name": "wands light"
+    },
+    {
+      "key": "Z",
+      "hex": "#33502a",
+      "name": "wands deep"
+    },
+    {
+      "key": "T",
+      "hex": "#7a4f2a",
+      "name": "wood"
+    },
+    {
+      "key": "t",
+      "hex": "#a8763f",
+      "name": "wood light"
+    },
+    {
+      "key": "S",
+      "hex": "#8a93a6",
+      "name": "swords"
+    },
+    {
+      "key": "s",
+      "hex": "#d3d8e2",
+      "name": "swords light"
+    },
+    {
+      "key": "D",
+      "hex": "#4c5468",
+      "name": "swords deep"
+    },
+    {
+      "key": "F",
+      "hex": "#e8b48a",
+      "name": "skin"
+    },
+    {
+      "key": "f",
+      "hex": "#c08660",
+      "name": "skin shade"
+    },
+    {
+      "key": "H",
+      "hex": "#4a2f22",
+      "name": "hair"
+    },
+    {
+      "key": "V",
+      "hex": "#6c5aa5",
+      "name": "violet"
+    },
+    {
+      "key": "v",
+      "hex": "#9a8bd0",
+      "name": "violet light"
+    },
+    {
+      "key": "X",
+      "hex": "#ffffff",
+      "name": "white"
+    },
+    {
+      "key": "C",
+      "hex": "#8e2a3a",
+      "name": "crimson"
+    },
+    {
+      "key": "c",
+      "hex": "#c25a6a",
+      "name": "crimson light"
+    }
+  ]
+}

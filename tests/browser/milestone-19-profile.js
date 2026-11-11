@@ -1,11 +1,19 @@
 import * as THREE from 'three'
+import {
+  TAROT_PIXEL_THEME_SELECTION,
+  bindCardArt,
+  createCardArtRegistry,
+} from '../../src/app/card-art.js'
 import { CARD_IDS } from '../../src/domain/cards.js'
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { mountBattlefield } from '../../src/presentation/battlefield.js'
 import { createEventTimeline } from '../../src/presentation/event-player.js'
 import { createTextureCache } from '../../src/presentation/texture-cache.js'
-import { createThemeRegistry } from '../../src/presentation/themes/registry.js'
+import {
+  CLASSIC_BACK_THEME_ID,
+  CLASSIC_FRONT_THEME_ID,
+} from '../../src/presentation/themes/classic.js'
 
 const ZERO_TIMING = Object.freeze({
   revealMs: 0,
@@ -70,8 +78,14 @@ async function measureFrameIntervals(count = 30) {
   })
 }
 
+const mountCardArtBattlefield = bindCardArt(mountBattlefield)
+const CLASSIC_SELECTION = Object.freeze({
+  frontThemeId: CLASSIC_FRONT_THEME_ID,
+  backThemeId: CLASSIC_BACK_THEME_ID,
+})
+
 function createProfileMount(host, settingsController, onContextStatus) {
-  return mountBattlefield(host, {
+  return mountCardArtBattlefield(host, {
     settingsController,
     onContextStatus,
   })
@@ -129,23 +143,25 @@ function profileMatch(handle, seed) {
   }
 }
 
-function profileTextures(scale) {
+function profileTextures(scale, { frontThemeId, backThemeId } = CLASSIC_SELECTION) {
   const renderer = new THREE.WebGLRenderer({ alpha: true })
   const cache = createTextureCache({
-    registry: createThemeRegistry(),
+    registry: createCardArtRegistry(),
     maxEntries: 24,
     renderer,
   })
   const startedAt = performance.now()
   for (const cardId of CARD_IDS) {
-    cache.acquireFront({ cardId, scale }).release()
+    cache.acquireFront({ themeId: frontThemeId, cardId, scale }).release()
   }
-  cache.acquireBack({ scale }).release()
+  cache.acquireBack({ themeId: backThemeId, scale }).release()
   const elapsedMs = performance.now() - startedAt
   const residentEntries = cache.getStats().entries
   cache.destroy()
   renderer.dispose()
   return Object.freeze({
+    frontThemeId,
+    backThemeId,
     scale,
     generatedTextures: CARD_IDS.length + 1,
     elapsedMs,
@@ -318,7 +334,12 @@ async function run() {
       },
     },
     frameIntervals,
-    textureGeneration: [profileTextures(1), profileTextures(3)],
+    cardArt: TAROT_PIXEL_THEME_SELECTION,
+    textureGeneration: [
+      profileTextures(1),
+      profileTextures(3),
+      ...[1, 2, 3].map((scale) => profileTextures(scale, TAROT_PIXEL_THEME_SELECTION)),
+    ],
     viewportResults,
     motion: {
       reduced: reducedMotion,

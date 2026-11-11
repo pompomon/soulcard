@@ -3,7 +3,9 @@
 A framework-light, fullscreen card-game PWA with a deterministic domain engine and
 Main, Settings, and Game screen shell. The Game screen contains a responsive Three.js
 battlefield that reconciles authoritative match snapshots and presents already-committed
-events with generated classic card fronts/backs from a bounded texture cache.
+events with generated Tarot-inspired pixel card fronts/backs from a bounded texture cache.
+The classic theme stays registered as the fallback. Card art sources, their provenance,
+and how to regenerate the pixel sprites are described in [`art/README.md`](art/README.md).
 
 ## Development
 
