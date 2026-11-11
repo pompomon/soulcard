@@ -81,13 +81,28 @@ function assertThemeRegistry(registry) {
   }
 }
 
-function assertTextureCache(cache) {
+function assertThemeSource(source) {
+  if (
+    source !== undefined
+    && (
+      source === null
+      || typeof source !== 'object'
+      || typeof source.getSelection !== 'function'
+      || typeof source.subscribe !== 'function'
+    )
+  ) {
+    throw new TypeError('themeSource must expose getSelection and subscribe')
+  }
+}
+
+function assertTextureCache(cache, { invalidates }) {
   if (
     cache === null
     || typeof cache !== 'object'
     || typeof cache.acquireFront !== 'function'
     || typeof cache.acquireBack !== 'function'
     || typeof cache.destroy !== 'function'
+    || (invalidates && typeof cache.invalidateTheme !== 'function')
   ) {
     throw new TypeError('textureCacheFactory must return a compatible texture cache')
   }
@@ -234,6 +249,7 @@ export function mountBattlefield(host, {
   inputControllerFactory = createInputController,
   themeRegistry = createThemeRegistry(),
   themeSelection = undefined,
+  themeSource = undefined,
   textureCacheFactory = createTextureCache,
 } = {}) {
   assertHost(host)
@@ -254,13 +270,19 @@ export function mountBattlefield(host, {
     throw new TypeError('inputControllerFactory must be a function')
   }
   assertThemeRegistry(themeRegistry)
+  assertThemeSource(themeSource)
+  if (themeSource !== undefined && themeSelection !== undefined) {
+    throw new TypeError('themeSource cannot be combined with themeSelection')
+  }
   if (typeof textureCacheFactory !== 'function') {
     throw new TypeError('textureCacheFactory must be a function')
   }
-  const selectedThemes = themeRegistry.resolveSelection(themeSelection ?? {
-    frontThemeId: themeRegistry.fallbackFrontThemeId,
-    backThemeId: themeRegistry.fallbackBackThemeId,
-  })
+  let selectedThemes = themeRegistry.resolveSelection(
+    themeSource?.getSelection() ?? themeSelection ?? {
+      frontThemeId: themeRegistry.fallbackFrontThemeId,
+      backThemeId: themeRegistry.fallbackBackThemeId,
+    },
+  )
 
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100)
@@ -352,6 +374,7 @@ export function mountBattlefield(host, {
   let animatedFrames = 0
   let currentPixelRatio = null
   let pendingResizeFrame = null
+  let pendingTextureFrame = null
   const staticVisuals = new Set()
   const transientVisuals = new Map()
   const tweens = new Set()
@@ -647,8 +670,9 @@ export function mountBattlefield(host, {
       registry: themeRegistry,
       maxEntries: TEXTURE_CACHE_ENTRIES,
       renderer,
+      onTextureUpdate: handleTextureUpdate,
     })
-    assertTextureCache(candidate)
+    assertTextureCache(candidate, { invalidates: themeSource !== undefined })
     textureCache = candidate
     return textureCache
   }
@@ -680,6 +704,32 @@ export function mountBattlefield(host, {
       visual.material.needsUpdate = true
       previousLease.release()
     }
+  }
+
+  function applyThemeSelection(selection) {
+    const previousThemes = selectedThemes
+    const nextThemes = themeRegistry.resolveSelection(selection)
+    if (
+      nextThemes.frontThemeId === previousThemes.frontThemeId
+      && nextThemes.backThemeId === previousThemes.backThemeId
+    ) {
+      return
+    }
+    selectedThemes = nextThemes
+    // Without a context, restoreContextResources() leases the new themes.
+    if (!contextReady()) return
+    refreshVisualTextures()
+    // invalidateTheme() disposes leased entries, so it runs only after every
+    // visual holds a lease on the new themes.
+    if (textureCache !== null) {
+      if (nextThemes.frontThemeId !== previousThemes.frontThemeId) {
+        textureCache.invalidateTheme('front', previousThemes.frontThemeId)
+      }
+      if (nextThemes.backThemeId !== previousThemes.backThemeId) {
+        textureCache.invalidateTheme('back', previousThemes.backThemeId)
+      }
+    }
+    renderCurrentFrame()
   }
 
   function releaseVisual(visual) {
@@ -1008,6 +1058,20 @@ export function mountBattlefield(host, {
     return contextReady() && !paused && !currentSettings.reducedMotion
   }
 
+  // A refined texture appears on the next animated frame. Without the loop,
+  // render one frame, at most once per animation frame.
+  function handleTextureUpdate() {
+    if (disposed || pendingTextureFrame !== null || shouldAnimate()) return
+    if (!requestFrame) {
+      renderCurrentFrame()
+      return
+    }
+    pendingTextureFrame = requestFrame(() => {
+      pendingTextureFrame = null
+      if (!disposed && !shouldAnimate()) renderCurrentFrame()
+    })
+  }
+
   function syncAnimationLoop() {
     if (!renderer) return
     previousTime = null
@@ -1294,6 +1358,11 @@ export function mountBattlefield(host, {
     }
   })
 
+  const unsubscribeThemes = themeSource?.subscribe(() => {
+    if (disposed) return
+    applyThemeSelection(themeSource.getSelection())
+  })
+
   function syncSnapshot(match, context = {}) {
     if (disposed) throw new Error('Battlefield has been destroyed')
     validateRunState(match)
@@ -1466,10 +1535,15 @@ export function mountBattlefield(host, {
         cancelFrame?.(pendingResizeFrame)
         pendingResizeFrame = null
       }
+      if (pendingTextureFrame !== null) {
+        cancelFrame?.(pendingTextureFrame)
+        pendingTextureFrame = null
+      }
       resizeObserver?.disconnect()
       windowObject?.removeEventListener?.('resize', scheduleResize)
       windowObject?.removeEventListener?.('orientationchange', scheduleResize)
       unsubscribeSettings?.()
+      unsubscribeThemes?.()
       let firstError = null
       const attempt = (operation) => {
         try {

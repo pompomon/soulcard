@@ -70,6 +70,18 @@ function textureKey(kind, themeId, cardId, scale) {
   return JSON.stringify([kind, themeId, cardId ?? null, scale])
 }
 
+function refinementFailureReason(error) {
+  if (typeof error?.code === 'string' && error.code.length > 0) return error.code
+  if (typeof error?.name === 'string' && error.name.length > 0) return error.name
+  return 'unknown'
+}
+
+function notify(callback, value) {
+  try {
+    callback(value)
+  } catch {}
+}
+
 function clearTextureImage(texture, canvas) {
   try {
     if (texture.image === canvas || texture.image !== null) {
@@ -90,6 +102,8 @@ export function createTextureCache({
   anisotropy = 4,
   createCanvas = undefined,
   textureFactory = defaultTextureFactory,
+  onTextureUpdate = () => {},
+  onDiagnostic = () => {},
 } = {}) {
   assertRegistry(registry)
   assertMaxEntries(maxEntries)
@@ -99,6 +113,12 @@ export function createTextureCache({
   }
   if (typeof textureFactory !== 'function') {
     throw new TypeError('textureFactory must be a function')
+  }
+  if (typeof onTextureUpdate !== 'function') {
+    throw new TypeError('onTextureUpdate must be a function')
+  }
+  if (typeof onDiagnostic !== 'function') {
+    throw new TypeError('onDiagnostic must be a function')
   }
   const appliedAnisotropy = Math.min(anisotropy, supportedAnisotropy(renderer))
   const entries = new Map()
@@ -113,10 +133,20 @@ export function createTextureCache({
     entries.set(key, entry)
   }
 
+  function abortRefinement(entry) {
+    const controller = entry.refinement
+    if (!controller) return
+    entry.refinement = null
+    try {
+      controller.abort()
+    } catch {}
+  }
+
   function disposeEntry(key, entry) {
     entries.delete(key)
     if (entry.disposed) return
     entry.disposed = true
+    abortRefinement(entry)
     let error = null
     try {
       entry.texture.dispose()
@@ -156,6 +186,49 @@ export function createTextureCache({
     texture.generateMipmaps = true
     texture.anisotropy = appliedAnisotropy
     texture.needsUpdate = true
+  }
+
+  function finishRefinement(entry, controller) {
+    if (entry.refinement === controller) entry.refinement = null
+    if (controller.signal.aborted || entry.disposed || entries.get(entry.key) !== entry) {
+      return
+    }
+    // Refinement redraws the same canvas at the same size, so one re-upload suffices.
+    entry.texture.needsUpdate = true
+    notify(onTextureUpdate, Object.freeze({
+      kind: entry.kind,
+      themeId: entry.themeId,
+      cardId: entry.cardId,
+      scale: entry.scale,
+    }))
+  }
+
+  function failRefinement(entry, controller, error) {
+    if (entry.refinement === controller) entry.refinement = null
+    if (controller.signal.aborted || error?.name === 'AbortError') return
+    notify(onDiagnostic, Object.freeze({
+      type: 'texture-refine-failed',
+      kind: entry.kind,
+      themeId: entry.themeId,
+      cardId: entry.cardId,
+      reason: refinementFailureReason(error),
+    }))
+  }
+
+  function startRefinement(entry, refine) {
+    const controller = new AbortController()
+    entry.refinement = controller
+    const options = { scale: entry.scale, canvas: entry.canvas, signal: controller.signal }
+    // Refinement starts after acquire() returns, so it never delays the first frame.
+    Promise.resolve()
+      .then(() => {
+        if (controller.signal.aborted) return undefined
+        return entry.kind === 'front' ? refine(entry.cardId, options) : refine(options)
+      })
+      .then(
+        () => finishRefinement(entry, controller),
+        (error) => failRefinement(entry, controller, error),
+      )
   }
 
   function createEntry({ kind, descriptor, cardId, scale, key }) {
@@ -207,8 +280,10 @@ export function createTextureCache({
       texture,
       leases: 0,
       disposed: false,
+      refinement: null,
     }
     entries.set(key, entry)
+    if (typeof descriptor.refine === 'function') startRefinement(entry, descriptor.refine)
     return entry
   }
 
@@ -310,15 +385,18 @@ export function createTextureCache({
     getStats() {
       let activeLeases = 0
       let leasedEntries = 0
+      let refining = 0
       for (const entry of entries.values()) {
         activeLeases += entry.leases
         if (entry.leases > 0) leasedEntries += 1
+        if (entry.refinement) refining += 1
       }
       return Object.freeze({
         entries: entries.size,
         maxEntries,
         activeLeases,
         leasedEntries,
+        refining,
         anisotropy: appliedAnisotropy,
         destroyed,
       })

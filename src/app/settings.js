@@ -1,6 +1,8 @@
 export const QUALITY_PRESETS = Object.freeze(['low', 'balanced', 'high'])
 export const RENDER_SCALE_CAPS = Object.freeze([1, 1.5, 2])
 export const ANIMATION_SPEEDS = Object.freeze([0.5, 1, 1.5, 2])
+// Option IDs, not theme IDs: src/app/card-art.js maps each to its versioned themes.
+export const CARD_ART_OPTIONS = Object.freeze(['tarot-pixel', 'tarot-hd'])
 
 export const DEFAULT_SETTINGS = Object.freeze({
   burnEnabled: true,
@@ -8,6 +10,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   renderScaleCap: 2,
   animationSpeed: 1,
   reducedMotionOverride: null,
+  cardArt: 'tarot-pixel',
 })
 
 const SETTING_FIELDS = Object.freeze(Object.keys(DEFAULT_SETTINGS))
@@ -28,6 +31,8 @@ export function isSettingValue(field, value) {
       return includesSameValue(ANIMATION_SPEEDS, value)
     case 'reducedMotionOverride':
       return value === null || typeof value === 'boolean'
+    case 'cardArt':
+      return CARD_ART_OPTIONS.includes(value)
     default:
       return false
   }
@@ -66,6 +71,7 @@ export function createSettingsPreferences(values = DEFAULT_SETTINGS) {
     renderScaleCap: values.renderScaleCap,
     animationSpeed: values.animationSpeed,
     reducedMotionOverride: values.reducedMotionOverride,
+    cardArt: values.cardArt,
   })
 }
 

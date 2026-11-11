@@ -931,16 +931,16 @@ Done when every §9 item is checked.
 
 ## 9. Definition of done
 
-- [ ] Every §4 criterion has passing evidence.
-- [ ] `npm test` and `npm run build` pass under Node 24 with only the existing
+- [x] Every §4 criterion has passing evidence.
+- [x] `npm test` and `npm run build` pass under Node 24 with only the existing
       chunk-size warning. Bundle, precache and HD pack sizes are recorded.
-- [ ] The pixel and HD contract tests pass, and the provenance record is complete.
-- [ ] The card-art fixture passes as a text report: pixel default, HD download,
+- [x] The pixel and HD contract tests pass, and the provenance record is complete.
+- [x] The card-art fixture passes as a text report: pixel default, HD download,
       offline relaunch, switching, bounded textures, one canvas and no relevant console
       errors.
-- [ ] The existing browser fixtures still pass.
-- [ ] README and the roadmap note are updated, and §11 is filled in.
-- [ ] Each PR is reviewed with the `soulcard-code-review` skill.
+- [x] The existing browser fixtures still pass.
+- [x] README and the roadmap note are updated, and §11 is filled in.
+- [x] Each PR is reviewed with the `soulcard-code-review` skill.
 - [ ] Accessibility and privacy reviews are done before release (roadmap :1360).
 
 ## 10. Questions for sign-off
@@ -997,3 +997,200 @@ default.
   - WP11 adds this comparison to the card-art fixture.
 - **Wiring.** Bootstrap binds the card-art registry and a fixed pixel selection into
   every Game battlefield, and classic stays the registry fallback.
+
+### PR2: HD infrastructure (WP3–WP7)
+
+- **Scope.** PR2 adds the HD pack, its store and its theme, but no setting or UI.
+  Nothing imports `tarot-hd.js` yet. The shipped app changes only through the
+  refinement support, the service worker's art-cache exclusion and the build's inline
+  limit. PR3 wires the rest in.
+- **Art.** 46 original SVG components in `art/tarot-hd/`. `art/provenance.json` lists
+  them (93 records in total), and `art/README.md` documents them.
+  - `hd-compose.mjs` checks every component against an element and attribute
+    allow-list before composing.
+  - Any `url()` value must reference a local ID, which blocks external references
+    such as `clip-path="url(http://…)"`.
+- **Pack (WP4).** 54 files: 52 fronts and the back at 600×840, plus the 1200×1470
+  preview.
+  - They total 1,025,826 bytes, against the 3–8 MB estimate and the 8 MB budget.
+    Fronts are 10.9–25.0 kB each (871.4 kB in total), the back is 26.4 kB and the
+    preview 128.0 kB.
+  - resvg rasterizes at 1200×1680. sharp downsamples with Lanczos3 and encodes WebP
+    at quality 82 (75 for the preview), with lossless alpha and effort 6.
+  - The index-plate check is clip-aware. The worst measured values are 3.8 off the
+    ground-to-ink colour line (limit 6), 0.15 overshoot (0.2), 6.9 ink drift (24),
+    1.8 ground drift (6) and 5.20:1 contrast (at least 4.5:1).
+  - The back must match itself rotated 180°: a mean difference of at most 0.05, and at
+    most 16 pixels that differ by more than 32. With sharp the measured values are
+    0.0064 and 2 pixels; Chrome's decoder gives 4 pixels.
+  - `TAROT_HD_SOURCE_SHA256` digests the components, the composition and layout
+    modules, the tool scripts and the lockfile. `tarot-hd-assets.test.js` recomputes
+    it, so a source edit without `build:hd` fails `npm test`.
+  - libwebp output can vary by platform, so `check:hd`'s byte comparison holds only
+    on one platform. The source digest is the portable check.
+  - `HD_PACK_BUDGET_BYTES` lives in `hd-compose.mjs`, because tests can't import
+    `build-hd.mjs`: it loads sharp and resvg.
+- **Build (WP5).** A probe build that dynamically imported the HD modules did the
+  following:
+  - It emitted all 54 `tarot-hd-art-*.webp` files with content hashes and inlined
+    none.
+  - Its `sw.js` listed the `tarot-hd-*.js` chunk (4.53 kB, 2.04 kB gzip) and the
+    `tarot-hd-assets-*.js` chunk (9.94 kB, 3.34 kB gzip), and no HD art.
+- **Store (WP6).** The store adds two things to the WP6 signature:
+  - an injectable `storage` for the `estimate()` pre-check
+  - a `totalBytes` getter for progress.
+
+  Cache keys append `soulcard-sha256=<digest>` to the URL, so a revised file never
+  matches a stale entry. The failure codes are `network`, `integrity`, `quota`,
+  `unsupported` and `missing`.
+- **Theme (WP7).**
+  - `activate()` uses the manifest only to check IDs and their order. The images
+    come from the store.
+  - A later `activate()` or `release()` supersedes an activation in flight, which
+    then rejects with an `AbortError`. A failed re-activation keeps the previous one.
+  - Only the front descriptor has `refine`. The back draws from its full bitmap.
+  - Read and decode failures become a `TarotHdArtError` with code `missing` or
+    `decode`. The texture cache reports the code as the diagnostic's `reason`.
+- **Size.**
+  - Vite reports that the JS bundle grew from 821.13 kB (210.25 kB gzip) to
+    822.55 kB (210.66 kB gzip).
+  - Summing the `BUILD_ASSETS` files in `dist`, the precache grew from 938,832 to
+    940,253 bytes. PR1's head was re-measured with this method.
+  - `npm test` grew from 529 to 570 tests.
+- **Browser (text-only).** On the Vite dev server in headless Chrome:
+  - All 54 files are served as `image/webp`, and their sizes and SHA-256 digests match
+    the manifest.
+  - Activation took 48 ms. The first refinement of `c-QH` took 20 ms, with one
+    `onTextureUpdate` and no diagnostics.
+  - In a 56×56 index sample, pixels matching the ink colour rose from 58 in the
+    preview to 596 after refinement.
+  - A Classic game still renders the pixel deck: `#app` contains a canvas, and the
+    console shows no errors.
+- **Profile.** `milestone-19-profile` completes. Context recovery preserves state, and
+  the console shows the same 55 WebGL warnings as PR1.
+  - Its pixel timings vary widely between runs in this 2-core container. At scale 2,
+    six PR2 runs took 112–206 ms; PR1's head took 86–128 ms in the same session.
+  - An interleaved A/B of the cache path against PR1's head shows no difference. Over
+    30 rounds, both have minimums of 51–53 ms at scales 2 and 3. PR2 was faster in 13
+    of 30 pairs at scale 2 and 19 of 30 at scale 3.
+
+### PR3: the setting, live switching and the Settings UI (WP8–WP13)
+
+- **Setting (WP8).** `cardArt` is the sixth persisted setting, stored under
+  `soulcard.settings.v1.cardArt`. Its values are option IDs (`tarot-pixel` and
+  `tarot-hd`), and `card-art.js` maps them to the versioned theme IDs. An unknown value
+  falls back to pixel. The setting never enters a save.
+- **Controller (WP8).** `createCardArtController` follows D11, with these additions:
+  - A sixth failure reason, `missing`. A read miss while HD is in use returns the cards
+    to pixel and checks the pack once, downloading any missing files. A second miss
+    stops HD with `missing` until the player selects Retry.
+  - Save-Data pauses only a choice remembered from an earlier session. Choosing HD in
+    Settings, or Retry, overrides it.
+  - `refresh()` reports the pack size and the stored bytes to Settings. It loads the
+    three HD chunks but never downloads art or creates storage: `inspect()` now returns
+    an empty report when the art cache doesn't exist, where `caches.open()` would have
+    created it.
+  - One job runs at a time. A new job aborts the previous one and waits for it to
+    settle.
+- **Battlefield (WP9).** As D11 describes. A texture cache needs `invalidateTheme` only
+  when a `themeSource` is mounted. `bindCardArt` passes the controller's registry and
+  theme source, and drops any `themeSelection` from the mount options.
+- **Settings (WP10).** The D11 fields and copy, plus:
+  - "HD card art download removed. Pixel card art is in use." after Remove, until the
+    status next changes
+  - the hint without a size, "HD downloads once and then works offline.", until the
+    manifest loads
+  - when a focused Retry or Remove button hides, focus moves to the Card art select
+  - Remove ignores repeated clicks while a removal is pending, rather than disabling
+    the focused button.
+
+  The status text changes only with the state or a quarter of the download. The hint
+  and the progress bar follow every snapshot, which the store sends once per file.
+- **Docs (WP12).** README gains "Card art verification" and describes refinement, live
+  switching, the Card art setting and the HD art cache. The roadmap's Milestone 21
+  entry links this plan without changing any milestone's state.
+- **Fixture (WP11).** `tests/browser/card-art.html` runs on the dev server in six
+  phases: the pixel default, the HD download, an HD game, an offline relaunch, a live
+  switch back to pixel with removal, and Retry while offline. It differs from WP11 as
+  follows:
+  - The page can't reload itself, so step 4 relaunches the app in the page. A fetch
+    guard fails every art request and a `navigatorObject` stub reports offline. The
+    production check below covers a real offline reload.
+  - Settings and Game are never mounted together, so Settings steps assert no canvas
+    and Game steps assert one.
+  - "Resume" from Main reopens a game saved by "Save & Main Menu" behind the pause
+    overlay, which the fixture dismisses.
+  - Legibility compares classic's `measureText` ink with the Tarot ink measured in the
+    rendered pixel art, for all 52 cards in both corners.
+  - It also measures the targets of the Card art select, Retry and Remove.
+- **Fixture results.** In headless Chrome 156 in a 2-core container:
+  - Pixel default: only `tarot-pixel-*` textures.
+  - HD download: idle, checking, downloading, preparing, ready in 317–479 ms. Five
+    progress announcements (0.0, 0.3, 0.5, 0.8 and 1.0 of 1.0 MB), and 54 verified
+    entries totalling 1,025,826 bytes.
+  - HD game: only `tarot-hd-*` textures. Across runs, refinement took p50 326–363 ms
+    and p95 742–1,133 ms, with 9–13 of 15 within the 400 ms reveal dwell. The slowest
+    samples come from the burst when the battlefield mounts, competing with
+    software-WebGL frames; isolated refinement in the profile takes 11–13 ms. The
+    preview shows meanwhile, so this is R2's pop-in, and prefetching stays a follow-up.
+  - Offline relaunch: no art fetches. HD activates (checking, preparing, ready), and a
+    Game that started with pixel switches live without a remount. Refinement took p50
+    284–365 ms and p95 376–786 ms.
+  - Back to pixel: no refinement in flight or afterwards. Remove deletes the cache.
+  - Retry: offline, Retry appears and no art is fetched. Online, Retry downloads and
+    verifies all 54 files.
+  - Targets: the select is 316×44.8 px, and Retry and Remove are 316×48.6 px.
+  - Texture cache: at most 16 of 24 entries, and no diagnostics.
+  - Legibility: Tarot rank and suit ink is 28 px for every card in both corners.
+    Classic's rank ink is 24–25 px, except Q at 30 px including its tail, and its suit
+    ink is 19–21 px.
+  - Used JS heap: 24.0 MB with pixel, 24.9 MB with HD ready, 25.3 MB in an HD game and
+    23.8 MB back on pixel. `performance.memory` excludes bitmap and canvas memory.
+  - Console: no errors, and four software-GL "GPU stall due to ReadPixels" performance
+    warnings.
+- **Profile.** `milestone-19-profile` adds:
+  - the pixel module: 29,406 bytes, or 5,989 bytes gzip with `CompressionStream`
+    (PR1's 5,977 used Node's zlib)
+  - HD from an in-memory store: download 290 ms, activation 33 ms, and 53 preview
+    textures in 41 ms at scale 1 and 90 ms at scale 2
+  - single refinements: p50 11.4 ms, p95 13.2 ms, and a 359 ms maximum for the first,
+    cold decode. A burst of all 52 fronts takes 495 ms with no diagnostics.
+  - used heap: 25.8 MB before activation, 27.2 MB while active and 25.2 MB after
+    release.
+
+  Context recovery preserves state, and the console shows the same 55 WebGL warnings
+  as PR1 and PR2.
+- **Production (text-only).** A Playwright script, not committed, ran the built `dist`
+  in headless Chrome at 390×844:
+  - First visit: the worker precaches 13 files, including the `tarot-hd`,
+    `tarot-hd-assets` and `art-pack-store` chunks, and no WebP. No art cache exists.
+  - Choosing HD: 54 art requests and 54 entries in `soulcard-art-tarot-hd`. No runtime
+    cache is created.
+  - Offline relaunch (`context.setOffline(true)`, then a reload): `navigator.onLine` is
+    false, the three chunks load from the worker, and HD is ready with no art request.
+    A Classic game plays three reveals with one canvas.
+  - App update: after `BUILD_REVISION` changed in `dist/sw.js`, Update now activated
+    the new worker. The previous shell cache was deleted, the art cache kept its 54
+    entries, and HD was ready without downloading again.
+  - Remove deletes the art cache. There are no console errors or failed requests.
+  - `vite preview` answers with `Vary: Origin`, so the worker's `cache.match(request)`
+    misses module scripts and stylesheets offline and the app doesn't load. The check
+    served `dist` with Python's static server instead. This predates the Tarot work:
+    `main`'s worker matches shell files the same way. Whether GitHub Pages sends
+    `Vary: Origin` wasn't checked from here.
+- **Size.**
+  - Vite reports that the JS bundle grew from 822.55 kB (210.66 kB gzip) to 837.16 kB
+    (214.94 kB gzip). The lazy chunks are `tarot-hd` (4.53 kB, 2.04 kB gzip),
+    `art-pack-store` (7.32 kB, 2.84 kB gzip) and `tarot-hd-assets` (9.94 kB, 3.34 kB
+    gzip).
+  - The precache grew from 940,253 to 976,023 bytes over 13 files, with no WebP. The
+    HD pack is unchanged at 54 files and 1,025,826 bytes.
+  - `npm test` grew from 570 to 604 tests.
+- **Other fixtures.** `phone-hud-layout` and the 21.1–21.4 Campaign fixtures pass with
+  no console errors.
+- **Review.** Each PR was reviewed against the checklist in
+  `.github/skills/soulcard-code-review/SKILL.md`. PR3's review found no actionable
+  issue.
+- **Not done.** Physical Android Chrome and iOS Safari checks (WP13 step 3) weren't
+  possible here. The accessibility and privacy reviews (roadmap :1360) remain before
+  release.

@@ -13,6 +13,7 @@ export const SETTINGS_STORAGE_KEYS = Object.freeze({
   renderScaleCap: `${STORAGE_PREFIX}.renderScaleCap`,
   animationSpeed: `${STORAGE_PREFIX}.animationSpeed`,
   reducedMotionOverride: `${STORAGE_PREFIX}.reducedMotionOverride`,
+  cardArt: `${STORAGE_PREFIX}.cardArt`,
 })
 
 function defaultStorage() {
@@ -91,6 +92,7 @@ export function createSettingsRepository({ storage = undefined } = {}) {
     setRenderScaleCap: (value) => save('renderScaleCap', value),
     setAnimationSpeed: (value) => save('animationSpeed', value),
     setReducedMotionOverride: (value) => save('reducedMotionOverride', value),
+    setCardArt: (value) => save('cardArt', value),
     get persistent() {
       return persistent
     },

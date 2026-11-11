@@ -1355,6 +1355,11 @@ reviewable PR.
   privacy-conscious optional metrics, and only later optional slots/cloud sync remain
   separate expansion work. The ordered 21.1–21.6 plan is tracked in
   [`ROGUELIKE_ADVENTURE_RUN_PLAN.md`](./ROGUELIKE_ADVENTURE_RUN_PLAN.md).
+- **Card art:** Two Tarot-inspired card-art themes exist outside this sequence: a
+  generated pixel deck (the default) and an opt-in prerendered HD deck, chosen in
+  Settings. They change presentation only, leaving saves, rules, and events untouched,
+  and do not change any milestone's state. See
+  [`TAROT_CARD_ART_PLAN.md`](./TAROT_CARD_ART_PLAN.md).
 - **Acceptance:** Each remains separately versioned and does not undermine deterministic
   saves or zone invariants.
 - **Checks/risks:** Accessibility and privacy reviews precede release.

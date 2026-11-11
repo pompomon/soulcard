@@ -242,6 +242,7 @@ test('activation removes only obsolete Soulcard caches before claiming clients',
     'soulcard-runtime-old',
     'soulcard-shell-dev',
     'soulcard-runtime-dev',
+    'soulcard-art-tarot-hd',
     'unrelated-cache',
   ]) {
     harness.cacheStorage.caches.set(name, new FakeCache(SCOPE))
@@ -253,6 +254,7 @@ test('activation removes only obsolete Soulcard caches before claiming clients',
     [...harness.cacheStorage.caches.keys()].sort(),
     [
       'soulcard-active-dev',
+      'soulcard-art-tarot-hd',
       'soulcard-runtime-dev',
       'soulcard-shell-dev',
       'unrelated-cache',
@@ -298,6 +300,7 @@ test('install bounds superseded revisions while preserving active and waiting sh
     'soulcard-shell-superseded',
     'soulcard-shell-waiting',
     'soulcard-runtime-orphaned',
+    'soulcard-art-tarot-hd',
     'unrelated-cache',
   ]) {
     harness.cacheStorage.caches.set(name, new FakeCache(SCOPE))
@@ -309,6 +312,7 @@ test('install bounds superseded revisions while preserving active and waiting sh
     [...harness.cacheStorage.caches.keys()].sort(),
     [
       'soulcard-active-live',
+      'soulcard-art-tarot-hd',
       'soulcard-runtime-live',
       'soulcard-shell-dev',
       'soulcard-shell-live',
@@ -321,6 +325,8 @@ test('install bounds superseded revisions while preserving active and waiting sh
 test('install bounds superseded revisions when upgrading from a markerless worker', async () => {
   const harness = await createHarness()
   for (const name of [
+    // Created first, so a missing exclusion would make it the "legacy" cache.
+    'soulcard-art-tarot-hd',
     'soulcard-shell-live',
     'soulcard-runtime-live',
     'soulcard-shell-superseded',
@@ -336,6 +342,7 @@ test('install bounds superseded revisions when upgrading from a markerless worke
   assert.deepEqual(
     [...harness.cacheStorage.caches.keys()].sort(),
     [
+      'soulcard-art-tarot-hd',
       'soulcard-runtime-live',
       'soulcard-shell-dev',
       'soulcard-shell-live',
@@ -348,6 +355,7 @@ test('install bounds superseded revisions when upgrading from a markerless worke
 test('install preserves a legacy active cache before markerless waiting shells', async () => {
   const harness = await createHarness()
   for (const name of [
+    'soulcard-art-tarot-hd',
     'soulcard-live',
     'soulcard-shell-superseded',
     'soulcard-shell-waiting',
@@ -362,6 +370,7 @@ test('install preserves a legacy active cache before markerless waiting shells',
   assert.deepEqual(
     [...harness.cacheStorage.caches.keys()].sort(),
     [
+      'soulcard-art-tarot-hd',
       'soulcard-live',
       'soulcard-shell-dev',
       'soulcard-shell-waiting',
@@ -408,6 +417,8 @@ test('runtime caching is same-origin, successful, asset-only, and bounded', asyn
     request('https://cdn.example.test/image.png'),
     request('./mutation.png', { method: 'POST' }),
     request('./dynamic.js', { destination: 'script' }),
+    // The art-pack store downloads with the page's fetch(): an empty destination.
+    request('./assets/tarot-hd-art-c-2S-B4xkF2aQ.webp', { mode: 'cors', destination: '' }),
   ]) {
     assert.equal(
       await harness.dispatch('fetch', { request: rejectedRequest }),

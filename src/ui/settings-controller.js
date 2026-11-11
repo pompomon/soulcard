@@ -24,6 +24,7 @@ function assertRepository(repository) {
     'setRenderScaleCap',
     'setAnimationSpeed',
     'setReducedMotionOverride',
+    'setCardArt',
   ]
   if (
     repository === null
@@ -161,6 +162,7 @@ export function createSettingsController({
       value,
       repository.setReducedMotionOverride,
     ),
+    setCardArt: (value) => update('cardArt', value, repository.setCardArt),
     destroy,
     get persistent() {
       return repository.persistent === true

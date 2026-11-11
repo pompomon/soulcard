@@ -15,12 +15,19 @@ import {
 } from '../../src/presentation/layout.js'
 import { mountBattlefield } from '../../src/presentation/battlefield.js'
 import { createEventTimeline } from '../../src/presentation/event-player.js'
+import { createTextureCache } from '../../src/presentation/texture-cache.js'
+import { createThemeRegistry } from '../../src/presentation/themes/registry.js'
 import {
   claimReward,
   modifiersFixtureRun,
   passThrough,
   winEncounter,
 } from '../fixtures/campaign-route.js'
+import {
+  ALTERNATE_BACK_THEME,
+  ALTERNATE_FRONT_THEME,
+  ALTERNATE_THEME_SELECTION,
+} from '../fixtures/themes.js'
 
 class FakeStyle {
   constructor(values = {}) {
@@ -297,15 +304,22 @@ function createObserverHarness() {
 function createTextureCacheHarness() {
   const acquisitions = []
   const leases = []
+  const invalidations = []
+  const log = []
   let destroyCalls = 0
   const cache = {
     acquireFront(options) {
       acquisitions.push(['front', options])
-      return createLease('front', options.cardId)
+      return createLease('front', options.cardId, options.themeId)
     },
     acquireBack(options) {
       acquisitions.push(['back', options])
-      return createLease('back', null)
+      return createLease('back', null, options.themeId)
+    },
+    invalidateTheme(kind, themeId) {
+      invalidations.push([kind, themeId])
+      log.push(['invalidate', kind, themeId])
+      return 0
     },
     destroy() {
       destroyCalls += 1
@@ -314,14 +328,17 @@ function createTextureCacheHarness() {
       return { entries: acquisitions.length }
     },
   }
-  function createLease(kind, cardId) {
+  function createLease(kind, cardId, themeId) {
+    log.push(['acquire', kind, themeId])
     const lease = {
       kind,
       cardId,
+      themeId,
       texture: {},
       releaseCalls: 0,
       release() {
         this.releaseCalls += 1
+        log.push(['release', kind, themeId])
       },
     }
     leases.push(lease)
@@ -331,10 +348,100 @@ function createTextureCacheHarness() {
     cache,
     acquisitions,
     leases,
+    invalidations,
+    log,
     get destroyCalls() {
       return destroyCalls
     },
   }
+}
+
+function createThemeSource(selection) {
+  let current = selection
+  const listeners = new Set()
+  return {
+    getSelection: () => current,
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    emit(next) {
+      current = next
+      for (const listener of [...listeners]) listener(current)
+    },
+    get listenerCount() {
+      return listeners.size
+    },
+  }
+}
+
+const SECOND_FRONT_THEME_ID = 'test-second-front-v1'
+const SECOND_BACK_THEME_ID = 'test-second-back-v1'
+const SECOND_THEME_SELECTION = Object.freeze({
+  frontThemeId: SECOND_FRONT_THEME_ID,
+  backThemeId: SECOND_BACK_THEME_ID,
+})
+
+// Records which theme drew each canvas, so tests can read it from a material map.
+function taggedTheme(theme, id) {
+  return Object.freeze({
+    id,
+    create(...args) {
+      const canvas = theme.create(...args)
+      canvas.themeId = id
+      return canvas
+    },
+  })
+}
+
+function createSwitchingRegistry() {
+  return createThemeRegistry({
+    frontThemes: [
+      taggedTheme(ALTERNATE_FRONT_THEME, ALTERNATE_FRONT_THEME.id),
+      taggedTheme(ALTERNATE_FRONT_THEME, SECOND_FRONT_THEME_ID),
+    ],
+    backThemes: [
+      taggedTheme(ALTERNATE_BACK_THEME, ALTERNATE_BACK_THEME.id),
+      taggedTheme(ALTERNATE_BACK_THEME, SECOND_BACK_THEME_ID),
+    ],
+  })
+}
+
+function createFakeCanvas(width, height) {
+  const context = {
+    scale() {},
+    fillRect() {},
+    strokeRect() {},
+    fillText() {},
+  }
+  return { width, height, getContext: () => context }
+}
+
+class FakeTexture {
+  constructor(canvas) {
+    this.image = canvas
+    this.themeId = canvas.themeId
+    this.disposeCalls = 0
+  }
+
+  dispose() {
+    this.disposeCalls += 1
+  }
+}
+
+function cardMaps(renderer) {
+  const maps = []
+  renderer.scene.traverse((object) => {
+    if (object.name.startsWith('battlefield-card:')) maps.push(object.material.map)
+  })
+  return maps
+}
+
+function selectionFor(themes) {
+  return Object.freeze({
+    front: themes.frontThemeId,
+    back: themes.backThemeId,
+  })
 }
 
 test('battlefield remeasures a zero-size mount and responds to resize and orientation', () => {
@@ -1460,6 +1567,320 @@ test('campaign boundaries between encounters render only the held card without d
   handle.teardown()
 })
 
+test('battlefield leases its first textures from the theme source selection', () => {
+  const host = createHost(1024, 768)
+  const windowObject = createWindow({ width: 1024, height: 768 })
+  const observer = createObserverHarness()
+  const textures = createTextureCacheHarness()
+  const source = createThemeSource(ALTERNATE_THEME_SELECTION)
+  const factoryOptions = []
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => new FakeRenderer(host, {}),
+    themeRegistry: createSwitchingRegistry(),
+    themeSource: source,
+    textureCacheFactory(options) {
+      factoryOptions.push(options)
+      return textures.cache
+    },
+  })
+  assert.equal(source.listenerCount, 1)
+
+  const transition = transitionAt(0, 6)
+  const next = revealOrContinue(transition.match)
+  handle.syncSnapshot(transition.match)
+  handle.beginEvent(next.event, next.match)
+  handle.applyStep(createEventTimeline(next.event)[0], { durationMs: 0 })
+  assert.ok(textures.acquisitions.some(([kind]) => kind === 'front'))
+  assert.ok(textures.acquisitions.some(([kind]) => kind === 'back'))
+  for (const [kind, { themeId }] of textures.acquisitions) {
+    assert.equal(
+      themeId,
+      kind === 'front' ? ALTERNATE_THEME_SELECTION.frontThemeId : ALTERNATE_THEME_SELECTION.backThemeId,
+    )
+  }
+  assert.equal(factoryOptions.length, 1)
+  assert.equal(factoryOptions[0].maxEntries, 24)
+  assert.equal(typeof factoryOptions[0].onTextureUpdate, 'function')
+
+  handle.teardown()
+  assert.equal(source.listenerCount, 0)
+  source.emit(SECOND_THEME_SELECTION)
+  assert.equal(textures.invalidations.length, 0)
+})
+
+test('a theme change re-leases every visual before invalidating the previous theme', () => {
+  const host = createHost(1024, 768)
+  const windowObject = createWindow({ width: 1024, height: 768 })
+  const observer = createObserverHarness()
+  const textures = createTextureCacheHarness()
+  const source = createThemeSource(ALTERNATE_THEME_SELECTION)
+  const renderer = new FakeRenderer(host, {})
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => renderer,
+    themeRegistry: createSwitchingRegistry(),
+    themeSource: source,
+    textureCacheFactory: () => textures.cache,
+  })
+  windowObject.flushFrames()
+
+  const transition = transitionAt(0, 6)
+  const next = revealOrContinue(transition.match)
+  handle.syncSnapshot(transition.match)
+  handle.beginEvent(next.event, next.match)
+  handle.applyStep(createEventTimeline(next.event)[0], { durationMs: 0 })
+  const { staticCards, transientCards } = handle.getPresentationState()
+  assert.ok(transientCards > 0)
+  const leasedBefore = textures.leases.filter(({ releaseCalls }) => releaseCalls === 0)
+  assert.equal(leasedBefore.length, staticCards + transientCards)
+
+  const logStart = textures.log.length
+  const rendersBefore = renderer.renderCalls
+  source.emit(SECOND_THEME_SELECTION)
+
+  const changes = textures.log.slice(logStart)
+  const acquired = changes.filter(([type]) => type === 'acquire')
+  const released = changes.filter(([type]) => type === 'release')
+  assert.equal(acquired.length, staticCards + transientCards)
+  assert.equal(released.length, staticCards + transientCards)
+  for (const [, kind, themeId] of acquired) {
+    assert.equal(themeId, kind === 'front' ? SECOND_FRONT_THEME_ID : SECOND_BACK_THEME_ID)
+  }
+  for (const [, kind, themeId] of released) {
+    assert.equal(
+      themeId,
+      kind === 'front' ? ALTERNATE_THEME_SELECTION.frontThemeId : ALTERNATE_THEME_SELECTION.backThemeId,
+    )
+  }
+  const firstInvalidation = changes.findIndex(([type]) => type === 'invalidate')
+  assert.equal(firstInvalidation, (staticCards + transientCards) * 2)
+  assert.deepEqual(textures.invalidations, [
+    ['front', ALTERNATE_THEME_SELECTION.frontThemeId],
+    ['back', ALTERNATE_THEME_SELECTION.backThemeId],
+  ])
+  assert.equal(renderer.renderCalls, rendersBefore + 1)
+  assert.ok(
+    textures.leases
+      .filter(({ releaseCalls }) => releaseCalls === 0)
+      .every(({ kind, themeId }) => themeId === (
+        kind === 'front' ? SECOND_FRONT_THEME_ID : SECOND_BACK_THEME_ID
+      )),
+  )
+
+  // Unknown IDs resolve to the registry fallback, but the same resolved
+  // selection changes nothing.
+  const unchangedStart = textures.log.length
+  source.emit({ ...SECOND_THEME_SELECTION })
+  assert.equal(textures.log.length, unchangedStart)
+  assert.equal(renderer.renderCalls, rendersBefore + 1)
+
+  // Only the theme that changed is invalidated.
+  source.emit({ ...SECOND_THEME_SELECTION, frontThemeId: ALTERNATE_THEME_SELECTION.frontThemeId })
+  assert.deepEqual(textures.invalidations.at(-1), ['front', SECOND_FRONT_THEME_ID])
+  assert.equal(textures.invalidations.length, 3)
+  assert.equal(renderer.renderCalls, rendersBefore + 2)
+
+  handle.teardown()
+})
+
+test('a theme change during context loss applies when the context is restored', () => {
+  const host = createHost(1024, 768)
+  const windowObject = createWindow({ width: 1024, height: 768 })
+  const observer = createObserverHarness()
+  const caches = []
+  const renderers = []
+  const source = createThemeSource(ALTERNATE_THEME_SELECTION)
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory() {
+      const renderer = new FakeRenderer(host, {})
+      renderers.push(renderer)
+      return renderer
+    },
+    themeRegistry: createSwitchingRegistry(),
+    themeSource: source,
+    textureCacheFactory() {
+      const harness = createTextureCacheHarness()
+      caches.push(harness)
+      return harness.cache
+    },
+  })
+  windowObject.flushFrames()
+  handle.syncSnapshot(transitionAt(0, 6).match)
+  const staticCards = handle.getPresentationState().staticCards
+  assert.ok(staticCards > 0)
+
+  renderers[0].domElement.dispatch('webglcontextlost')
+  const rendersWhileLost = renderers[0].renderCalls
+  const acquisitionsWhileLost = caches[0].acquisitions.length
+  source.emit(SECOND_THEME_SELECTION)
+  assert.equal(caches[0].acquisitions.length, acquisitionsWhileLost)
+  assert.equal(caches[0].invalidations.length, 0)
+  assert.equal(renderers[0].renderCalls, rendersWhileLost)
+
+  renderers[0].domElement.dispatch('webglcontextrestored')
+  assert.equal(handle.getContextState().status, 'ready')
+  assert.equal(caches.length, 2)
+  assert.equal(caches[0].destroyCalls, 1)
+  assert.equal(caches[1].acquisitions.length, staticCards)
+  for (const [kind, { themeId }] of caches[1].acquisitions) {
+    assert.equal(themeId, kind === 'front' ? SECOND_FRONT_THEME_ID : SECOND_BACK_THEME_ID)
+  }
+  assert.equal(caches[1].invalidations.length, 0)
+
+  handle.teardown()
+})
+
+test('texture updates render one frame only while the animation loop is stopped', () => {
+  const host = createHost(1024, 768)
+  const windowObject = createWindow({ width: 1024, height: 768 })
+  const observer = createObserverHarness()
+  const settings = createSettings({ reducedMotion: true })
+  const renderer = new FakeRenderer(host, {})
+  let onTextureUpdate
+  const handle = mountBattlefield(host, {
+    settingsController: settings,
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => renderer,
+    themeRegistry: createSwitchingRegistry(),
+    themeSource: createThemeSource(ALTERNATE_THEME_SELECTION),
+    textureCacheFactory(options) {
+      onTextureUpdate = options.onTextureUpdate
+      return createTextureCacheHarness().cache
+    },
+  })
+  windowObject.flushFrames()
+  handle.syncSnapshot(transitionAt(0, 6).match)
+  assert.equal(renderer.animationLoop, null)
+
+  let renders = renderer.renderCalls
+  onTextureUpdate({ kind: 'front' })
+  onTextureUpdate({ kind: 'front' })
+  onTextureUpdate({ kind: 'back' })
+  assert.equal(windowObject.pendingFrames, 1)
+  assert.equal(renderer.renderCalls, renders)
+  windowObject.flushFrames()
+  assert.equal(renderer.renderCalls, renders + 1)
+  onTextureUpdate({ kind: 'front' })
+  windowObject.flushFrames()
+  assert.equal(renderer.renderCalls, renders + 2)
+
+  settings.emit({ reducedMotion: false })
+  assert.equal(typeof renderer.animationLoop, 'function')
+  renders = renderer.renderCalls
+  onTextureUpdate({ kind: 'front' })
+  assert.equal(windowObject.pendingFrames, 0)
+  assert.equal(renderer.renderCalls, renders)
+
+  // The loop restarting before the frame runs leaves the render to the loop.
+  settings.emit({ reducedMotion: true })
+  renders = renderer.renderCalls
+  onTextureUpdate({ kind: 'front' })
+  settings.emit({ reducedMotion: false })
+  renders = renderer.renderCalls
+  windowObject.flushFrames()
+  assert.equal(renderer.renderCalls, renders)
+
+  handle.setPaused(true)
+  onTextureUpdate({ kind: 'front' })
+  assert.equal(windowObject.pendingFrames, 1)
+  handle.teardown()
+  assert.equal(windowObject.pendingFrames, 0)
+  renders = renderer.renderCalls
+  onTextureUpdate({ kind: 'front' })
+  assert.equal(windowObject.pendingFrames, 0)
+  assert.equal(renderer.renderCalls, renders)
+})
+
+test('theme switches through a long tie stay within the 24-entry texture cache', () => {
+  const host = createHost(1024, 768)
+  const windowObject = createWindow({ width: 1024, height: 768 })
+  const observer = createObserverHarness()
+  const settings = createSettings({ quality: 'high' })
+  const source = createThemeSource(ALTERNATE_THEME_SELECTION)
+  const renderer = new FakeRenderer(host, {})
+  const textures = []
+  let cache = null
+  const handle = mountBattlefield(host, {
+    settingsController: settings,
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => renderer,
+    themeRegistry: createSwitchingRegistry(),
+    themeSource: source,
+    textureCacheFactory(options) {
+      cache = createTextureCache({
+        ...options,
+        renderer: undefined,
+        createCanvas: createFakeCanvas,
+        textureFactory(canvas) {
+          const texture = new FakeTexture(canvas)
+          textures.push(texture)
+          return texture
+        },
+      })
+      return cache
+    },
+  })
+  windowObject.flushFrames()
+
+  let match = createMatch({
+    runId: 'battlefield-long-tie',
+    seed: 444,
+    ruleset: BASELINE_RULESET,
+  })
+  let previous
+  let transition
+  do {
+    previous = match
+    transition = revealOrContinue(match)
+    match = transition.match
+  } while (transition.event.turn < 30)
+  assert.equal(transition.event.reveals.length, 10)
+
+  const assertMapsFollow = (selection) => {
+    const maps = cardMaps(renderer)
+    assert.ok(maps.length > 0)
+    for (const map of maps) {
+      assert.equal(map.disposeCalls, 0)
+      assert.ok(
+        map.themeId === selection.frontThemeId || map.themeId === selection.backThemeId,
+        `${map.themeId} is not in ${JSON.stringify(selectionFor(selection))}`,
+      )
+    }
+  }
+
+  handle.syncSnapshot(previous)
+  handle.beginEvent(transition.event, transition.match)
+  let largestVisibleSet = 0
+  let selection = ALTERNATE_THEME_SELECTION
+  for (const step of createEventTimeline(transition.event)) {
+    handle.applyStep(step, { durationMs: 0 })
+    const state = handle.getPresentationState()
+    largestVisibleSet = Math.max(largestVisibleSet, state.staticCards + state.transientCards)
+    selection = selection === ALTERNATE_THEME_SELECTION
+      ? SECOND_THEME_SELECTION
+      : ALTERNATE_THEME_SELECTION
+    source.emit(selection)
+    assertMapsFollow(selection)
+    assert.ok(cache.getStats().entries <= 24)
+  }
+  assert.ok(largestVisibleSet >= 10, `largest visible set was ${largestVisibleSet}`)
+
+  // A quality change on the same set stays within the same bound.
+  settings.emit({ quality: 'low' })
+  assertMapsFollow(selection)
+  assert.ok(cache.getStats().entries <= 24)
+
+  handle.teardown()
+  assert.ok(textures.every(({ disposeCalls }) => disposeCalls === 1))
+})
+
 test('battlefield validates its adapters before creating renderer resources', () => {
   const host = createHost(320, 480)
   assert.throws(() => mountBattlefield(null), /host/)
@@ -1495,4 +1916,41 @@ test('battlefield validates its adapters before creating renderer resources', ()
     () => mountBattlefield(host, { textureCacheFactory: null }),
     /textureCacheFactory/,
   )
+  for (const themeSource of [null, {}, { getSelection() {} }, { subscribe() {} }]) {
+    assert.throws(
+      () => mountBattlefield(host, { themeSource }),
+      /themeSource must expose getSelection and subscribe/,
+    )
+  }
+  assert.throws(
+    () => mountBattlefield(host, {
+      themeSource: createThemeSource(ALTERNATE_THEME_SELECTION),
+      themeSelection: ALTERNATE_THEME_SELECTION,
+    }),
+    /themeSource cannot be combined with themeSelection/,
+  )
+  assert.equal(host.children.length, 0)
+
+  // With a theme source, the cache must support invalidation.
+  const renderer = new FakeRenderer(host, {})
+  const handle = mountBattlefield(host, {
+    windowObject: createWindow({ width: 320, height: 480 }),
+    ResizeObserverClass: null,
+    rendererFactory: () => renderer,
+    themeSource: createThemeSource(ALTERNATE_THEME_SELECTION),
+    themeRegistry: createSwitchingRegistry(),
+    textureCacheFactory() {
+      const { invalidateTheme: _omitted, ...cache } = createTextureCacheHarness().cache
+      return cache
+    },
+  })
+  assert.throws(
+    () => handle.syncSnapshot(createMatch({
+      runId: 'battlefield-invalidation-required',
+      seed: 1,
+      ruleset: BASELINE_RULESET,
+    })),
+    /compatible texture cache/,
+  )
+  handle.teardown()
 })

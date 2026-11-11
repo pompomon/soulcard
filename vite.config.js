@@ -5,6 +5,10 @@ import { resolve } from 'node:path'
 
 const ASSETS_PLACEHOLDER = '/* INJECT_BUILD_ASSETS */ []'
 const REVISION_PLACEHOLDER = "/* INJECT_BUILD_REVISION */ 'dev'"
+// The opt-in HD card-art pack downloads into its own cache (src/persistence/
+// art-pack-store.js), so it stays out of the precached shell and its revision.
+const OPT_IN_ASSET_PATTERN = /^assets\/tarot-hd-art-[^/]+\.webp$/
+const CARD_ART_SOURCE_DIRECTORY = '/src/assets/card-art/'
 const PUBLIC_SHELL_FILES = Object.freeze([
   'apple-touch-icon.png',
   'icon-192.png',
@@ -13,6 +17,17 @@ const PUBLIC_SHELL_FILES = Object.freeze([
   'icon.svg',
   'manifest.webmanifest',
 ])
+
+export function isOptInAsset(fileName) {
+  return OPT_IN_ASSET_PATTERN.test(fileName)
+}
+
+// Card art always ships as files: the pack store fetches each one by URL.
+export function cardArtInlineLimit(filePath) {
+  return filePath.replaceAll('\\', '/').includes(CARD_ART_SOURCE_DIRECTORY)
+    ? false
+    : undefined
+}
 
 export function createServiceWorkerPlugin() {
   return {
@@ -30,7 +45,11 @@ export function createServiceWorkerPlugin() {
       }
 
       const emittedFiles = Object.keys(bundle)
-        .filter((fileName) => fileName !== 'index.html' && fileName !== 'sw.js')
+        .filter((fileName) => (
+          fileName !== 'index.html'
+          && fileName !== 'sw.js'
+          && !isOptInAsset(fileName)
+        ))
         .sort()
       const contentFiles = [
         'index.html',
@@ -68,5 +87,8 @@ export function createServiceWorkerPlugin() {
 
 export default defineConfig({
   base: './',
+  build: {
+    assetsInlineLimit: cardArtInlineLimit,
+  },
   plugins: [createServiceWorkerPlugin()],
 })

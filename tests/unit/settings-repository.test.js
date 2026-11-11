@@ -34,8 +34,10 @@ test('settings repository exposes versioned independent keys and immutable defau
     renderScaleCap: 'soulcard.settings.v1.renderScaleCap',
     animationSpeed: 'soulcard.settings.v1.animationSpeed',
     reducedMotionOverride: 'soulcard.settings.v1.reducedMotionOverride',
+    cardArt: 'soulcard.settings.v1.cardArt',
   })
   assert.deepEqual(repository.load(), DEFAULT_SETTINGS)
+  assert.equal(DEFAULT_SETTINGS.cardArt, 'tarot-pixel')
   assert.equal(repository.persistent, true)
   assert.equal(Object.isFrozen(repository.load()), true)
   assert.throws(() => {
@@ -52,6 +54,7 @@ test('each setting persists independently and reloads with explicit false intact
   repository.setRenderScaleCap(1.5)
   repository.setAnimationSpeed(2)
   repository.setReducedMotionOverride(false)
+  repository.setCardArt('tarot-hd')
 
   assert.deepEqual(Object.fromEntries(storage.values), {
     [SETTINGS_STORAGE_KEYS.burnEnabled]: 'false',
@@ -59,6 +62,7 @@ test('each setting persists independently and reloads with explicit false intact
     [SETTINGS_STORAGE_KEYS.renderScaleCap]: '1.5',
     [SETTINGS_STORAGE_KEYS.animationSpeed]: '2',
     [SETTINGS_STORAGE_KEYS.reducedMotionOverride]: 'false',
+    [SETTINGS_STORAGE_KEYS.cardArt]: '"tarot-hd"',
   })
   assert.deepEqual(createSettingsRepository({ storage }).load(), {
     burnEnabled: false,
@@ -66,7 +70,12 @@ test('each setting persists independently and reloads with explicit false intact
     renderScaleCap: 1.5,
     animationSpeed: 2,
     reducedMotionOverride: false,
+    cardArt: 'tarot-hd',
   })
+
+  repository.setCardArt('tarot-pixel')
+  assert.equal(storage.values.get(SETTINGS_STORAGE_KEYS.cardArt), '"tarot-pixel"')
+  assert.equal(createSettingsRepository({ storage }).load().cardArt, 'tarot-pixel')
 
   repository.setReducedMotionOverride(null)
   assert.equal(storage.values.has(SETTINGS_STORAGE_KEYS.reducedMotionOverride), false)
@@ -80,6 +89,7 @@ test('missing and malformed values fall back independently without disabling sto
     [SETTINGS_STORAGE_KEYS.renderScaleCap, '1.25'],
     [SETTINGS_STORAGE_KEYS.animationSpeed, '{'],
     [SETTINGS_STORAGE_KEYS.reducedMotionOverride, '"false"'],
+    [SETTINGS_STORAGE_KEYS.cardArt, '"tarot-hd-front-v1"'],
   ])
   const repository = createSettingsRepository({ storage })
 
@@ -89,8 +99,19 @@ test('missing and malformed values fall back independently without disabling sto
     renderScaleCap: DEFAULT_SETTINGS.renderScaleCap,
     animationSpeed: DEFAULT_SETTINGS.animationSpeed,
     reducedMotionOverride: DEFAULT_SETTINGS.reducedMotionOverride,
+    cardArt: DEFAULT_SETTINGS.cardArt,
   })
   assert.equal(repository.persistent, true)
+
+  for (const malformed of ['"classic"', '"Tarot (HD)"', 'true', '{']) {
+    const cardArtOnly = createStorage([[SETTINGS_STORAGE_KEYS.cardArt, malformed]])
+    assert.equal(createSettingsRepository({ storage: cardArtOnly }).load().cardArt, 'tarot-pixel')
+  }
+  const hdOnly = createStorage([[SETTINGS_STORAGE_KEYS.cardArt, '"tarot-hd"']])
+  assert.deepEqual(createSettingsRepository({ storage: hdOnly }).load(), {
+    ...DEFAULT_SETTINGS,
+    cardArt: 'tarot-hd',
+  })
 })
 
 test('unavailable storage retains validated changes for the current session', () => {
@@ -102,6 +123,7 @@ test('unavailable storage retains validated changes for the current session', ()
   repository.setRenderScaleCap(1)
   repository.setAnimationSpeed(0.5)
   repository.setReducedMotionOverride(true)
+  repository.setCardArt('tarot-hd')
 
   assert.deepEqual(repository.load(), {
     burnEnabled: false,
@@ -109,6 +131,7 @@ test('unavailable storage retains validated changes for the current session', ()
     renderScaleCap: 1,
     animationSpeed: 0.5,
     reducedMotionOverride: true,
+    cardArt: 'tarot-hd',
   })
 })
 
@@ -169,6 +192,9 @@ test('invalid updates are rejected atomically', () => {
     ['setRenderScaleCap', 3],
     ['setAnimationSpeed', 0],
     ['setReducedMotionOverride', 'system'],
+    ['setCardArt', 'classic'],
+    ['setCardArt', null],
+    ['setCardArt', 'tarot-hd-front-v1'],
   ]) {
     assert.throws(() => repository[method](value), TypeError)
   }
