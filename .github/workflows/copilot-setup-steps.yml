@@ -1,0 +1,28 @@
+name: Copilot Setup Steps
+
+# Prepares the Copilot cloud agent environment. Runs automatically when this file changes and can
+# be started from the Actions tab.
+on:
+  workflow_dispatch:
+  push:
+    paths: [.github/workflows/copilot-setup-steps.yml]
+  pull_request:
+    paths: [.github/workflows/copilot-setup-steps.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  # Copilot only picks up a job with this exact name.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      # tools/card-art dependencies are needed only for art revisions; install them on demand.
+      - run: npm ci
