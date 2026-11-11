@@ -1,0 +1,31 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    versioning-strategy: increase
+    cooldown:
+      default-days: 7
+    groups:
+      npm-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+        # three 0.x releases can break APIs, so each three bump gets its own pull request.
+        exclude-patterns: [three]
+
+  # Security updates only. HD_TOOL_INPUTS hashes this lockfile into the committed Tarot (HD)
+  # pack, so any bump is an art revision: npm --prefix tools/card-art run build:hd, then commit.
+  - package-ecosystem: npm
+    directory: /tools/card-art
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
