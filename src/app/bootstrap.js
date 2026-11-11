@@ -7,6 +7,7 @@ import { createRunRepository } from '../persistence/run-repository.js'
 import { createSettingsRepository } from '../persistence/settings-repository.js'
 import { createPageLifecycle } from '../pwa/lifecycle.js'
 import { createUpdateController } from '../pwa/update-controller.js'
+import { createCardArtController } from '../ui/card-art-controller.js'
 import { createMainScreen, createSettingsScreen } from '../ui/menus.js'
 import { createSettingsController } from '../ui/settings-controller.js'
 import { createGameScreen } from '../ui/hud.js'
@@ -54,6 +55,21 @@ function assertUpdateController(updateController) {
     || methods.some((method) => typeof updateController[method] !== 'function')
   ) {
     throw new TypeError('updateController must implement the application update interface')
+  }
+}
+
+function assertCardArtController(cardArtController) {
+  const methods = ['getSnapshot', 'subscribe', 'retry', 'removeDownload', 'refresh', 'destroy']
+  if (
+    cardArtController === null
+    || typeof cardArtController !== 'object'
+    || methods.some((method) => typeof cardArtController[method] !== 'function')
+    || cardArtController.themeRegistry === null
+    || typeof cardArtController.themeRegistry !== 'object'
+    || typeof cardArtController.themeSource?.getSelection !== 'function'
+    || typeof cardArtController.themeSource?.subscribe !== 'function'
+  ) {
+    throw new TypeError('cardArtController must implement the card-art controller interface')
   }
 }
 
@@ -112,6 +128,7 @@ export function bootstrap({
   mountBattlefield = mountResponsiveBattlefield,
   settingsRepository = createSettingsRepository(),
   matchMedia = undefined,
+  cardArtControllerFactory = createCardArtController,
   runRepository = undefined,
   runController = undefined,
   pageLifecycleFactory = createPageLifecycle,
@@ -133,11 +150,38 @@ export function bootstrap({
   if (typeof confirmStartOver !== 'function') {
     throw new TypeError('confirmStartOver must be a function')
   }
-  const mountCardArtBattlefield = bindCardArt(mountBattlefield)
+  if (typeof mountBattlefield !== 'function') {
+    throw new TypeError('mountBattlefield must be a function')
+  }
+  if (typeof cardArtControllerFactory !== 'function') {
+    throw new TypeError('cardArtControllerFactory must be a function')
+  }
   const settingsController = createSettingsController({
     repository: settingsRepository,
     matchMedia,
   })
+  let cardArtController
+  try {
+    cardArtController = cardArtControllerFactory({ settingsController })
+    assertCardArtController(cardArtController)
+  } catch (error) {
+    try {
+      if (typeof cardArtController?.destroy === 'function') cardArtController.destroy()
+    } finally {
+      settingsController.destroy()
+    }
+    throw error
+  }
+  // The card-art controller follows the settings controller, so it is always
+  // destroyed first.
+  const destroySettingsOwners = () => {
+    try {
+      cardArtController.destroy()
+    } finally {
+      settingsController.destroy()
+    }
+  }
+  const mountCardArtBattlefield = bindCardArt(mountBattlefield, cardArtController)
   let activeRunController
   try {
     activeRunController = runController ?? createRunController({
@@ -145,7 +189,7 @@ export function bootstrap({
     })
     assertRunController(activeRunController)
   } catch (error) {
-    settingsController.destroy()
+    destroySettingsOwners()
     throw error
   }
 
@@ -166,7 +210,7 @@ export function bootstrap({
       throw new TypeError('pageLifecycleFactory must return a destroyable lifecycle')
     }
   } catch (error) {
-    settingsController.destroy()
+    destroySettingsOwners()
     void activeRunController.destroy()
     throw error
   }
@@ -262,6 +306,7 @@ export function bootstrap({
           createSettingsScreen({
             onBack: () => navigate('main'),
             settingsController,
+            cardArt: cardArtController,
           }),
           activeUpdateController,
           updateNoticeFactory,
@@ -289,7 +334,7 @@ export function bootstrap({
     activeUpdateController?.destroy()
     pageLifecycle.destroy()
     void activeRunController.destroy()
-    settingsController.destroy()
+    destroySettingsOwners()
     throw error
   }
   ready = restorePending
@@ -322,6 +367,7 @@ export function bootstrap({
       await attempt(() => unsubscribeResumeAvailability())
       await attempt(() => coordinator.destroy())
       await attempt(() => activeUpdateController.destroy())
+      await attempt(() => cardArtController.destroy())
       await attempt(() => settingsController.destroy())
       await attempt(() => activeRunController.destroy())
       if (firstError) {

@@ -20,6 +20,16 @@ test('MVP controls retain target sizes and visible focus treatment', async () =>
   assert.match(rule(css, 'select:focus-visible'), /outline:\s*3px\s+solid/)
 })
 
+test('card-art status block stays hidden when the Settings screen hides it', async () => {
+  const css = await readFile(new URL('src/style.css', root), 'utf8')
+
+  assert.match(rule(css, '.card-art-status'), /display:\s*grid/)
+  assert.match(rule(css, '.card-art-status[hidden]'), /display:\s*none/)
+  for (const selector of ['.card-art-status__progress', '.menu-button']) {
+    assert.doesNotMatch(rule(css, selector), /display:/)
+  }
+})
+
 test('document language and viewport support the declared accessible layout baseline', async () => {
   const html = await readFile(new URL('index.html', root), 'utf8')
 

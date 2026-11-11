@@ -8,6 +8,7 @@ import { createCampaignRun } from '../../src/domain/campaign-machine.js'
 import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
 import { restoreRunSave } from '../../src/persistence/run-schema.js'
 import { createSettingsRepository } from '../../src/persistence/settings-repository.js'
+import { createCardArtController } from '../../src/ui/card-art-controller.js'
 
 class FakeElement {
   constructor(tagName) {
@@ -76,6 +77,44 @@ async function waitFor(predicate, rounds = 100) {
     await Promise.resolve()
   }
   assert.fail('Condition did not settle')
+}
+
+// Wraps the real card-art controller to observe its lifecycle. Settings must
+// still be alive when the card-art controller is destroyed.
+function recordingCardArt() {
+  const record = {
+    settingsControllers: [],
+    destroyed: 0,
+    settingsAliveAtDestroy: [],
+    controller: null,
+    loads: 0,
+  }
+  const factory = (options) => {
+    record.settingsControllers.push(options.settingsController)
+    const controller = createCardArtController({
+      ...options,
+      loadHd: async () => {
+        record.loads += 1
+        throw new Error('HD is not available in this test')
+      },
+    })
+    record.controller = controller
+    return Object.freeze({
+      ...controller,
+      destroy() {
+        record.destroyed += 1
+        let alive = true
+        try {
+          options.settingsController.subscribe(() => {})()
+        } catch {
+          alive = false
+        }
+        record.settingsAliveAtDestroy.push(alive)
+        controller.destroy()
+      },
+    })
+  }
+  return { factory, record }
 }
 
 test('coordinator construction failure destroys the settings controller', () => {
@@ -683,7 +722,7 @@ test('bootstrap injects the input controller factory into Game', async (t) => {
   assert.equal(destroyed, 2)
 })
 
-test('bootstrap gives every Game battlefield the Tarot pixel card art', async (t) => {
+test('bootstrap gives every Game battlefield the card-art registry and theme source', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
     createElement: (tagName) => new FakeElement(tagName),
@@ -693,6 +732,7 @@ test('bootstrap gives every Game battlefield the Tarot pixel card art', async (t
   })
 
   const mounts = []
+  const cardArt = recordingCardArt()
   const app = bootstrap({
     root: new FakeElement('div'),
     runRepository: {
@@ -702,6 +742,7 @@ test('bootstrap gives every Game battlefield the Tarot pixel card art', async (t
     settingsRepository: createSettingsRepository({ storage: null }),
     matchMedia: null,
     pageLifecycleFactory: () => ({ destroy() {} }),
+    cardArtControllerFactory: cardArt.factory,
     mountBattlefield(host, options) {
       mounts.push({ host, options })
     },
@@ -716,16 +757,140 @@ test('bootstrap gives every Game battlefield the Tarot pixel card art', async (t
   assert.ok(host instanceof FakeElement)
   assert.equal(typeof options.onLayout, 'function')
   assert.equal(typeof options.settingsController?.subscribe, 'function')
-  assert.deepEqual(options.themeSelection, {
+  assert.equal(Object.hasOwn(options, 'themeSelection'), false)
+  assert.equal(options.themeSource, cardArt.record.controller.themeSource)
+  assert.equal(options.themeRegistry, cardArt.record.controller.themeRegistry)
+  assert.deepEqual(options.themeSource.getSelection(), {
     frontThemeId: 'tarot-pixel-front-v1',
     backThemeId: 'tarot-pixel-back-v1',
   })
   assert.deepEqual(
-    options.themeRegistry.resolveSelection(options.themeSelection),
-    options.themeSelection,
+    options.themeRegistry.resolveSelection(options.themeSource.getSelection()),
+    options.themeSource.getSelection(),
   )
   assert.equal(mounts[1].options.themeRegistry, options.themeRegistry)
+  assert.equal(mounts[1].options.themeSource, options.themeSource)
+  assert.equal(cardArt.record.loads, 0, 'the pixel deck loads no HD code')
   await app.destroy()
+})
+
+test('bootstrap creates the card-art controller after settings and destroys it first', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const cardArt = recordingCardArt()
+  const app = bootstrap({
+    root: new FakeElement('div'),
+    runRepository: {
+      load: async () => ({ status: 'empty' }),
+      save: async () => assert.fail('Unexpected save'),
+    },
+    settingsRepository: createSettingsRepository({ storage: null }),
+    matchMedia: null,
+    pageLifecycleFactory: () => ({ destroy() {} }),
+    cardArtControllerFactory: cardArt.factory,
+    mountBattlefield: () => undefined,
+  })
+  await app.ready
+  assert.equal(cardArt.record.settingsControllers.length, 1)
+  const [settingsController] = cardArt.record.settingsControllers
+  assert.equal(typeof settingsController.setCardArt, 'function')
+
+  await app.destroy()
+  assert.equal(cardArt.record.destroyed, 1)
+  assert.deepEqual(cardArt.record.settingsAliveAtDestroy, [true])
+  assert.throws(() => settingsController.subscribe(() => {}), /has been destroyed/)
+})
+
+test('bootstrap failures destroy the card-art controller before settings', async () => {
+  const failures = [
+    ['run controller', { runController: {} }, /runController/],
+    ['page lifecycle', { pageLifecycleFactory: () => null }, /pageLifecycleFactory/],
+    ['coordinator', { root: null }, /root must support replaceChildren/],
+  ]
+  for (const [label, overrides, message] of failures) {
+    const cardArt = recordingCardArt()
+    assert.throws(
+      () => bootstrap({
+        root: new FakeElement('div'),
+        runRepository: {
+          load: async () => ({ status: 'empty' }),
+          save: async () => assert.fail('Unexpected save'),
+        },
+        settingsRepository: createSettingsRepository({ storage: null }),
+        matchMedia: null,
+        pageLifecycleFactory: () => ({ destroy() {} }),
+        updateController: {
+          getSnapshot: () => ({}),
+          subscribe: () => () => {},
+          requestActivation() {},
+          destroy() {},
+        },
+        cardArtControllerFactory: cardArt.factory,
+        mountBattlefield: () => undefined,
+        ...overrides,
+      }),
+      message,
+      label,
+    )
+    assert.equal(cardArt.record.destroyed, 1, label)
+    assert.deepEqual(cardArt.record.settingsAliveAtDestroy, [true], label)
+    assert.throws(
+      () => cardArt.record.settingsControllers[0].subscribe(() => {}),
+      /has been destroyed/,
+      label,
+    )
+  }
+
+  const settingsControllers = []
+  for (const [label, factory, message] of [
+    ['throwing factory', ({ settingsController }) => {
+      settingsControllers.push(settingsController)
+      throw new Error('card art failed')
+    }, /card art failed/],
+    ['invalid controller', ({ settingsController }) => {
+      settingsControllers.push(settingsController)
+      return { getSnapshot() {} }
+    }, /cardArtController must implement/],
+  ]) {
+    assert.throws(
+      () => bootstrap({
+        root: new FakeElement('div'),
+        settingsRepository: createSettingsRepository({ storage: null }),
+        matchMedia: null,
+        cardArtControllerFactory: factory,
+        mountBattlefield: () => undefined,
+      }),
+      message,
+      label,
+    )
+    assert.throws(() => settingsControllers.at(-1).subscribe(() => {}), /has been destroyed/, label)
+  }
+
+  for (const [overrides, message] of [
+    [{ cardArtControllerFactory: null }, /cardArtControllerFactory must be a function/],
+    [{ mountBattlefield: null }, /mountBattlefield must be a function/],
+  ]) {
+    let mediaQueries = 0
+    assert.throws(
+      () => bootstrap({
+        root: new FakeElement('div'),
+        settingsRepository: createSettingsRepository({ storage: null }),
+        matchMedia: () => {
+          mediaQueries += 1
+          return null
+        },
+        ...overrides,
+      }),
+      message,
+    )
+    assert.equal(mediaQueries, 0, 'invalid options fail before settings start')
+  }
 })
 
 test('bootstrap enables Resume for restored and pre-populated runs', async (t) => {

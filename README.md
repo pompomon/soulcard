@@ -3,9 +3,13 @@
 A framework-light, fullscreen card-game PWA with a deterministic domain engine and
 Main, Settings, and Game screen shell. The Game screen contains a responsive Three.js
 battlefield that reconciles authoritative match snapshots and presents already-committed
-events with generated Tarot-inspired pixel card fronts/backs from a bounded texture cache.
-The classic theme stays registered as the fallback. Card art sources, their provenance,
-and how to regenerate the pixel sprites are described in [`art/README.md`](art/README.md).
+events with Tarot-inspired card fronts/backs from a bounded texture cache. Settings →
+**Card art** chooses the generated pixel deck, which is built into the app and is the
+default, or a prerendered HD deck of about 1 MB that is downloaded on demand and kept for
+offline play. The classic theme stays registered as the fallback. Card art sources, their
+provenance, and how to regenerate the pixel sprites and the HD pack are described in
+[`art/README.md`](art/README.md); the design and its validation are recorded in
+[`docs/TAROT_CARD_ART_PLAN.md`](docs/TAROT_CARD_ART_PLAN.md).
 
 ## Development
 
@@ -49,6 +53,21 @@ tablet, desktop, and letterboxed layouts, including the Fold4 cover screen's saf
 It also reports the deferred large-text and small-landscape limitations. Header wrapping
 is unchanged and is compared with the previous grid rather than required to disappear.
 
+## Card art verification
+
+With `npm run dev`, open `/tests/browser/card-art.html`. This text-only check plays a
+Classic game with the default pixel deck, chooses **Tarot (HD)** in Settings, waits for
+the download, and verifies the 54 cached files against their SHA-256 digests before
+playing on with HD textures. It then relaunches with the network emulated offline in
+the page: HD activates from the art cache and a Game that started with pixel art
+switches live. It then switches back to pixel and removes the download. Finally it
+chooses HD with the network emulated offline, checks that **Retry HD download** appears
+without fetching art, and retries once online. It reports the texture themes per step,
+refinement latency against the reveal dwell, the texture-cache bound, the Settings
+status announcements and control target sizes, Tarot and classic corner-index ink
+heights, heap observations, and console errors. It deletes the development origin's HD
+art cache when it starts and removes the download when it ends.
+
 ## Texture cache ownership
 
 Keep an acquired texture lease while a material references its texture. Release it only
@@ -62,6 +81,17 @@ material.map = null
 lease.release()
 material.dispose()
 ```
+
+A theme may also provide an asynchronous `refine` step, as the HD deck does. The cache
+starts it only after `acquire` returns, so the first frame always shows the preview that
+`create` drew. Refinement redraws the same canvas at the same size, marks the texture
+for one re-upload, and calls `onTextureUpdate({ kind, themeId, cardId, scale })`; the
+battlefield then renders one frame if no animation is running. Eviction,
+`invalidateTheme`, `clear`, and `destroy` abort refinement in flight, and an aborted
+refinement neither draws nor notifies. A failed refinement keeps the preview and reports
+`texture-refine-failed` through `onDiagnostic`. Changing **Card art** switches a mounted
+battlefield live: every visual leases the new theme's textures before the previous
+theme's entries are invalidated, and the renderer is not remounted.
 
 ## Committed-event presentation
 
@@ -158,7 +188,12 @@ only player-owned cards currently in the player's draw or won pile.
 The Settings screen persists a Turn burning preference independently from active runs.
 It selects the burn-enabled or burn-disabled ruleset only when starting or restarting a
 game. Resuming keeps the complete ruleset stored with that run. Replacing a current or
-still-restoring saved run requires confirmation.
+still-restoring saved run requires confirmation. The **Card art** preference is
+presentation only and never enters a save. Choosing HD shows the download's progress
+and keeps pixel art in use until HD is ready. **Retry HD download** appears when the
+download fails, is paused, or finds the device offline. After switching back to pixel,
+**Remove HD download** deletes a stored download. If HD is unavailable, the game keeps
+using pixel art.
 
 ## Run menus and summaries
 
@@ -209,6 +244,17 @@ removes every obsolete Soulcard cache on activation.
 Active runs remain exclusively in IndexedDB, so clearing application caches does not delete
 a saved game.
 
+The optional HD card art is not part of the app shell; only its small code chunks are
+precached. When a player chooses **Tarot (HD)**, `src/persistence/art-pack-store.js`
+downloads its 54 WebP files into a separate `soulcard-art-tarot-hd` cache, checking
+each file's type, size, and SHA-256 digest before storing it. Cache keys carry the
+digest, so a revised file never matches a stale entry, and a complete download removes
+entries the current manifest no longer lists. The service worker never deletes
+`soulcard-art-` caches, so the download survives app updates and works offline, and its
+fetches never enter the runtime cache. After switching back to pixel art, **Remove HD
+download** in Settings deletes the cache. Generated card textures, including HD previews
+and refined fronts, are still drawn locally and never enter Cache Storage.
+
 An installed update waits until the player selects **Update now**. Soulcard immediately
 blocks the current screen, waits for initial restoration and any queued write—including a
 recovery discard—and saves the latest stable ready, paused, or ended snapshot before asking
@@ -237,9 +283,11 @@ branch. Deployment runs tests before building. There is no configured lint comma
 The dependency-free milestone 19 browser profiler is available while the development
 server is running at
 `/tests/browser/milestone-19-profile.html`. It emits a JSON report in the page and to
-the console for frame intervals, renderer/resource bounds, texture generation, seeded
-full matches, remounts, heap support, and repeated context recovery. It is not a
-production entry point or service-worker asset.
+the console for frame intervals, renderer/resource bounds, texture generation, the
+pixel sprite module's raw and gzip size, the HD pack's size and its download,
+activation, preview, and refinement timings from an in-memory store, seeded full
+matches, remounts, heap support, and repeated context recovery. It is not a production
+entry point or service-worker asset.
 
 ## Seeded simulations
 

@@ -1,5 +1,7 @@
+import { CARD_ART_LABELS } from '../app/card-art.js'
 import {
   ANIMATION_SPEEDS,
+  CARD_ART_OPTIONS,
   QUALITY_PRESETS,
   RENDER_SCALE_CAPS,
 } from '../app/settings.js'
@@ -19,6 +21,7 @@ function assertSettingsController(settingsController) {
     'setRenderScaleCap',
     'setAnimationSpeed',
     'setReducedMotionOverride',
+    'setCardArt',
   ]
   if (
     settingsController === null
@@ -27,6 +30,96 @@ function assertSettingsController(settingsController) {
   ) {
     throw new TypeError('settingsController must implement the settings controller interface')
   }
+}
+
+function assertCardArt(cardArt) {
+  const methods = ['getSnapshot', 'subscribe', 'retry', 'removeDownload', 'refresh']
+  if (
+    cardArt !== undefined
+    && (
+      cardArt === null
+      || typeof cardArt !== 'object'
+      || methods.some((method) => typeof cardArt[method] !== 'function')
+    )
+  ) {
+    throw new TypeError('cardArt must implement the card-art controller interface')
+  }
+}
+
+function reportError(error) {
+  try {
+    globalThis.reportError?.(error)
+  } catch {}
+}
+
+function runReported(operation) {
+  try {
+    return Promise.resolve(operation()).catch((error) => {
+      reportError(error)
+      return undefined
+    })
+  } catch (error) {
+    reportError(error)
+    return Promise.resolve(undefined)
+  }
+}
+
+const CARD_ART_SUITS = 'Suits: Cups ♥, Pentacles ♦, Wands ♣, Swords ♠.'
+const RETRYABLE_HD_STATUSES = new Set(['failed', 'offline', 'paused'])
+const HD_FAILURE_TEXT = Object.freeze({
+  quota: "There isn't enough storage for HD card art. Pixel card art is in use.",
+  network: "HD card art couldn't be downloaded. Pixel card art is in use.",
+  integrity: "HD card art couldn't be downloaded. Pixel card art is in use.",
+  decode: "HD card art couldn't be loaded. Pixel card art is in use.",
+  missing: "HD card art couldn't be loaded. Pixel card art is in use.",
+  unsupported: "This browser can't show HD card art. Pixel card art is in use.",
+})
+
+function megabytes(bytes) {
+  return (bytes / 1_000_000).toFixed(1)
+}
+
+function knownTotal(hd) {
+  return Number.isFinite(hd.totalBytes) && hd.totalBytes > 0
+}
+
+function cardArtHintText(hd) {
+  return knownTotal(hd)
+    ? `HD downloads about ${megabytes(hd.totalBytes)} MB once and then works offline. ${CARD_ART_SUITS}`
+    : `HD downloads once and then works offline. ${CARD_ART_SUITS}`
+}
+
+function cardArtStatusText({ requested, hd }) {
+  if (requested !== 'tarot-hd') return 'Pixel card art is in use.'
+  switch (hd.status) {
+    case 'downloading':
+      return knownTotal(hd)
+        ? `Downloading HD card art: ${megabytes(hd.loadedBytes)} of ${megabytes(hd.totalBytes)} MB. Pixel card art is in use until it finishes.`
+        : 'Downloading HD card art. Pixel card art is in use until it finishes.'
+    case 'preparing':
+      return 'Preparing HD card art…'
+    case 'ready':
+      return hd.sessionOnly
+        ? 'HD card art is in use for this session only. It downloads again next time.'
+        : 'HD card art is ready and works offline.'
+    case 'offline':
+      return 'Connect to the internet to download HD card art. Pixel card art is in use.'
+    case 'paused':
+      return 'Data saver is on. Select Retry to download HD card art.'
+    case 'failed':
+      return HD_FAILURE_TEXT[hd.reason] ?? HD_FAILURE_TEXT.network
+    default:
+      return 'Checking HD card art…'
+  }
+}
+
+// The live status changes only with the state or a quarter of the download, so
+// screen readers aren't flooded with progress.
+function cardArtStatusKey({ requested, hd }) {
+  const quarter = hd.status === 'downloading' && knownTotal(hd)
+    ? Math.min(4, Math.floor((hd.loadedBytes / hd.totalBytes) * 4))
+    : null
+  return [requested, hd.status, hd.reason, hd.sessionOnly, quarter].join('|')
 }
 
 function assertRunController(runController) {
@@ -219,9 +312,10 @@ export function createMainScreen({
   }
 }
 
-export function createSettingsScreen({ onBack, settingsController } = {}) {
+export function createSettingsScreen({ onBack, settingsController, cardArt } = {}) {
   assertCallback(onBack, 'onBack')
   assertSettingsController(settingsController)
+  assertCardArt(cardArt)
 
   const element = document.createElement('main')
   element.className = 'screen screen--menu'
@@ -285,6 +379,106 @@ export function createSettingsScreen({ onBack, settingsController } = {}) {
   const controls = document.createElement('div')
   controls.className = 'settings-grid'
 
+  const handleCardArt = (event) => settingsController.setCardArt(event.currentTarget.value)
+  const cardArtField = createSelectField({
+    id: 'card-art-setting',
+    label: 'Card art',
+    setting: 'card-art',
+    options: CARD_ART_OPTIONS.map((value) => ({ value, text: CARD_ART_LABELS[value] })),
+    onChange: handleCardArt,
+  })
+  const cardArtHint = document.createElement('p')
+  cardArtHint.id = 'card-art-hint'
+  cardArtHint.className = 'settings-hint'
+  cardArtHint.textContent = cardArtHintText({ totalBytes: null })
+  cardArtField.select.setAttribute('aria-describedby', cardArtHint.id)
+  cardArtField.field.append(cardArtHint)
+
+  const cardArtStatusBlock = document.createElement('div')
+  cardArtStatusBlock.className = 'card-art-status'
+  cardArtStatusBlock.dataset.cardArtStatusBlock = ''
+  cardArtStatusBlock.hidden = cardArt === undefined
+
+  const cardArtStatus = document.createElement('p')
+  cardArtStatus.className = 'card-art-status__text'
+  cardArtStatus.dataset.cardArtStatus = ''
+  cardArtStatus.setAttribute('role', 'status')
+  cardArtStatus.setAttribute('aria-live', 'polite')
+  cardArtStatus.setAttribute('aria-atomic', 'true')
+
+  const cardArtProgress = document.createElement('progress')
+  cardArtProgress.className = 'card-art-status__progress'
+  cardArtProgress.dataset.cardArtProgress = ''
+  cardArtProgress.setAttribute('aria-label', 'HD card art download')
+  cardArtProgress.hidden = true
+
+  let tornDown = false
+  let removePending = false
+  let lastStatusKey = null
+
+  const handleRetry = () => {
+    if (cardArt === undefined) return
+    void runReported(() => cardArt.retry())
+  }
+  const retryButton = createButton('Retry HD download', handleRetry)
+  retryButton.dataset.action = 'retry-hd'
+  retryButton.hidden = true
+
+  // Removal takes moments, so repeated clicks are ignored rather than disabling
+  // the focused button.
+  const handleRemove = () => {
+    if (cardArt === undefined || removePending) return
+    removePending = true
+    void runReported(() => cardArt.removeDownload()).then((removed) => {
+      removePending = false
+      if (tornDown) return
+      renderCardArt(cardArt.getSnapshot())
+      if (removed === true) {
+        cardArtStatus.textContent = 'HD card art download removed. Pixel card art is in use.'
+      }
+    })
+  }
+  const removeButton = createButton('Remove HD download', handleRemove)
+  removeButton.dataset.action = 'remove-hd'
+  removeButton.hidden = true
+
+  cardArtStatusBlock.append(cardArtStatus, cardArtProgress, retryButton, removeButton)
+
+  // A focused button that disappears would drop focus to the document, so the
+  // focus moves to the Card art select instead.
+  function setButtonVisible(button, visible) {
+    if (!visible && !button.hidden && document.activeElement === button) {
+      cardArtField.select.focus()
+    }
+    button.hidden = !visible
+  }
+
+  function renderCardArt(snapshot) {
+    const { requested, hd } = snapshot
+    const key = cardArtStatusKey(snapshot)
+    if (key !== lastStatusKey) {
+      lastStatusKey = key
+      cardArtStatus.textContent = cardArtStatusText(snapshot)
+    }
+    cardArtHint.textContent = cardArtHintText(hd)
+    const downloading = requested === 'tarot-hd'
+      && hd.status === 'downloading'
+      && knownTotal(hd)
+    cardArtProgress.hidden = !downloading
+    if (downloading) {
+      cardArtProgress.max = hd.totalBytes
+      cardArtProgress.value = Math.min(hd.loadedBytes, hd.totalBytes)
+    }
+    setButtonVisible(
+      retryButton,
+      requested === 'tarot-hd' && RETRYABLE_HD_STATUSES.has(hd.status),
+    )
+    setButtonVisible(
+      removeButton,
+      requested === 'tarot-pixel' && hd.status === 'idle' && hd.loadedBytes > 0,
+    )
+  }
+
   const handleQuality = (event) => settingsController.setQuality(event.currentTarget.value)
   const quality = createSelectField({
     id: 'quality-setting',
@@ -346,6 +540,8 @@ export function createSettingsScreen({ onBack, settingsController } = {}) {
   })
 
   controls.append(
+    cardArtField.field,
+    cardArtStatusBlock,
     quality.field,
     renderScale.field,
     animationSpeed.field,
@@ -369,6 +565,7 @@ export function createSettingsScreen({ onBack, settingsController } = {}) {
 
   const unsubscribe = settingsController.subscribe((settings) => {
     burnEnabled.select.value = settings.burnEnabled ? 'enabled' : 'disabled'
+    cardArtField.select.value = settings.cardArt
     quality.select.value = settings.quality
     renderScale.select.value = String(settings.renderScaleCap)
     animationSpeed.select.value = String(settings.animationSpeed)
@@ -377,12 +574,28 @@ export function createSettingsScreen({ onBack, settingsController } = {}) {
       : settings.reducedMotionOverride ? 'reduce' : 'full'
     storageStatus.hidden = settingsController.persistent
   })
+  let unsubscribeCardArt = () => {}
+  if (cardArt !== undefined) {
+    try {
+      unsubscribeCardArt = cardArt.subscribe(renderCardArt)
+    } catch (error) {
+      unsubscribe()
+      throw error
+    }
+    // Reads the pack size and any stored HD files; it never downloads art.
+    void runReported(() => cardArt.refresh())
+  }
 
   return {
     element,
     teardown() {
+      tornDown = true
       unsubscribe()
+      unsubscribeCardArt()
       burnEnabled.select.removeEventListener('change', handleBurnEnabled)
+      cardArtField.select.removeEventListener('change', handleCardArt)
+      retryButton.removeEventListener('click', handleRetry)
+      removeButton.removeEventListener('click', handleRemove)
       quality.select.removeEventListener('change', handleQuality)
       renderScale.select.removeEventListener('change', handleRenderScale)
       animationSpeed.select.removeEventListener('change', handleAnimationSpeed)

@@ -65,9 +65,15 @@ class FakeCacheStorage {
     this.caches = new Map()
     this.deleted = []
     this.puts = []
+    this.opens = 0
+  }
+
+  async has(name) {
+    return this.caches.has(name)
   }
 
   async open(name) {
+    this.opens += 1
     if (this.failOpen) throw new DOMException('Denied', 'SecurityError')
     if (!this.caches.has(name)) this.caches.set(name, new FakeCache(this))
     return this.caches.get(name)
@@ -200,6 +206,46 @@ test('inspection reports complete, incomplete, revised, and stale packs', async 
   assert.equal(inspection.storedFiles, 5)
   assert.equal(inspection.storedBytes, totalBytes - manifest[0].bytes)
   assert.equal(inspection.staleEntries, 1)
+})
+
+test('inspection never creates the art cache before a download does', async () => {
+  const { files, manifest } = createPack()
+  const caches = new FakeCacheStorage()
+  const { fetch } = createFetch(files)
+  const store = createArtPackStore({ manifest, caches, fetch })
+  const totalBytes = manifest.reduce((sum, entry) => sum + entry.bytes, 0)
+
+  const empty = await store.inspect()
+  assert.deepEqual(empty, {
+    complete: false,
+    storedFiles: 0,
+    totalFiles: 6,
+    storedBytes: 0,
+    totalBytes,
+    staleEntries: 0,
+    persistent: true,
+  })
+  assert.ok(Object.isFrozen(empty))
+  assert.equal(caches.opens, 0)
+  assert.equal(caches.caches.has(TAROT_HD_CACHE_NAME), false)
+
+  await store.download()
+  assert.equal((await store.inspect()).complete, true)
+  assert.equal((await createArtPackStore({ manifest, caches, fetch }).inspect()).complete, true)
+
+  assert.equal(await store.clear(), true)
+  const opensAfterClear = caches.opens
+  assert.equal((await store.inspect()).storedFiles, 0)
+  assert.equal(caches.opens, opensAfterClear)
+  assert.equal(caches.caches.has(TAROT_HD_CACHE_NAME), false)
+
+  // If has() fails, inspection opens the cache as before.
+  const failing = new FakeCacheStorage()
+  failing.has = async () => {
+    throw new DOMException('Denied', 'SecurityError')
+  }
+  assert.equal((await createArtPackStore({ manifest, caches: failing, fetch }).inspect()).storedFiles, 0)
+  assert.equal(failing.opens, 1)
 })
 
 test('download stores only verified files with monotonic progress and bounded concurrency', async () => {
