@@ -503,7 +503,7 @@ function tarotIndexInk() {
   return { ranks, suits }
 }
 
-// Compares classic's corner-index ink with the Tarot pixel index ink (A4).
+// Compares classic's corner-index ink with the Tarot pixel index ink (Tarot must be no smaller).
 function classicInkHeights() {
   const context = document.createElement('canvas').getContext('2d')
   const measure = (font, labels) => {

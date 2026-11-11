@@ -1,7 +1,7 @@
 # Card art sources
 
 This directory holds the editable sources for Soulcard's Tarot-inspired card
-decks. The design is in [`docs/TAROT_CARD_ART_PLAN.md`](../docs/TAROT_CARD_ART_PLAN.md).
+decks. The design and its validation are summarized in [`docs/HISTORY.md`](../docs/HISTORY.md).
 Both decks render the same shared composition from
 `src/presentation/themes/tarot-composition.js`: suits, numerals, pip layouts,
 figures and index positions.
