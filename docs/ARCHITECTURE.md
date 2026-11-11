@@ -260,10 +260,13 @@ AI (`src/domain/ai-controller.js` `createAiController`): `chooseEncounterAction(
   `TextureCacheCapacityError`.
 - Hold a lease while a material uses its texture: set `material.map = lease.texture`, and clear
   the map before `lease.release()`.
-- A theme's `refine({ scale, canvas, signal })` runs after the `create` preview and must redraw
-  the same canvas at the same size (three.js allocates immutable GPU storage on first upload).
-  Eviction or invalidation aborts it; failure keeps the preview and reports
-  `texture-refine-failed`.
+- Front themes take the card ID first: `create(cardId, { scale })` and
+  `refine(cardId, { scale, canvas, signal })`. Back themes take only the options:
+  `create({ scale })` and `refine({ scale, canvas, signal })`. `create` must also honor the
+  `createCanvas` option that tests inject.
+- `refine` runs after the `create` preview and must redraw the same canvas at the same size
+  (three.js allocates immutable GPU storage on first upload). Eviction or invalidation aborts it;
+  failure keeps the preview and reports `texture-refine-failed`.
 
 ### Themes and card art
 

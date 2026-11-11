@@ -47,8 +47,8 @@ Normative reference for Campaign mode; update it in the same PR as the code. Gen
 | RNG stream | Index | Draws |
 | --- | --- | --- |
 | run RNG | none | setup shuffles, won-pile recycles |
-| `campaign-reward-draft-v1` | `encounterIndex` | one per non-empty slot |
-| `campaign-shop-stock-v1` | map node index | one per non-empty slot, plus a replace card |
+| `campaign-reward-draft-v1` | `encounterIndex` | one per non-empty slot, in order: new card, deck-edit operation (then its card, if `replace`), modifier. Mend draws nothing |
+| `campaign-shop-stock-v1` | map node index | one per non-empty slot, in shop order; a `replace` service draws its card right after the operation |
 
 Hold, traits, events, rests and blockers draw nothing. A route choice draws only through the fight
 setup or shop stock it opens.
