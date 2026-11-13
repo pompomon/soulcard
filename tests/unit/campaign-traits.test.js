@@ -438,8 +438,8 @@ test('burns follow the effect that names the clash winner, and Plunder suspends 
     plunder: { activeModifiers: createStartingModifierRecords(), traitIds: [PLUNDER] },
     both: { activeModifiers: [...createStartingModifierRecords(), spoils], traitIds: [PLUNDER] },
   }
-  // Whether the cards the clash loser supplied burn under the burn ruleset (D4). Plunder
-  // suspends Spoils of War, so with both the player's wins still burn (risk R7).
+  // Whether the cards the clash loser supplied burn under the burn ruleset. Plunder's
+  // burnSettlement suspends Spoils of War, so with both the player's wins still burn.
   const loserCardsBurn = {
     player: { neither: true, spoils: false, plunder: true, both: true },
     opponent: { neither: true, spoils: true, plunder: false, both: false },

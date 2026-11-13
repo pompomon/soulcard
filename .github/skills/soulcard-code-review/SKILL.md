@@ -1,172 +1,122 @@
 ---
 name: soulcard-code-review
-description: Review Soulcard pull requests for evidence-based performance issues and alignment with the implementation roadmap and milestones. Use for code review, especially when changes claim performance improvements, deliver roadmap milestones, or alter domain, rendering, persistence, UI, PWA, or build behavior.
+description: Review Soulcard pull requests for evidence-based performance issues, contract violations, and alignment with the roadmap and milestones. Use for code review, especially when changes claim performance improvements, deliver milestones, or alter domain, rendering, persistence, UI, PWA, or build behavior.
 license: MIT
 ---
 
 # Soulcard code review
 
-Review only the pull request's changes. Find actionable regressions and plan
-violations without turning the roadmap into a request to implement unrelated future
-work. This skill is self-contained and must not depend on MCP server context.
+Review only the pull request's changes. Report actionable regressions and contract violations
+without turning the roadmap into requests for unrelated future work. This skill is
+self-contained and must not depend on MCP server context.
 
-## Establish the review basis
+## Review basis
 
-1. Read the pull request description, changed files, and complete diff.
-2. Read the current `docs/IMPLEMENTATION_ROADMAP.md`, especially the architecture,
-   dependency map, applicable milestone, test pyramid, and definition of done.
-3. Read the current `docs/MILESTONES.md` for declared completion state. Use the
-   roadmap's milestone goal, dependencies, acceptance criteria, and checks as the
-   source of truth; a checkbox alone is not proof of completion.
-4. Identify explicitly declared milestone numbers. If none are declared, infer the
-   narrowest applicable milestone from the behavior and files changed.
-5. Inspect relevant tests, profiling results, and other evidence included in the
-   change. Do not assume that missing future test infrastructure is a defect unless it
-   is required by the applicable milestone.
+1. Read the pull request description, the changed files and the complete diff.
+2. Read the sections of `docs/ARCHITECTURE.md` that the change touches. For Campaign changes,
+   also read `docs/CAMPAIGN.md`.
+3. Read `docs/ROADMAP.md` for status, milestone specs, delivery rules and the plan lifecycle.
+   - If the pull request declares a milestone, its spec or `docs/plans/` plan is the
+     acceptance criteria.
+   - Otherwise, infer the narrowest applicable milestone.
+4. Prefer code and test evidence over status labels. Missing future infrastructure is a defect
+   only when the applicable milestone requires it.
 
-When a checklist entry appears stale, prefer code and test evidence over the checkbox.
-Do not reject a change solely because a prerequisite is unchecked when the repository
-demonstrates that the prerequisite is implemented.
+## Milestone alignment
 
-## Check plan and milestone alignment
+- Flag a milestone marked done without evidence for every acceptance criterion.
+- Allow honest partial implementations that don't claim completion.
+- Flag a skipped prerequisite only when its absence makes the change incorrect, unsafe or
+  unverifiable.
+- Flag scope outside the roadmap, or a contradiction of ARCHITECTURE.md or CAMPAIGN.md, unless
+  the pull request updates that doc and handles the consequences. A pull request description may
+  narrow the plan but never silently overrides the docs.
+- A pull request that completes a milestone follows the plan lifecycle:
+  - update the ROADMAP status
+  - move binding contracts into ARCHITECTURE.md or CAMPAIGN.md
+  - add a HISTORY.md summary
+  - delete the plan
+- Don't report later milestones merely because they remain unimplemented.
 
-For each applicable milestone:
+## Invariants
 
-- Compare the change with its goal/files, dependencies, acceptance criteria, and
-  checks/risks.
-- Flag a skipped prerequisite only when its absence makes the changed behavior
-  incorrect, unsafe, or unverifiable.
-- Flag a milestone newly marked complete when the pull request does not demonstrate
-  all of its acceptance criteria.
-- Allow focused partial implementations when the pull request represents them
-  honestly and does not mark the milestone complete.
-- Flag behavior outside the approved MVP scope or a material contradiction of the
-  roadmap unless the pull request intentionally updates the roadmap and its
-  consequences.
-- Do not report unrelated later milestones merely because they remain unimplemented.
-- If either planning document changes, ensure milestone numbering, names, dependency
-  edges, and completion status remain synchronized between
-  `docs/IMPLEMENTATION_ROADMAP.md` and `docs/MILESTONES.md`.
+- Rules, RNG, card ownership, settlement and persistence stay outside Three.js and animation
+  callbacks. Rendering consumes snapshots and already-committed events.
+- Domain transitions depend on actions and serializable RNG, not frame time. Preserve:
+  - RNG consumption order
+  - ordered zones and card conservation
+  - committed event order
+  - stable save boundaries
+- Presentation speed, reduced motion, skipped animations, pauses and context restoration never
+  change results or replay randomness.
+- Contract changes carry explicit versions:
+  - stored shape: save schema plus migration or quarantine, and fixtures
+  - rule semantics: ruleset or `gameRulesVersion`
+  - event contract: `eventVersion`
+- Main, Settings and Game remain the only top-level screens. Overlays stay inside Game.
+- The app stays framework-light. Relative Vite/PWA paths, offline behaviour, bounded caches and
+  the GitHub Pages deployment stay intact.
 
-The pull request description may narrow the implementation plan, but it does not
-silently override the repository roadmap. Treat inconsistencies between the stated
-plan, the diff, and the live roadmap as reviewable when they affect correctness,
-scope, dependencies, or completion claims.
+## Performance by subsystem
 
-## Protect roadmap invariants
+A theoretical optimization opportunity isn't actionable. Report one only when the diff
+introduces a demonstrable regression or makes an unsupported performance claim.
 
-Report changes that violate an applicable invariant:
+Claimed optimizations need two things:
+- Representative before/after evidence: profiles, frame traces, renderer resource counts, heap
+  observations, texture timings or bundle sizes.
+- Proof that results, saves, events and reduced-motion behaviour are unchanged.
 
-- Authoritative rules, RNG, card ownership, settlement, and persistence stay outside
-  Three.js and animation callbacks. Rendering consumes snapshots and already-committed
-  events.
-- Domain transitions depend on actions and serializable deterministic RNG, not frame
-  time. Preserve RNG consumption order, ordered zones, card conservation, committed
-  event ordering, and stable save boundaries.
-- Presentation speed, reduced motion, skipped animations, pauses, and context
-  restoration must not change game results or replay randomness.
-- Save and migration changes preserve compatible state or provide the versioned
-  migration/recovery required by the applicable milestone.
-- Main, Settings, and Game remain the only top-level screens; Game overlays do not
-  become additional screens.
-- The application remains framework-light unless the roadmap is intentionally
-  amended.
-- Relative Vite/PWA paths, offline behavior, bounded caches, and GitHub Pages
-  deployment remain intact.
+Don't invent FPS, memory, bundle or timing budgets. The hard bounds in ARCHITECTURE.md are the
+only limits, and measured timings are observations.
 
-For performance changes, verify equivalence of gameplay results, saves, events, and
-reduced-motion behavior before accepting throughput or memory improvements.
+- **Rendering:**
+  - per-frame CPU/GPU work and allocations, draw calls, invalidation
+  - work while hidden or paused
+  - DPR caps and resize/orientation handling
+- **Resources:** reuse and disposal of geometries, materials, textures, listeners and observers.
+  Caches stay bounded and regenerate after eviction, teardown or WebGL context restoration.
+- **Domain:** hot-path algorithms and allocations. Never change deterministic outputs, RNG calls
+  or order, zone order, settlement or event order.
+- **Persistence:**
+  - serialization volume and frequency, IndexedDB transactions, migration cost and lifecycle
+    writes
+  - atomic saves at stable boundaries
+  - no recalculation or RNG replay during restore
+- **UI and input:**
+  - interaction latency, forced layout, resize storms, listener cleanup, duplicate activation
+  - keep semantic controls, reduced motion, 44×44 targets and the 320×480 minimum viewport
+- **PWA:**
+  - cache growth and cleanup, offline fallbacks, update deferral at unsafe boundaries
+  - no saves, and no textures that could be regenerated, in Cache Storage
+- **Dependencies and build:**
+  - bundle and runtime weight against the framework-light design
+  - relative asset paths, service-worker asset injection and the Pages build
 
-## Review performance by subsystem
+## Findings
 
-Treat a theoretical optimization opportunity as non-actionable unless the diff
-introduces a demonstrable regression or the pull request makes an unsupported
-performance claim. For claimed optimizations, look for representative before/after
-evidence appropriate to the affected subsystem. Examples include repeatable profiles,
-frame traces, renderer resource counts, heap observations, texture-generation timing,
-or bundle-size comparisons.
+- Report only high-confidence, actionable issues introduced by the pull request.
+- Use one category per finding: **Performance**, **Plan alignment**, **Milestone status** or
+  **Invariant violation**.
+- State:
+  - the scenario
+  - the impact
+  - the violated contract or criterion
+  - the expected fix or the missing evidence
+- Anchor each finding to the smallest useful changed range. Use a review-level comment only for
+  cross-file or milestone-wide issues.
+- Skip style nits, speculative micro-optimizations, duplicates, praise and pre-existing issues.
+- If intent or evidence is ambiguous, ask a short question instead of asserting
+  noncompliance. Return no finding when the change is aligned.
 
-Do not invent FPS, memory, bundle-size, or timing budgets. Until milestone 19 documents
-measured performance hypotheses, assess boundedness, regressions, and evidence rather than
-arbitrary numbers.
+## Calibration
 
-### Rendering
-
-- Check per-frame CPU/GPU work, temporary allocations, draw calls, shader cost,
-  invalidation, and work performed while hidden or paused.
-- Check DPR/render-scale caps and resize/orientation behavior across the roadmap's
-  supported layouts.
-- Distinguish measured hot paths from speculative micro-optimizations.
-
-### Resources
-
-- Check reuse and disposal of geometries, materials, textures, render targets,
-  listeners, observers, and renderer state.
-- Ensure texture generation and caches remain bounded and can regenerate resources
-  after eviction, teardown, or WebGL context restoration.
-- Flag resources created repeatedly in a render loop or retained after their owning
-  screen/theme is gone.
-
-### Domain
-
-- Check algorithmic and allocation changes on simulation and match hot paths.
-- Reject optimizations that change deterministic outputs, RNG calls or order, zone
-  order, conservation, settlement, or event order.
-
-### Persistence
-
-- Check serialization volume and frequency, IndexedDB transaction behavior, migration
-  cost, and lifecycle writes.
-- Preserve atomic saves at stable domain boundaries and avoid recalculating domain
-  results or replaying RNG during restore.
-
-### UI and input
-
-- Check interaction latency, repeated DOM queries, forced synchronous layout, resize
-  storms, listener cleanup, duplicate activation, and unnecessary work on pointer
-  movement.
-- Preserve responsive behavior, semantic primary controls, reduced motion, and the
-  minimum-viewport requirements in the roadmap.
-
-### PWA
-
-- Check app-shell and runtime cache growth, obsolete-cache cleanup, offline fallbacks,
-  and update deferral at unsafe domain boundaries.
-- Keep save data out of Cache Storage and avoid caching generated textures when they
-  can be regenerated locally.
-
-### Dependencies and build
-
-- Check bundle and runtime impact of dependencies against the framework-light design.
-- Preserve relative asset paths, service-worker asset injection, and the GitHub Pages
-  build/deployment contract.
-
-## Finding quality gate
-
-Report only high-confidence, actionable issues introduced by the pull request.
-
-- Categorize each finding as **Performance**, **Plan alignment**,
-  **Milestone status**, or **Invariant violation**.
-- State the concrete affected scenario, resulting impact, relevant roadmap or
-  milestone criterion, and expected correction or missing evidence.
-- Anchor findings to the smallest useful changed line range. Use a review-level
-  comment only for a genuinely cross-file or milestone-wide issue.
-- Avoid style-only feedback, speculative micro-optimizations, duplicate comments,
-  praise, and pre-existing issues outside the diff.
-- If intent or evidence is genuinely ambiguous, ask a concise question instead of
-  asserting noncompliance.
-- Return no finding when the change is aligned and no actionable regression is
-  supported by the available evidence.
-
-## Calibration cases
-
-Use these cases to keep review behavior consistent:
-
-| Change | Expected review behavior |
+| Change | Expected review |
 | --- | --- |
-| A render-loop edit creates geometry, material, or textures every frame without bounded reuse/disposal. | Report a **Performance** finding describing resource churn or growth. |
-| Settlement or RNG moves into an animation callback. | Report an **Invariant violation** tied to the domain/presentation boundary and determinism. |
-| A milestone is checked off without evidence for all acceptance criteria. | Report a **Milestone status** finding on the completion change. |
-| Roadmap milestone numbering or dependencies change without the checklist changing. | Report a **Plan alignment** finding on the synchronization error. |
-| A measured optimization preserves deterministic outputs and applicable behavior. | Do not manufacture a comment. |
-| A focused partial milestone implementation is accurately described and does not claim completion. | Review only defects in its scope; do not demand unrelated later work. |
+| A render loop creates geometry, materials or textures every frame without bounded reuse | **Performance**: resource churn or growth |
+| Settlement or RNG moves into an animation callback | **Invariant violation**: domain/presentation boundary |
+| A save, rules or event contract changes without a version and migration or quarantine | **Invariant violation** |
+| A milestone is marked done without evidence for all acceptance criteria | **Milestone status** |
+| A completed milestone leaves its plan in `docs/plans/` or a stale ROADMAP status | **Plan alignment** |
+| A measured optimization preserves deterministic outputs and behaviour | No comment |
+| An honest partial implementation that doesn't claim completion | Review only its scope |

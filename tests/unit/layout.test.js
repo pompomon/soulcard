@@ -92,12 +92,13 @@ function zoneBox(layout, zoneId, halo = 0) {
   let minOffsetY = 0
   let maxOffsetY = 0
   if (zoneId.endsWith('Reveal')) {
-    // Transient reveal offsets span x ±0.195 and y 0…0.105 (battlefield.js:888-894).
+    // Transient reveal offsets span x ±0.195 and y 0…0.105 (battlefield.js transientOffset()).
     minOffsetX = -0.195
     maxOffsetX = 0.195
     maxOffsetY = 0.105
   } else if (zoneId === 'contestedPile') {
-    // The last four contested cards spread by at most +0.105 x / +0.075 y (732-751).
+    // The last four contested cards spread by at most +0.105 x / +0.075 y
+    // (battlefield.js addPileRepresentative()).
     maxOffsetX = 0.105
     maxOffsetY = 0.075
   }

@@ -1,370 +1,80 @@
 # Soulcard
 
-A framework-light, fullscreen card-game PWA with a deterministic domain engine and
-Main, Settings, and Game screen shell. The Game screen contains a responsive Three.js
-battlefield that reconciles authoritative match snapshots and presents already-committed
-events with Tarot-inspired card fronts/backs from a bounded texture cache. Settings →
-**Card art** chooses the generated pixel deck, which is built into the app and is the
-default, or a prerendered HD deck of about 1 MB that is downloaded on demand and kept for
-offline play. The classic theme stays registered as the fallback. Card art sources, their
-provenance, and how to regenerate the pixel sprites and the HD pack are described in
-[`art/README.md`](art/README.md); the design and its validation are recorded in
-[`docs/TAROT_CARD_ART_PLAN.md`](docs/TAROT_CARD_ART_PLAN.md).
+A framework-light, fullscreen card-game PWA, playable at
+<https://pompomon.github.io/soulcard/>.
+- A deterministic domain engine runs Classic duels and a roguelike Campaign expedition.
+- A responsive Three.js battlefield presents committed events.
+- The app has three screens: Main, Settings and Game.
+- Settings → **Card art** chooses the bundled Tarot pixel deck (the default) or an HD deck of
+  about 1 MB, downloaded on demand and kept for offline play.
+- The classic theme stays registered as the fallback.
 
 ## Development
 
-Use Node 24 (the CI baseline). From the repository root:
+Use the Node version in [`.nvmrc`](.nvmrc), which CI also uses. From the repository root:
 
 ```sh
 npm ci
-npm run dev
+npm run dev          # development server
+npm test             # unit and integration tests (node:test; no browser needed)
+npm run test:watch   # watch unit tests
+npm run build        # production build in dist/
+npm run preview      # serve dist/ (offline checks need a plain static server instead)
 ```
 
-Build the production site with `npm run build`; serve it with `npm run preview`.
-
-## Campaign manual verification
-
-Run `npm run dev`, open the reported local URL, and choose **Campaign** from Main.
-That native button is the manual entry point for the Campaign expedition in the
-existing Game screen. The deterministic browser acceptance fixture is available at
-`/tests/browser/milestone-21-1-campaign.html`; it reports its canvas, the first route
-choice, semantic Hold choices, presentation states, and console errors as text. The
-reward fixture at `/tests/browser/milestone-21-2-rewards.html` restores a saved reward
-draft and reports its offers, the saved reward, the route map, the informed Hold choice,
-and Run details as text. The expedition fixture at
-`/tests/browser/milestone-21-3-expedition.html` restores a saved route map and reports
-route locks, shop prices and purchases, reloads at node boundaries, a failed save and
-its retry, an event with a target, a sold-out shop, and console errors as text. The
-elite ladder fixture at `/tests/browser/milestone-21-4-campaign.html` restores saved
-route, reward, rest, and victory boundaries and reports the stage-3 elite choice, an
-elite fight's trait and its Court Etiquette Hold note, the Greater Mend reward, rest
-options and targets, a reload and a failed rest save with its retry, the full-health
-sanctum note, the boss route and expedition log, the victory summary, and console
-errors as text. To check the elite ladder by hand, take the High Court or Night Watch
-elite, rest at the Roadside Camp or Last Light Sanctum, and fight the Ace Sovereign at
-stage 7.
-
-## Responsive HUD verification
-
-With `npm run dev`, open `/tests/browser/phone-hud-layout.html`. This text-only check
-restores Classic and Campaign fights and reports footer bounds, label wrapping, text
-sizes, control targets, save warnings, canvas presence, and console errors across phone,
-tablet, desktop, and letterboxed layouts, including the Fold4 cover screen's safe area.
-It also reports the deferred large-text and small-landscape limitations. Header wrapping
-is unchanged and is compared with the previous grid rather than required to disappear.
-
-## Card art verification
-
-With `npm run dev`, open `/tests/browser/card-art.html`. This text-only check plays a
-Classic game with the default pixel deck, chooses **Tarot (HD)** in Settings, waits for
-the download, and verifies the 54 cached files against their SHA-256 digests before
-playing on with HD textures. It then relaunches with the network emulated offline in
-the page: HD activates from the art cache and a Game that started with pixel art
-switches live. It then switches back to pixel and removes the download. Finally it
-chooses HD with the network emulated offline, checks that **Retry HD download** appears
-without fetching art, and retries once online. It reports the texture themes per step,
-refinement latency against the reveal dwell, the texture-cache bound, the Settings
-status announcements and control target sizes, Tarot and classic corner-index ink
-heights, heap observations, and console errors. It deletes the development origin's HD
-art cache when it starts and removes the download when it ends.
-
-## Texture cache ownership
-
-Keep an acquired texture lease while a material references its texture. Release it only
-after the map is replaced or the material is no longer used:
-
-```js
-const lease = cache.acquireFront({ cardId: 'c-AS' })
-material.map = lease.texture
-
-material.map = null
-lease.release()
-material.dispose()
-```
-
-A theme may also provide an asynchronous `refine` step, as the HD deck does. The cache
-starts it only after `acquire` returns, so the first frame always shows the preview that
-`create` drew. Refinement redraws the same canvas at the same size, marks the texture
-for one re-upload, and calls `onTextureUpdate({ kind, themeId, cardId, scale })`; the
-battlefield then renders one frame if no animation is running. Eviction,
-`invalidateTheme`, `clear`, and `destroy` abort refinement in flight, and an aborted
-refinement neither draws nor notifies. A failed refinement keeps the preview and reports
-`texture-refine-failed` through `onDiagnostic`. Changing **Card art** switches a mounted
-battlefield live: every visual leases the new theme's textures before the previous
-theme's entries are invalidated, and the renderer is not remounted.
-
-## Committed-event presentation
-
-`src/presentation/event-player.js` reads only a stable match snapshot's
-`pendingEvent`. Game waits for the corresponding save attempt to settle before
-presentation, but a storage failure does not block in-memory play. Duplicate
-controller notifications are suppressed within one Game mount; restoring the same
-pending event in a fresh mount replays it.
-
-Animation speed scales presentation time, while effective reduced motion skips
-transitions and immediately reconciles the battlefield to the committed snapshot.
-Presentation never advances the match machine, evaluates burn rules, or consumes RNG.
-Current events record each reveal's source/personal pile origin; version 2 saved events
-remain readable.
-
-## WebGL context recovery
-
-The battlefield prevents the browser's default `webglcontextlost` handling, pauses
-presentation and canvas input, and reports the interruption through the Game status
-region. On `webglcontextrestored`, it replaces the renderer and texture cache, then
-recreates visuals from the retained stable match snapshot and committed event before
-resuming. Recovery never advances the match machine, writes a save, changes ordered
-zones, or consumes RNG. A failed replacement leaves Reveal/Continue disabled while
-Pause and save/menu recovery remain available.
-
-## Pointer input and HUD ownership
-
-`src/presentation/input.js` owns mouse, touch, and pen pointer sequences for the
-Game screen's semantic Reveal/Continue and Pause buttons and the supplemental
-hit-tested active-deck shortcut. It accepts only primary pointer sequences, handles
-cancellation, suppresses the following compatibility click, and retains native click
-fallback for assistive or programmatic button activation. The deck keeps a 44×44
-CSS-pixel screen-space hit target even when its rendered card is smaller. A short
-press/release clicks the deck; movement beyond the drag threshold captures the pointer
-and lets the top card be dropped on the player reveal area. Invalid or interrupted
-drops snap the visual back without advancing the match.
-
-The Game HUD routes the button, active-deck click, and accepted top-card drop through
-the same `run-controller` Reveal action, disables them through the corresponding save
-and committed-event presentation, and derives counts, comparison results, progress,
-and outcomes from stable snapshots and committed events. The semantic button remains
-the accessible canonical control. Input and presentation never settle rules or consume
-domain RNG.
-
-All MVP primary actions remain named native buttons or selects, dynamic status text is
-exposed through polite atomic status regions, and controls retain visible focus
-treatment and 44×44 CSS-pixel targets. The Three.js canvas is presentational; the
-semantic Reveal/Continue button is the canonical accessible action. Full keyboard
-gameplay, shortcuts, focus trapping, and focus-flow instructions remain post-MVP.
-
-Auto-reveal is an opt-in checkbox beside Reveal/Continue. It defaults off for each Game
-screen mount and is not persisted. After the player manually reveals with it enabled,
-each completed presentation starts the next clash; reduced-motion skips also continue.
-In Campaign, Auto-reveal saves the deterministic Hold-choice boundary and selects the
-normal candidate automatically (or the held card when it is the sole legal supply).
-Disabling it during presentation stops the chain after that clash. Pause, cancellation,
-presentation failure, update preparation, run replacement, teardown, and terminal outcomes
-stop automatic progression, and the next chain always requires another manual
-Reveal/Continue action.
-
-Start New Game creates a 52-card match from Web Crypto entropy, records the seed in the
-domain RNG snapshot, and immediately queues the stable turn-zero run for IndexedDB
-persistence before play continues. The canonical comparison order is unchanged except
-that 2 beats Ace; 2 still loses to 3 through King.
-
-Campaign creates a separate expedition run in the same Game screen. It starts at 3/5
-health and 0 coins with all Diamonds and Hearts, then follows an authored seven-stage
-route map. It opens against the Suit Opposition (Spades and Clubs) and chooses the
-Wayside Market shop or the Crossroads Shrine event. Stage 3 offers the Royal Court
-(Jacks, Queens, and Kings) or its elite twin, the High Court; stage 4 offers the Ember
-Bazaar shop, Oathkeeper's Vault event, or Roadside Camp rest; and stage 5 offers the
-Watch of Tens (8s, 9s, and 10s) or its elite twin, the Night Watch. Every route then
-rests at the Last Light Sanctum and ends against the Ace Sovereign boss (Kings and
-Aces). Elites add the Ace of Spades and Ace of Clubs to their archetype's deck and bring
-one opponent trait for that encounter: Court Etiquette lets Hold capture or replace
-only a 2–10, and Plunder (burn rules only) sends player cards from clashes it wins to
-its won pile instead of burning them, returning them to the deck after the encounter,
-and cancels Spoils of War for that fight. A fight that is not won costs 1 health (2
-against an elite or the boss) and can be retried while health remains. Each non-final
-win pays its coin bounty (3 at the gate, 4 at the Royal Court, 6 at the High Court, none
-at stage 5) and opens a seeded reward draft: a new card, a deck edit (duplicate, remove,
-or replace), a modifier, or Mend (+1 health). Elite drafts draw the new card from
-unowned Jacks through Aces when any remain and offer Greater Mend (+2 health) instead of
-Mend; defeating the boss ends the run without a draft. Rest sites trade healing (+2
-health) against training (duplicating) a card at the camp or cleansing (removing) one at
-the sanctum, and always offer Walk on; no node restores more than 2 health. Shops sell a
-bounded card, deck-edit, and modifier stock for coins; events state every health, coin,
-deck, Hold, and modifier trade-off and always offer Walk on. Every route, reward,
-purchase, event, rest, shop-exit, and retry decision applies only to a saved boundary
-and names its journal step, so a reload never applies it twice. Campaign card instances
-retain immutable player/opponent provenance, and the one-slot Hold action can capture
-only player-owned cards currently in the player's draw or won pile.
-
-The Settings screen persists a Turn burning preference independently from active runs.
-It selects the burn-enabled or burn-disabled ruleset only when starting or restarting a
-game. Resuming keeps the complete ruleset stored with that run. Replacing a current or
-still-restoring saved run requires confirmation. The **Card art** preference is
-presentation only and never enters a save. Choosing HD shows the download's progress
-and keeps pixel art in use until HD is ready. **Retry HD download** appears when the
-download fails, is paused, or finds the device offline. After switching back to pixel,
-**Remove HD download** deletes a stored download. If HD is unavailable, the game keeps
-using pixel art.
-
-## Run menus and summaries
-
-Main enables Resume only after a valid saved run restores, whether it is ready, paused,
-completed, or waiting at a Campaign decision. Invalid or incompatible saves remain
-quarantined until explicitly discarded; unavailable storage is reported without blocking
-session-only play. Current saves use save schema version 7. Classic runs use game rules
-version 2 and Campaign runs use version 7. Schema-version-4 through schema-version-6
-Classic records carry over unchanged. Campaign records from earlier Campaign rules are
-quarantined as incompatible: the scripted rewards of version 3, the linear reward drafts
-of version 4, and the five-stage expedition of versions 5 and 6 cannot replay under
-version 7, whose map, fights, and rest sites differ. Schema-version-1 through
-schema-version-3 records are deliberately quarantined. Every quarantined record requires
-explicit discard.
-
-Pause remains an overlay inside Game. Resume continues the exact snapshot, Save & Main
-Menu navigates only after a successful stable save, and Restart Game requires confirmation
-before creating a fresh entropy-seeded run. A failed Save & Main Menu attempt stays paused
-and can be retried. Completed runs show a Game-owned summary after the terminal save and
-committed-event presentation settle; returning to Main retains the completed run so Resume
-can reopen its summary.
-
-## AI encounter flow
-
-`src/domain/ai-controller.js` is the automatic-opponent policy boundary. One player
-Reveal/Continue activation selects one encounter action. The AI controller does not
-produce match snapshots or use timers, browser state, presentation callbacks,
-`Math.random`, or domain RNG.
-
-For classic matches, `run-controller` validates the injected AI action and applies it
-to the current snapshot
-through the match machine, and queues the resulting stable save before the HUD presents
-that event. Ties, the one-time source-to-personal transition, personal-pile recycling,
-and terminal inability therefore remain authoritative domain transitions. Campaign
-encounters instead use their campaign machine's persisted Hold decisions, independent
-source/personal supply modes, health, rewards, and campaign-lifetime modifier state.
-
-## Offline cache and updates
-
-The production service worker precaches one content-revisioned app shell using relative
-URLs, so the GitHub Pages repository path can relaunch offline after one successful
-install. Shell files are immutable within a revision. A separate runtime cache accepts
-only successful same-origin image, font, and audio requests and evicts its oldest entries
-above 32; generated card textures are recreated locally and never enter Cache Storage.
-The worker preserves the active, installing, and latest waiting shells while removing
-superseded deferred revisions, including during upgrades from pre-marker workers, then
-removes every obsolete Soulcard cache on activation.
-Active runs remain exclusively in IndexedDB, so clearing application caches does not delete
-a saved game.
-
-The optional HD card art is not part of the app shell; only its small code chunks are
-precached. When a player chooses **Tarot (HD)**, `src/persistence/art-pack-store.js`
-downloads its 54 WebP files into a separate `soulcard-art-tarot-hd` cache, checking
-each file's type, size, and SHA-256 digest before storing it. Cache keys carry the
-digest, so a revised file never matches a stale entry, and a complete download removes
-entries the current manifest no longer lists. The service worker never deletes
-`soulcard-art-` caches, so the download survives app updates and works offline, and its
-fetches never enter the runtime cache. After switching back to pixel art, **Remove HD
-download** in Settings deletes the cache. Generated card textures, including HD previews
-and refined fronts, are still drawn locally and never enter Cache Storage.
-
-An installed update waits until the player selects **Update now**. Soulcard immediately
-blocks the current screen, waits for initial restoration and any queued write—including a
-recovery discard—and saves the latest stable ready, paused, or ended snapshot before asking
-the latest waiting worker to activate. The page reloads only after that worker reaches
-`activated`. A save failure leaves the current worker in control and exposes a retry;
-restore storage availability and select **Update now** again. A committed event is saved
-with its snapshot, so an update can reload before presentation finishes without
-recalculating rules or consuming RNG.
-
-## Tests
-
-```sh
-npm test
-npm run test:watch
-```
-
-`npm test` uses Node's built-in test runner and strict assertions to discover
-`tests/unit/**/*.test.js` and `tests/integration/**/*.test.js`; `npm run test:watch`
-watches only `tests/unit/**/*.test.js`. No browser, DOM, WebGL, or test dependencies
-are needed.
-Branch pushes (except the generated `gh-pages` branch) and pull requests run tests
-and a production build, independently of the Copilot agent session. CI also supports
-manual runs via Actions → CI → Run workflow once the workflow is on the default
-branch. Deployment runs tests before building. There is no configured lint command.
-
-The dependency-free milestone 19 browser profiler is available while the development
-server is running at
-`/tests/browser/milestone-19-profile.html`. It emits a JSON report in the page and to
-the console for frame intervals, renderer/resource bounds, texture generation, the
-pixel sprite module's raw and gzip size, the HD pack's size and its download,
-activation, preview, and refinement timings from an in-memory store, seeded full
-matches, remounts, heap support, and repeated context recovery. It is not a production
-entry point or service-worker asset.
+There is no lint command.
+- CI runs `npm ci`, `npm test` and `npm run build` on every branch push except `gh-pages`, on every
+  pull request, and on manual dispatch.
+- Pushes to `main` deploy to GitHub Pages after the same checks.
+- Dependabot opens weekly update pull requests.
 
 ## Seeded simulations
 
-Run the deterministic baseline report for the canonical seed corpus 0 through 999:
-
-```sh
-npm run simulate
-```
-
-Select one seed or a contiguous corpus, and optionally lower the per-run clash guard:
+`npm run simulate` prints the deterministic baseline report for seeds 0–999. Select a seed or a
+corpus, and optionally lower the per-run clash guard:
 
 ```sh
 npm run simulate -- --seed 12345
 npm run simulate -- --start 1000 --count 100
 npm run simulate -- --seed 7 --max-clashes 100
+npm run simulate --silent > tests/fixtures/simulation-report.json   # regenerate the fixture
 ```
 
-The JSON report contains no wall-clock or environment-derived data. Its versioned
-duration estimate is a content-planning metric, not measured runtime or a gameplay
-rule. Regenerate the canonical test fixture with:
+The report contains no wall-clock or environment data. Its duration estimate is a versioned
+content-planning metric.
 
-```sh
-npm run simulate --silent > tests/fixtures/simulation-report.json
-```
+## Browser checks
 
-## Deterministic RNG
+With `npm run dev` running, open a harness page. Each one plays or restores the real app and reports
+text only:
+- `data-status` ends as `complete` (`passed` for the phone HUD) or `failed`.
+- A JSON report fills the page.
+- All but the phone HUD page also log a `SOULCARD_*` console line.
 
-`src/domain/rng.js` exports `createRng(seed)`, `restoreRng(snapshot)`, and
-`shuffle(items, rng)`. An RNG exposes `next()` and `snapshot()`:
+These pages aren't production entry points or service-worker assets.
 
-- Seeds and states are integers from 0 through 4294967295; zero is valid. Negative
-  zero is canonicalized to zero. Invalid values throw `TypeError`, without coercion
-  or automatic seeding.
-- `next()` uses Mulberry32 and returns a number in `[0, 1)`. This is gameplay
-  randomness, **not cryptographic randomness**.
-- Snapshots contain exactly `algorithm`, `seed`, and `state`, with algorithm
-  `mulberry32`. State is the accumulator before the next draw, not a draw count.
-  JSON round-trips and restoration preserve the continuation exactly; exporting
-  or restoring a snapshot consumes no draws. Snapshots are independent copies.
-- `shuffle` returns a shallow copy of a dense array, using the supplied RNG's
-  `next()` method. It preserves element identity and multiplicity. It visits
-  indices from last to first (excluding index zero), drawing once per index and
-  swapping with an index from zero through the current index, inclusive.
-  Empty and singleton arrays consume no draws. Invalid arrays (including sparse
-  arrays) or missing/non-callable RNG methods throw before any draw.
+| Page under `/tests/browser/` | Reports |
+|---|---|
+| `milestone-19-profile.html` | Frame intervals, renderer and resource bounds, texture generation, art-pack sizes and timings, seeded matches, remounts, heap, and repeated WebGL context recovery |
+| `milestone-21-1-campaign.html` | Campaign entry, first route choice, semantic Hold choices, presentation states |
+| `milestone-21-2-rewards.html` | A saved reward draft, offers, the route map, informed Hold, Run details |
+| `milestone-21-3-expedition.html` | Route locks, shop prices and purchases, node reloads, a failed save and its retry, an event with a target, a sold-out shop |
+| `milestone-21-4-campaign.html` | Elite choice and traits, Greater Mend, rest options, a failed rest save, the boss route, the victory summary |
+| `phone-hud-layout.html` | Footer bounds, wrapping, text sizes, targets and save warnings for phone (including the Fold4 cover screen), tablet, desktop and letterboxed layouts |
+| `card-art.html` | Downloading HD art with SHA-256 checks, offline relaunch, live switching, retry, the texture-cache bound |
 
-The algorithm and shuffle order are compatibility contracts; see the
-[roadmap's RNG contract](docs/IMPLEMENTATION_ROADMAP.md#rng-contract-milestone-2).
-Presentation consumes committed snapshots and events without advancing the RNG.
+To check the Campaign by hand:
+1. Choose **Campaign** on Main.
+2. Take the High Court or Night Watch elite.
+3. Rest at the Roadside Camp or Last Light Sanctum.
+4. Fight the Ace Sovereign at stage 7.
 
-### Manual seed replay
+## Documentation
 
-Run this from the repository root to compare repeated execution with execution
-interrupted by a JSON snapshot. It asserts both subsequent results and final state;
-the final snapshot should have seed `12345` and state `1767636961`.
-
-```sh
-node --input-type=module <<'JS'
-import assert from 'node:assert/strict'
-import { createRng, restoreRng, shuffle } from './src/domain/rng.js'
-
-function continuation(rng) {
-  return {
-    value: rng.next(),
-    order: shuffle(['a', 'b', 'c', 'd'], rng),
-    snapshot: rng.snapshot(),
-  }
-}
-
-const uninterrupted = createRng(12345)
-const repeated = createRng(12345)
-assert.deepEqual(continuation(repeated), continuation(uninterrupted))
-const saved = JSON.parse(JSON.stringify(repeated.snapshot()))
-const resumed = restoreRng(saved)
-const expected = continuation(uninterrupted)
-assert.deepEqual(continuation(repeated), expected)
-assert.deepEqual(continuation(resumed), expected)
-console.log('Seed replay passed:', expected.snapshot)
-JS
-```
+| Doc | Use it for |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Rules and contracts for the domain, persistence, presentation, PWA and tests |
+| [docs/CAMPAIGN.md](docs/CAMPAIGN.md) | Campaign rules, content, versions and generator constraints |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Milestone status, next specs, backlog, release checklist, maintenance |
+| [docs/HISTORY.md](docs/HISTORY.md) | Summaries of retired plans, with permalinks |
+| [art/README.md](art/README.md) | Card-art sources, provenance and regeneration |
