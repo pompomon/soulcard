@@ -2746,6 +2746,52 @@ test('update preparation disarms Auto-reveal through the mounted notice event', 
   await controller.destroy()
 })
 
+test('Campaign HUD recomputes inert when an update stops blocking the Game screen', async (t) => {
+  installFakeDocument(t)
+  const { controller, screen, writes, parts } = await restoredCampaignScreen(
+    restoredFixture('campaign-save-elite-choice-v7.json'),
+  )
+  const hud = descendants(screen.element).find(
+    (element) => element.className === 'game-hud',
+  )
+  let publishUpdate
+  const notice = createUpdateNotice({
+    host: screen.element,
+    updateController: {
+      getSnapshot: () => ({ status: 'current', reason: null, canActivate: false }),
+      subscribe(subscriber) {
+        publishUpdate = subscriber
+        subscriber(this.getSnapshot())
+        return () => {}
+      },
+      requestActivation: async () => {},
+    },
+  })
+  const available = { status: 'available', reason: null, canActivate: true }
+
+  // The notice mounts with the Game screen, while the route map keeps the HUD inert.
+  assert.equal(hud.inert, true)
+  publishUpdate(available)
+  parts.routeButtons().find((button) => button.dataset.routeNode === 'court').dispatch('click')
+  publishUpdate({ status: 'preparing', reason: null, canActivate: false })
+  await settleWrite(controller, writes, 0)
+  assert.equal(controller.currentMatch.machineState, 'ready')
+  assert.equal(parts.overlay.hidden, true)
+  assert.equal(hud.inert, true)
+
+  publishUpdate({ status: 'failed', reason: 'quota-exceeded', canActivate: true })
+  assert.equal(hud.inert, false)
+  publishUpdate(available)
+  assert.equal(hud.inert, false)
+  byAction(screen, 'reveal').dispatch('click')
+  await settleWrite(controller, writes, 1)
+  assert.equal(controller.currentMatch.machineState, 'awaitingInformedHoldChoice')
+
+  notice.teardown()
+  screen.teardown()
+  await controller.destroy()
+})
+
 test('Auto-reveal stops at a terminal match', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {

@@ -1,5 +1,6 @@
 const BLOCKING_STATUSES = new Set(['preparing', 'activating'])
 export const UPDATE_BLOCKED_EVENT = 'soulcard:update-blocked'
+export const UPDATE_UNBLOCKED_EVENT = 'soulcard:update-unblocked'
 
 function assertUpdateController(updateController) {
   const methods = ['getSnapshot', 'subscribe', 'requestActivation']
@@ -40,9 +41,8 @@ export function createUpdateNotice({ updateController, host } = {}) {
   }
 
   const underlyingContent = [...(host.children ?? [])]
-  const priorInert = new Map(
-    underlyingContent.map((element) => [element, element.inert === true]),
-  )
+  // Screens own their inert state; it is captured only while an activation blocks them.
+  let priorInert = null
   const element = document.createElement('aside')
   element.className = 'update-notice'
   element.dataset.updateNotice = ''
@@ -83,15 +83,20 @@ export function createUpdateNotice({ updateController, host } = {}) {
   host.append(element)
 
   function setBlocked(blocked) {
-    for (const child of underlyingContent) {
-      child.inert = blocked || priorInert.get(child)
-    }
     if (blocked) {
+      priorInert ??= new Map(
+        underlyingContent.map((child) => [child, child.inert === true]),
+      )
+      for (const child of underlyingContent) child.inert = true
       host.dataset.updateBlocked = 'true'
       host.dispatchEvent?.(new Event(UPDATE_BLOCKED_EVENT))
-    } else {
-      delete host.dataset.updateBlocked
+      return
     }
+    if (priorInert === null) return
+    for (const child of underlyingContent) child.inert = priorInert.get(child)
+    priorInert = null
+    delete host.dataset.updateBlocked
+    host.dispatchEvent?.(new Event(UPDATE_UNBLOCKED_EVENT))
   }
 
   const unsubscribe = updateController.subscribe((snapshot) => {

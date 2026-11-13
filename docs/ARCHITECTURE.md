@@ -331,6 +331,8 @@ AI (`src/domain/ai-controller.js` `createAiController`): `chooseEncounterAction(
   before storing; pruning waits for a complete download; `inspect()` uses `caches.has`.
 - Updates (`src/ui/update-notice.js`): a waiting worker shows **Update now** (never on first
   install). It fires `soulcard:update-blocked`, stopping auto-reveal, and makes the screen inert.
+  Only that block changes `inert`: when it lifts, the notice restores the values from when the
+  block began and fires `soulcard:update-unblocked`, and the HUD then recomputes its own.
   `src/app/bootstrap.js` `prepareForUpdate` awaits restore and queued writes, then saves the
   stable snapshot; only then is the worker activated, and the page reloads once on `activated`.
   A failed save keeps the old worker and offers a retry.

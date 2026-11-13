@@ -3,7 +3,10 @@ import {
   createEndOverlay,
   createPauseOverlay,
 } from './overlays.js'
-import { UPDATE_BLOCKED_EVENT } from './update-notice.js'
+import {
+  UPDATE_BLOCKED_EVENT,
+  UPDATE_UNBLOCKED_EVENT,
+} from './update-notice.js'
 import { createAutoRevealCoordinator } from '../app/auto-reveal-coordinator.js'
 import { createEventPlayer } from '../presentation/event-player.js'
 import { createInputController } from '../presentation/input.js'
@@ -1039,7 +1042,11 @@ export function createGameScreen({
     autoRevealChainActive = false
     autoRevealCoordinator.stop()
   }
+  const handleUpdateUnblocked = () => {
+    if (hudReady) renderHud()
+  }
   element.addEventListener(UPDATE_BLOCKED_EVENT, handleUpdateBlocked)
+  element.addEventListener(UPDATE_UNBLOCKED_EVENT, handleUpdateUnblocked)
 
   const renderSaveWarning = () => {
     if (saveWarningFailure !== null) {
@@ -1801,6 +1808,7 @@ export function createGameScreen({
       unsubscribeRun?.()
       unsubscribeSaves?.()
       element.removeEventListener(UPDATE_BLOCKED_EVENT, handleUpdateBlocked)
+      element.removeEventListener(UPDATE_UNBLOCKED_EVENT, handleUpdateUnblocked)
       autoRevealCheckbox.removeEventListener('change', handleAutoRevealChange)
       holdButton.removeEventListener('click', handleHoldManagement)
       inspectButton.removeEventListener('click', handleInspect)
