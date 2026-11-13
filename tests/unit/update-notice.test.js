@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createUpdateNotice } from '../../src/ui/update-notice.js'
+import { createUpdateNotice, UPDATE_UNBLOCKED_EVENT } from '../../src/ui/update-notice.js'
 
 class FakeElement {
   constructor(tagName) {
@@ -171,6 +171,45 @@ test('update notice reports availability and blocks only underlying content duri
   assert.equal(host.children.includes(notice.element), false)
   button.dispatch('click')
   assert.equal(controller.activations, 1)
+})
+
+test('update notice leaves inert to the screen except while activation blocks it', (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const host = new FakeElement('main')
+  const content = new FakeElement('section')
+  content.inert = true
+  host.append(content)
+  const unblocks = []
+  host.addEventListener(UPDATE_UNBLOCKED_EVENT, () => {
+    unblocks.push([content.inert, Object.hasOwn(host.dataset, 'updateBlocked')])
+  })
+  const controller = createController()
+  const notice = createUpdateNotice({ updateController: controller, host })
+
+  // The screen closes the overlay that made its content inert when the notice mounted.
+  content.inert = false
+  controller.publish({ status: 'available', reason: null, canActivate: true })
+  assert.equal(content.inert, false)
+
+  controller.publish({ status: 'preparing', reason: null, canActivate: false })
+  controller.publish({ status: 'activating', reason: null, canActivate: false })
+  assert.equal(content.inert, true)
+  controller.publish({ status: 'failed', reason: 'activation-failed', canActivate: true })
+  assert.equal(content.inert, false)
+  assert.deepEqual(unblocks, [[false, false]])
+
+  content.inert = true
+  controller.publish({ status: 'available', reason: null, canActivate: true })
+  notice.teardown()
+  assert.equal(content.inert, true)
+  assert.equal(unblocks.length, 1)
 })
 
 test('update notice validates its dependencies', (t) => {
