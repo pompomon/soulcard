@@ -41,7 +41,7 @@ persistence, PWA, test pyramid) now live in ARCHITECTURE.md. Milestones and thei
   - `mvp-baseline-v2`: 432 player wins, 519 opponent wins, 49 draws
   - `mvp-no-burn-v2`: 495 player wins, 505 opponent wins, no draws, zero burns
 
-## Roguelike adventure run, 21.1–21.4 ([plan][roguelike-plan]), #32 and #37–#42
+## Roguelike adventure run, 21.1–21.4 ([plan][roguelike-plan]), #32, #37–#42 and #49
 
 - **21.1 Campaign Duel** (#37, #38): three retryable encounters with health, a persistent deck
   and Hold.
@@ -53,6 +53,7 @@ persistence, PWA, test pyramid) now live in ARCHITECTURE.md. Milestones and thei
   - retry as a guarded `{nodeId, step}` decision
   - an 8-route conservation ledger
   - a reachable sold-out Ember Bazaar, and repaired 21.1/21.2 browser harnesses
+  - signed off in #49 on 2026-11-13
 - **21.4 Encounter Archetypes and Elite Ladder** (#42,
   [implementation plan][m21-4-plan]):
   - the `expedition-v2` map: 12 nodes, 7 stages, 24 routes
@@ -64,6 +65,8 @@ persistence, PWA, test pyramid) now live in ARCHITECTURE.md. Milestones and thei
     - Night Watch: 45.8 % without Hold, 94.2 % with Hold Insight
     - Ace Sovereign: 24.5 % and 81.4 %
   - The plan holds the rejected alternatives, risks R1–R11 and the probe tables.
+  - Signed off in #49 on 2026-11-13. A re-run of the probe reproduced every recorded cell, and
+    Plunder still suspends Spoils of War.
 
 ## Uniform piles and phone footer ([plan][phone-plan]), #43 and #44
 

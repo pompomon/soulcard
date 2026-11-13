@@ -11,8 +11,8 @@ Status, open work and delivery rules. Contracts live in [ARCHITECTURE.md](ARCHIT
 | 1–20 MVP: Classic mode, PWA, release gate | Done |
 | 21.1 Campaign Duel | Done |
 | 21.2 Reward Drafts and Hold Upgrades | Done |
-| 21.3 Branching Expedition | Implemented (#40, #41); awaiting reviewer sign-off |
-| 21.4 Encounter Archetypes and Elite Ladder | Implemented (#42); sign-off follows 21.3 and may veto the Plunder-suspends-Spoils rule |
+| 21.3 Branching Expedition | Done (#40, #41; signed off in #49) |
+| 21.4 Encounter Archetypes and Elite Ladder | Done (#42; signed off in #49, keeping Plunder suspends Spoils of War) |
 | 21.5 Seeded Procedural Campaign | Next |
 | 21.6 First-class Keyboard Support | After 21.5 |
 
