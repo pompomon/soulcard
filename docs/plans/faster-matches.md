@@ -177,9 +177,9 @@ rules, the starter deck and normal reveals:
 
 | Fight | Clashes | Animation alone |
 |---|---|---|
-| Gate fight | 44 | 77 s |
-| High Court | 34 | 59 s |
-| Ace Sovereign | 27 | 47 s |
+| Suit Opposition (gate) | 44 | 77 s |
+| High Court (elite) | 34 | 59 s |
+| Ace Sovereign (boss) | 27 | 47 s |
 
 - Unless Auto-reveal is on, each Campaign clash needs two inputs: Reveal, then the Hold choice.
 - Pacing carries over without changing balance.
