@@ -160,13 +160,17 @@ high-court; 4 bazaar, vault, camp; 5 watch, night-watch; 6 sanctum; 7 finale.
 
 ## 8. Versions and compatibility
 
-Save schema 7 (`SAVE_SCHEMA_VERSION`, `src/persistence/run-schema.js`), Campaign rules 7
+Save schema 8 (`SAVE_SCHEMA_VERSION`, `src/persistence/run-schema.js`), Campaign rules 7
 (`CAMPAIGN_GAME_RULES_VERSION`), campaign version 4 (`CAMPAIGN_VERSION`) and Campaign events v5
-(`CAMPAIGN_EVENT_VERSION`, `campaign-events.js`). Classic uses rules 2 and events v4.
+(`CAMPAIGN_EVENT_VERSION`, `campaign-events.js`). Classic uses rules 2 and events v6; Classic
+versions 2–4 stay readable. Both modes share one event-version space, so a new version of either
+takes the next free number.
 
 - The rules check in `validateRunSaveVersion` runs before structural validation.
+- Schema-7 Campaign saves carry over unchanged as schema 8, then face the rules check.
 - Campaign saves from schemas 4–6 (rules 3–6) are quarantined as `incompatible-game-rules`
-  (`src/persistence/migrations.js`); Classic saves from them carry over.
+  (`src/persistence/migrations.js`); Classic saves from schemas 4–7 carry over.
+- The Classic deck setting does not apply: Campaign decks and comparisons use `standard-52`.
 - Version-5 events carry instance identities and must match the run fingerprint. Validation
   recomputes ties and winners with `compareCards`, so card-value effects need an event-version
   bump. New stored encounter fields need a schema bump or migration, not an event bump.
@@ -193,12 +197,13 @@ must satisfy them or revise them explicitly:
 
 ## 10. Fixtures and tests
 
-- Current saves are `tests/fixtures/campaign-save-*-v7.json`, built by `CAMPAIGN_SAVE_FIXTURES`
+- Current saves are `tests/fixtures/campaign-save-*-v8.json`, built by `CAMPAIGN_SAVE_FIXTURES`
   (`tests/fixtures/campaign-route.js`). Regenerate each with
   `createRunSave(build(), { savedAt: SAVED_AT })` as 2-space JSON with a trailing newline. No
   script exists; `tests/unit/campaign-persistence.test.js` enforces equality.
 - Superseded saves (`campaign-save-v4.json`, `campaign-save-*-v5.json`, `campaign-save-*-v6.json`,
-  `campaign-save-route-v6-rules5.json`) stay as carry and quarantine samples.
+  `campaign-save-route-v6-rules5.json`, `campaign-save-*-v7.json`) stay as carry and quarantine
+  samples.
 - `tests/fixtures/expedition-shell.js` drives expeditions through the app shell, requires every
   saved UI state to equal the domain state, and reloads at each boundary.
 - Seeds: elite ladder 11, sold-out 1, boss defeat 3, ledger 12 and 40. Keep the ledger test in

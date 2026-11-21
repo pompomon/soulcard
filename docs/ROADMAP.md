@@ -13,8 +13,8 @@ Status, open work and delivery rules. Contracts live in [ARCHITECTURE.md](ARCHIT
 | 21.2 Reward Drafts and Hold Upgrades | Done |
 | 21.3 Branching Expedition | Done (#40, #41; signed off in #49) |
 | 21.4 Encounter Archetypes and Elite Ladder | Done (#42; signed off in #49, keeping Plunder suspends Spoils of War) |
-| Faster matches: Classic short-deck setting ([plan](plans/short-deck-setting.md)) | Next |
-| Faster matches: Campaign encounter rules ([plan](plans/campaign-encounter-rules.md)) | After the short-deck setting |
+| Faster matches: Classic short-deck setting | Done |
+| Faster matches: Campaign encounter rules ([plan](plans/campaign-encounter-rules.md)) | Next |
 | 21.5 Seeded Procedural Campaign | After the Campaign encounter rules |
 | 21.6 First-class Keyboard Support | After 21.5 |
 
@@ -108,10 +108,10 @@ rules in place.
   - Commit an automated offline-reload and app-update browser check.
 - **Build:** the main chunk exceeds Vite's 500 kB advisory. It isn't a release blocker; code-split
   it if load time matters.
-- **Match length:** the [short-deck setting](plans/short-deck-setting.md) and the
-  [Campaign encounter rules](plans/campaign-encounter-rules.md) are scheduled above, from the
-  research in [plans/faster-matches.md](plans/faster-matches.md). Still open: faster pacing, and
-  bounding Classic no-burn games, which stay long on 36 cards.
+- **Match length:** from the research in [plans/faster-matches.md](plans/faster-matches.md), the
+  [short-deck setting](HISTORY.md#classic-short-deck-plan) is done and the
+  [Campaign encounter rules](plans/campaign-encounter-rules.md) are scheduled above. Still open:
+  faster pacing, and bounding Classic no-burn games, which stay long on 36 cards.
 
 ## Release checklist
 
@@ -119,6 +119,9 @@ rules in place.
   and `npm run build`.
 - The baseline simulation must be byte-identical: `npm run simulate --silent > /tmp/sim.json && cmp
   /tmp/sim.json tests/fixtures/simulation-report.json`.
+- The short-deck simulation must be byte-identical too: `npm run simulate --silent -- --ruleset
+  short-deck-baseline-v1 > /tmp/sim-short.json && cmp /tmp/sim-short.json
+  tests/fixtures/simulation-report-short-deck.json`.
 - Run the text-only browser harnesses in Chrome emulation at 320×480 and 844×390, DPR 3: offline
   shell, deferred update, WebGL context recovery, and save/resume equivalence.
 - Blockers: any failed check, a non-reproducible fixture, unsafe update or rollback behaviour, or an
