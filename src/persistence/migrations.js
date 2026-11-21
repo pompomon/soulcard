@@ -5,14 +5,14 @@ import {
   validateRunSave,
 } from './run-schema.js'
 
-// Schema 4 to 7 Classic saves carry over unchanged and keep their version-4 or older events.
-// Schema 7 Campaign saves carry over too; one from another campaign rules version is
-// quarantined by the rules check in validateRunSave. Schema 4, 5, and 6 Campaign saves use
-// the scripted rewards of campaign rules 3, the linear seeded drafts of campaign rules 4, or
-// the five-stage expedition of campaign rules 5 and 6, which the elite ladder cannot
-// replay: its map, fights, and rest sites differ.
-const CARRIED_SCHEMAS = Object.freeze([4, 5, 6, 7])
-const CARRIED_CAMPAIGN_SCHEMAS = Object.freeze([7])
+// Schema 4 to 8 Classic saves carry over unchanged and keep their events: version 4 or older
+// from schemas 4 to 7, and version 6 from schema 8. No older Campaign save carries over, so
+// each is quarantined with its rules version.
+// Schema 7 and 8 Campaign saves use campaign rules 7, whose fights have no encounter rules.
+// Schema 4, 5, and 6 ones use the scripted rewards of campaign rules 3, the linear seeded
+// drafts of campaign rules 4, or the five-stage expedition of campaign rules 5 and 6, which
+// the elite ladder cannot replay: its map, fights, and rest sites differ.
+const CARRIED_SCHEMAS = Object.freeze([4, 5, 6, 7, 8])
 
 function assertPlainObject(value, name) {
   if (
@@ -60,10 +60,7 @@ function dataEntries(value, name) {
 function migrateCarriedSchema(input) {
   const entries = dataEntries(input, 'save')
   const fields = Object.fromEntries(entries)
-  if (
-    fields.runType === 'campaign'
-    && !CARRIED_CAMPAIGN_SCHEMAS.includes(fields.saveSchemaVersion)
-  ) {
+  if (fields.runType === 'campaign') {
     if (!Number.isSafeInteger(fields.gameRulesVersion)) {
       throw new TypeError('gameRulesVersion must be a safe integer')
     }

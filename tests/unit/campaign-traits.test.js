@@ -502,20 +502,26 @@ test('plundered cards stay the player\'s, can burn for the opponent, and return 
   let run = entered
   for (let step = 0; step < 400 && run.machineState === 'ready'; step += 1) {
     const { match, event } = clash(run)
+    // The contest is the first reveal round, then any stakes, then the tie rounds.
+    const contest = [
+      ...event.reveals.slice(0, 2),
+      ...(event.stakes ?? []),
+      ...event.reveals.slice(2),
+    ]
     // The opponent reveals a plundered card only after recycling its won pile.
-    for (const { instanceId, suppliedBy, from } of event.reveals) {
+    for (const { instanceId, suppliedBy, from } of contest) {
       if (suppliedBy === 'opponent' && playerOwned(instanceId)) {
         seen.revealedByOpponent = true
         assert.equal(from, 'opponent.drawPile')
       }
     }
     if (event.type === 'clashSettled') {
-      const losing = event.reveals
+      const losing = contest
         .filter(({ suppliedBy }) => suppliedBy !== event.winner)
         .map(({ instanceId }) => instanceId)
       if (event.winner === 'opponent') {
         assert.deepEqual(event.burned, [])
-        assert.deepEqual(instanceIds(event.transfers), instanceIds(event.reveals))
+        assert.deepEqual(instanceIds(event.transfers), instanceIds(contest))
         assert.ok(event.transfers.every(({ to }) => to === 'opponent.wonPile'))
         for (const instanceId of losing.filter(playerOwned)) {
           seen.plundered = true

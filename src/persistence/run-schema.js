@@ -5,7 +5,7 @@ import {
 import { validateMatchState } from '../domain/match-machine.js'
 import { isCampaignState, validateRunState } from '../domain/run-state.js'
 
-export const SAVE_SCHEMA_VERSION = 8
+export const SAVE_SCHEMA_VERSION = 9
 export const GAME_RULES_VERSION = 2
 
 const SAVE_KEYS = Object.freeze([
@@ -45,6 +45,7 @@ const CAMPAIGN_MATCH_KEYS = Object.freeze([
   'encounterIndex',
   'encounterAttempt',
   'route',
+  'encounterRules',
   'cards',
   'deckLayout',
   'hold',

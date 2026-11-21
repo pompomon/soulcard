@@ -202,7 +202,7 @@ test('journal entries have fixed types and exact keys', () => {
 test('replay rebuilds the live run after every decision of scripted expeditions', () => {
   const recorded = new Set()
   const outcomes = []
-  for (const [seed, plan] of [[0, 'market'], [7, 'shrine'], [1, 'soldOut'], [2, 'market']]) {
+  for (const [seed, plan] of [[0, 'market'], [3, 'shrine'], [1, 'soldOut'], [2, 'market']]) {
     let run = createCampaignRun({ runId: `campaign-journal-${seed}`, seed, ruleset: BASELINE_RULESET })
     const counters = createExpeditionCounters()
     let decisions = 0
@@ -234,7 +234,7 @@ test('replay rebuilds the live run after every decision of scripted expeditions'
   }
   assert.deepEqual(outcomes, [
     [0, 'market', 'defeat', true],
-    [7, 'shrine', 'victory', true],
+    [3, 'shrine', 'defeat', true],
     [1, 'soldOut', 'victory', true],
     [2, 'market', 'defeat', true],
   ])

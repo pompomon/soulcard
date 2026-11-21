@@ -27,13 +27,15 @@ function allObjects(value) {
 
 test('current schema saves are validated, cloned, and frozen', () => {
   for (const name of [
-    'run-save-v8.json',
-    'run-save-short-deck-v8.json',
-    'campaign-save-informed-v8.json',
-    'campaign-save-shop-v8.json',
-    'campaign-save-shop-exhausted-v8.json',
-    'campaign-save-rest-v8.json',
-    'campaign-save-victory-v8.json',
+    'run-save-v9.json',
+    'run-save-short-deck-v9.json',
+    'campaign-save-informed-v9.json',
+    'campaign-save-shop-v9.json',
+    'campaign-save-shop-exhausted-v9.json',
+    'campaign-save-rest-v9.json',
+    'campaign-save-victory-v9.json',
+    'campaign-save-stakes-draw-v9.json',
+    'campaign-save-attrition-no-burn-v9.json',
   ]) {
     const current = fixture(name)
     const migrated = migrateRunSave(current)
@@ -44,14 +46,14 @@ test('current schema saves are validated, cloned, and frozen', () => {
   }
 })
 
-test('schema 4 to 7 Classic saves carry over unchanged as schema 8 with version-4 events', () => {
+test('schema 4 to 7 Classic saves carry over unchanged as schema 9 with version-4 events', () => {
   for (const version of [4, 5, 6, 7]) {
     for (const name of ['run-save', 'run-save-paused', 'run-save-terminal']) {
       const legacy = fixture(`${name}-v${version}.json`)
       const before = clone(legacy)
       const migrated = migrateRunSave(legacy)
 
-      assert.deepEqual(migrated, { ...fixture(`${name}-v7.json`), saveSchemaVersion: 8 })
+      assert.deepEqual(migrated, { ...fixture(`${name}-v7.json`), saveSchemaVersion: 9 })
       assert.equal(migrated.pendingEvent.eventVersion, 4)
       assert.equal(Object.hasOwn(migrated.pendingEvent, 'deck'), false)
       assert.deepEqual(Object.keys(migrated), Object.keys(legacy))
@@ -73,9 +75,34 @@ test('schema 4 to 7 Classic saves carry over unchanged as schema 8 with version-
   }
 })
 
+test('schema 8 Classic saves carry over unchanged as schema 9 with version-6 events', () => {
+  for (const name of [
+    'run-save',
+    'run-save-paused',
+    'run-save-terminal',
+    'run-save-short-deck',
+    'run-save-short-deck-paused',
+    'run-save-short-deck-terminal',
+  ]) {
+    const legacy = fixture(`${name}-v8.json`)
+    const before = clone(legacy)
+    const migrated = migrateRunSave(legacy)
+
+    assert.equal(legacy.saveSchemaVersion, 8, name)
+    assert.deepEqual(migrated, fixture(`${name}-v9.json`), name)
+    assert.equal(migrated.pendingEvent.eventVersion, 6, name)
+    assert.ok(allObjects(migrated).every(Object.isFrozen), name)
+    assert.deepEqual(legacy, before, name)
+  }
+  assert.throws(
+    () => migrateRunSave({ ...fixture('run-save-v8.json'), gameRulesVersion: 1 }),
+    UnsupportedGameRulesVersionError,
+  )
+})
+
 test('a carried Classic save resumes into version-6 events', () => {
   const carried = restoreRunSave(migrateRunSave(fixture('run-save-v7.json')))
-  const current = restoreRunSave(fixture('run-save-v8.json'))
+  const current = restoreRunSave(fixture('run-save-v9.json'))
   const { pendingEvent: carriedEvent, ...carriedState } = carried
   const { pendingEvent: currentEvent, ...currentState } = current
   const { deck, ...currentEventV4 } = currentEvent
@@ -87,26 +114,15 @@ test('a carried Classic save resumes into version-6 events', () => {
   assert.equal(revealOrContinue(carried).event.deck, 'standard-52')
 })
 
-test('schema 7 Campaign saves carry over unchanged as schema 8', () => {
-  assert.equal(CAMPAIGN_SAVE_FIXTURES.length, 12)
-  for (const [name] of CAMPAIGN_SAVE_FIXTURES) {
-    const legacy = fixture(name.replace(/-v8\.json$/, '-v7.json'))
-    const before = clone(legacy)
-    const migrated = migrateRunSave(legacy)
-
-    assert.equal(legacy.saveSchemaVersion, 7, name)
-    assert.deepEqual(migrated, fixture(name), name)
-    assert.ok(allObjects(migrated).every(Object.isFrozen), name)
-    assert.deepEqual(legacy, before, name)
-  }
-  assert.throws(
-    () => migrateRunSave({ ...fixture('campaign-save-route-v7.json'), gameRulesVersion: 6 }),
-    (error) => error instanceof UnsupportedGameRulesVersionError && error.version === 6,
-  )
-})
-
-test('schema 4, 5, and 6 Campaign saves are quarantined with their rules version', () => {
+test('schema 4 to 8 Campaign saves are quarantined with their rules version', () => {
+  // The first twelve Campaign fixtures predate encounter rules and keep v7 and v8 files.
+  const beforeEncounterRules = CAMPAIGN_SAVE_FIXTURES.slice(0, 12).flatMap(([name]) => [
+    [name.replace(/-v9\.json$/, '-v7.json'), 7],
+    [name.replace(/-v9\.json$/, '-v8.json'), 7],
+  ])
+  assert.equal(beforeEncounterRules.length, 24)
   for (const [name, rulesVersion] of [
+    ...beforeEncounterRules,
     ['campaign-save-v4.json', 3],
     ['campaign-save-reward-v5.json', 4],
     ['campaign-save-informed-v5.json', 4],
@@ -168,8 +184,8 @@ test('schema versions 1 through 3 are deliberately quarantined without migration
 })
 
 test('future, malformed, and incompatible current versions are rejected', () => {
-  const current = fixture('run-save-v8.json')
-  for (const saveSchemaVersion of [9, 20]) {
+  const current = fixture('run-save-v9.json')
+  for (const saveSchemaVersion of [10, 20]) {
     assert.throws(
       () => migrateRunSave({ ...clone(current), saveSchemaVersion }),
       UnsupportedSaveVersionError,
@@ -179,7 +195,7 @@ test('future, malformed, and incompatible current versions are rejected', () => 
     {},
     { ...clone(current), saveSchemaVersion: 0 },
     { ...clone(current), saveSchemaVersion: 1.5 },
-    { ...clone(current), saveSchemaVersion: '8' },
+    { ...clone(current), saveSchemaVersion: '9' },
   ]) {
     assert.throws(() => migrateRunSave(save), TypeError)
   }
@@ -188,8 +204,8 @@ test('future, malformed, and incompatible current versions are rejected', () => 
     UnsupportedGameRulesVersionError,
   )
   assert.throws(
-    () => migrateRunSave({ ...fixture('campaign-save-route-v8.json'), gameRulesVersion: 6 }),
-    (error) => error instanceof UnsupportedGameRulesVersionError && error.version === 6,
+    () => migrateRunSave({ ...fixture('campaign-save-route-v9.json'), gameRulesVersion: 7 }),
+    (error) => error instanceof UnsupportedGameRulesVersionError && error.version === 7,
   )
 })
 

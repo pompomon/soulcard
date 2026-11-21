@@ -1,0 +1,619 @@
+{
+  "saveSchemaVersion": 9,
+  "gameRulesVersion": 8,
+  "runType": "campaign",
+  "savedAt": "2026-09-25T04:00:00.000Z",
+  "runId": "fixture-campaign-attrition-no-burn",
+  "rng": {
+    "algorithm": "mulberry32",
+    "seed": 5,
+    "state": 2767954873
+  },
+  "ruleset": {
+    "id": "mvp-no-burn-v2",
+    "burn": {
+      "enabled": false
+    }
+  },
+  "match": {
+    "campaignVersion": 5,
+    "machineState": "ready",
+    "turn": 24,
+    "status": "active",
+    "outcome": null,
+    "health": 3,
+    "maxHealth": 5,
+    "currency": 0,
+    "encounterIndex": 0,
+    "encounterAttempt": 1,
+    "route": {
+      "mapId": "expedition-v2",
+      "nodes": [
+        {
+          "id": "gate",
+          "state": "active"
+        },
+        {
+          "id": "market",
+          "state": "locked"
+        },
+        {
+          "id": "shrine",
+          "state": "locked"
+        },
+        {
+          "id": "court",
+          "state": "locked"
+        },
+        {
+          "id": "high-court",
+          "state": "locked"
+        },
+        {
+          "id": "bazaar",
+          "state": "locked"
+        },
+        {
+          "id": "vault",
+          "state": "locked"
+        },
+        {
+          "id": "camp",
+          "state": "locked"
+        },
+        {
+          "id": "watch",
+          "state": "locked"
+        },
+        {
+          "id": "night-watch",
+          "state": "locked"
+        },
+        {
+          "id": "sanctum",
+          "state": "locked"
+        },
+        {
+          "id": "finale",
+          "state": "locked"
+        }
+      ]
+    },
+    "encounterRules": [
+      {
+        "nodeId": "gate",
+        "ruleId": "attrition-v1"
+      },
+      {
+        "nodeId": "court",
+        "ruleId": "double-or-nothing-v1"
+      },
+      {
+        "nodeId": "high-court",
+        "ruleId": "double-or-nothing-v1"
+      },
+      {
+        "nodeId": "watch",
+        "ruleId": "attrition-v1"
+      },
+      {
+        "nodeId": "night-watch",
+        "ruleId": "attrition-v1"
+      },
+      {
+        "nodeId": "finale",
+        "ruleId": "double-or-nothing-v1"
+      }
+    ],
+    "cards": [
+      {
+        "instanceId": "player-001",
+        "cardId": "c-2D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-002",
+        "cardId": "c-3D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-003",
+        "cardId": "c-4D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-004",
+        "cardId": "c-5D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-005",
+        "cardId": "c-6D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-006",
+        "cardId": "c-7D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-007",
+        "cardId": "c-8D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-008",
+        "cardId": "c-9D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-009",
+        "cardId": "c-10D",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-010",
+        "cardId": "c-JD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-011",
+        "cardId": "c-QD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-012",
+        "cardId": "c-KD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-013",
+        "cardId": "c-AD",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-014",
+        "cardId": "c-2H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-015",
+        "cardId": "c-3H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-016",
+        "cardId": "c-4H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-017",
+        "cardId": "c-5H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-018",
+        "cardId": "c-6H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-019",
+        "cardId": "c-7H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-020",
+        "cardId": "c-8H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-021",
+        "cardId": "c-9H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-022",
+        "cardId": "c-10H",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-023",
+        "cardId": "c-JH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-024",
+        "cardId": "c-QH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-025",
+        "cardId": "c-KH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "player-026",
+        "cardId": "c-AH",
+        "campaignOwner": "player"
+      },
+      {
+        "instanceId": "opponent-1-1-001",
+        "cardId": "c-2S",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-002",
+        "cardId": "c-3S",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-003",
+        "cardId": "c-4S",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-004",
+        "cardId": "c-5S",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-005",
+        "cardId": "c-6S",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-006",
+        "cardId": "c-7S",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-007",
+        "cardId": "c-8S",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-008",
+        "cardId": "c-9S",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-009",
+        "cardId": "c-10S",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-010",
+        "cardId": "c-JS",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-011",
+        "cardId": "c-QS",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-012",
+        "cardId": "c-KS",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-013",
+        "cardId": "c-AS",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-014",
+        "cardId": "c-2C",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-015",
+        "cardId": "c-3C",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-016",
+        "cardId": "c-4C",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-017",
+        "cardId": "c-5C",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-018",
+        "cardId": "c-6C",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-019",
+        "cardId": "c-7C",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-020",
+        "cardId": "c-8C",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-021",
+        "cardId": "c-9C",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-022",
+        "cardId": "c-10C",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-023",
+        "cardId": "c-JC",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-024",
+        "cardId": "c-QC",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-025",
+        "cardId": "c-KC",
+        "campaignOwner": "opponent"
+      },
+      {
+        "instanceId": "opponent-1-1-026",
+        "cardId": "c-AC",
+        "campaignOwner": "opponent"
+      }
+    ],
+    "deckLayout": [
+      "player-001",
+      "player-002",
+      "player-003",
+      "player-004",
+      "player-005",
+      "player-006",
+      "player-007",
+      "player-008",
+      "player-009",
+      "player-010",
+      "player-011",
+      "player-012",
+      "player-013",
+      "player-014",
+      "player-015",
+      "player-016",
+      "player-017",
+      "player-018",
+      "player-019",
+      "player-020",
+      "player-021",
+      "player-022",
+      "player-023",
+      "player-024",
+      "player-025",
+      "player-026"
+    ],
+    "hold": null,
+    "activeModifiers": [
+      {
+        "id": "vitality-cap-v1",
+        "lifetime": "campaign",
+        "grantedAtNodeId": null
+      }
+    ],
+    "encounter": {
+      "id": "suit-opposition",
+      "name": "Suit Opposition",
+      "tier": "normal",
+      "damage": 1,
+      "traitIds": [],
+      "rule": {
+        "id": "attrition-v1",
+        "activeClashes": 1,
+        "wins": {
+          "player": 0,
+          "opponent": 0
+        }
+      },
+      "supplyMode": {
+        "player": "personal",
+        "opponent": "personal"
+      },
+      "zones": {
+        "playerSourcePile": [],
+        "opponentSourcePile": [],
+        "player": {
+          "drawPile": [
+            "opponent-1-1-023",
+            "opponent-1-1-003",
+            "opponent-1-1-017",
+            "opponent-1-1-016",
+            "player-026",
+            "player-021",
+            "opponent-1-1-018",
+            "player-013",
+            "opponent-1-1-015",
+            "player-009",
+            "player-008",
+            "opponent-1-1-008",
+            "opponent-1-1-007",
+            "opponent-1-1-020",
+            "opponent-1-1-001",
+            "player-005",
+            "player-023",
+            "opponent-1-1-004",
+            "opponent-1-1-014",
+            "player-018"
+          ],
+          "wonPile": [
+            "player-011",
+            "opponent-1-1-024",
+            "player-025",
+            "opponent-1-1-012",
+            "player-014",
+            "player-001",
+            "player-022",
+            "opponent-1-1-005"
+          ]
+        },
+        "opponent": {
+          "drawPile": [
+            "player-004",
+            "player-016",
+            "player-020",
+            "player-019",
+            "player-024",
+            "opponent-1-1-022",
+            "opponent-1-1-006",
+            "opponent-1-1-019",
+            "player-002",
+            "player-003",
+            "opponent-1-1-021",
+            "opponent-1-1-011",
+            "opponent-1-1-025",
+            "player-007",
+            "opponent-1-1-010",
+            "opponent-1-1-026",
+            "player-006",
+            "opponent-1-1-013",
+            "opponent-1-1-002",
+            "player-015",
+            "player-012",
+            "opponent-1-1-009"
+          ],
+          "wonPile": []
+        },
+        "contestedPile": [],
+        "burnPile": [
+          "player-010",
+          "player-017"
+        ],
+        "inPlay": []
+      },
+      "outcome": null
+    },
+    "holdChoice": null,
+    "pendingReward": null,
+    "shop": null,
+    "nodeEvent": null,
+    "restSite": null,
+    "journal": [
+      {
+        "type": "route",
+        "nodeId": "gate"
+      }
+    ],
+    "stateFingerprint": "{\"activeModifiers\":[{\"grantedAtNodeId\":null,\"id\":\"vitality-cap-v1\",\"lifetime\":\"campaign\"}],\"campaignVersion\":5,\"cards\":[{\"campaignOwner\":\"player\",\"cardId\":\"c-2D\",\"instanceId\":\"player-001\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3D\",\"instanceId\":\"player-002\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4D\",\"instanceId\":\"player-003\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5D\",\"instanceId\":\"player-004\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6D\",\"instanceId\":\"player-005\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7D\",\"instanceId\":\"player-006\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8D\",\"instanceId\":\"player-007\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9D\",\"instanceId\":\"player-008\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10D\",\"instanceId\":\"player-009\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JD\",\"instanceId\":\"player-010\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QD\",\"instanceId\":\"player-011\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KD\",\"instanceId\":\"player-012\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AD\",\"instanceId\":\"player-013\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-2H\",\"instanceId\":\"player-014\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3H\",\"instanceId\":\"player-015\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4H\",\"instanceId\":\"player-016\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5H\",\"instanceId\":\"player-017\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6H\",\"instanceId\":\"player-018\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7H\",\"instanceId\":\"player-019\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8H\",\"instanceId\":\"player-020\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9H\",\"instanceId\":\"player-021\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10H\",\"instanceId\":\"player-022\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JH\",\"instanceId\":\"player-023\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QH\",\"instanceId\":\"player-024\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KH\",\"instanceId\":\"player-025\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AH\",\"instanceId\":\"player-026\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-2S\",\"instanceId\":\"opponent-1-1-001\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-3S\",\"instanceId\":\"opponent-1-1-002\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-4S\",\"instanceId\":\"opponent-1-1-003\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-5S\",\"instanceId\":\"opponent-1-1-004\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-6S\",\"instanceId\":\"opponent-1-1-005\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-7S\",\"instanceId\":\"opponent-1-1-006\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-8S\",\"instanceId\":\"opponent-1-1-007\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-9S\",\"instanceId\":\"opponent-1-1-008\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-10S\",\"instanceId\":\"opponent-1-1-009\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JS\",\"instanceId\":\"opponent-1-1-010\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QS\",\"instanceId\":\"opponent-1-1-011\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KS\",\"instanceId\":\"opponent-1-1-012\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-AS\",\"instanceId\":\"opponent-1-1-013\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-2C\",\"instanceId\":\"opponent-1-1-014\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-3C\",\"instanceId\":\"opponent-1-1-015\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-4C\",\"instanceId\":\"opponent-1-1-016\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-5C\",\"instanceId\":\"opponent-1-1-017\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-6C\",\"instanceId\":\"opponent-1-1-018\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-7C\",\"instanceId\":\"opponent-1-1-019\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-8C\",\"instanceId\":\"opponent-1-1-020\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-9C\",\"instanceId\":\"opponent-1-1-021\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-10C\",\"instanceId\":\"opponent-1-1-022\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JC\",\"instanceId\":\"opponent-1-1-023\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QC\",\"instanceId\":\"opponent-1-1-024\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KC\",\"instanceId\":\"opponent-1-1-025\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-AC\",\"instanceId\":\"opponent-1-1-026\"}],\"currency\":0,\"deckLayout\":[\"player-001\",\"player-002\",\"player-003\",\"player-004\",\"player-005\",\"player-006\",\"player-007\",\"player-008\",\"player-009\",\"player-010\",\"player-011\",\"player-012\",\"player-013\",\"player-014\",\"player-015\",\"player-016\",\"player-017\",\"player-018\",\"player-019\",\"player-020\",\"player-021\",\"player-022\",\"player-023\",\"player-024\",\"player-025\",\"player-026\"],\"encounter\":{\"damage\":1,\"id\":\"suit-opposition\",\"name\":\"Suit Opposition\",\"outcome\":null,\"rule\":{\"activeClashes\":1,\"id\":\"attrition-v1\",\"wins\":{\"opponent\":0,\"player\":0}},\"supplyMode\":{\"opponent\":\"personal\",\"player\":\"personal\"},\"tier\":\"normal\",\"traitIds\":[],\"zones\":{\"burnPile\":[\"player-010\",\"player-017\"],\"contestedPile\":[],\"inPlay\":[],\"opponent\":{\"drawPile\":[\"player-004\",\"player-016\",\"player-020\",\"player-019\",\"player-024\",\"opponent-1-1-022\",\"opponent-1-1-006\",\"opponent-1-1-019\",\"player-002\",\"player-003\",\"opponent-1-1-021\",\"opponent-1-1-011\",\"opponent-1-1-025\",\"player-007\",\"opponent-1-1-010\",\"opponent-1-1-026\",\"player-006\",\"opponent-1-1-013\",\"opponent-1-1-002\",\"player-015\",\"player-012\",\"opponent-1-1-009\"],\"wonPile\":[]},\"opponentSourcePile\":[],\"player\":{\"drawPile\":[\"opponent-1-1-023\",\"opponent-1-1-003\",\"opponent-1-1-017\",\"opponent-1-1-016\",\"player-026\",\"player-021\",\"opponent-1-1-018\",\"player-013\",\"opponent-1-1-015\",\"player-009\",\"player-008\",\"opponent-1-1-008\",\"opponent-1-1-007\",\"opponent-1-1-020\",\"opponent-1-1-001\",\"player-005\",\"player-023\",\"opponent-1-1-004\",\"opponent-1-1-014\",\"player-018\"],\"wonPile\":[\"player-011\",\"opponent-1-1-024\",\"player-025\",\"opponent-1-1-012\",\"player-014\",\"player-001\",\"player-022\",\"opponent-1-1-005\"]},\"playerSourcePile\":[]}},\"encounterAttempt\":1,\"encounterIndex\":0,\"encounterRules\":[{\"nodeId\":\"gate\",\"ruleId\":\"attrition-v1\"},{\"nodeId\":\"court\",\"ruleId\":\"double-or-nothing-v1\"},{\"nodeId\":\"high-court\",\"ruleId\":\"double-or-nothing-v1\"},{\"nodeId\":\"watch\",\"ruleId\":\"attrition-v1\"},{\"nodeId\":\"night-watch\",\"ruleId\":\"attrition-v1\"},{\"nodeId\":\"finale\",\"ruleId\":\"double-or-nothing-v1\"}],\"health\":3,\"hold\":null,\"holdChoice\":null,\"journal\":[{\"nodeId\":\"gate\",\"type\":\"route\"}],\"machineState\":\"ready\",\"maxHealth\":5,\"mode\":\"campaign\",\"nodeEvent\":null,\"outcome\":null,\"pendingEvent\":{\"attrition\":[{\"cardId\":\"c-JD\",\"from\":\"opponent.drawPile\",\"instanceId\":\"player-010\"},{\"cardId\":\"c-5H\",\"from\":\"opponent.drawPile\",\"instanceId\":\"player-017\"}],\"burned\":[],\"encounterAttempt\":1,\"encounterIndex\":0,\"eventVersion\":7,\"id\":\"fixture-campaign-attrition-no-burn:clash-24\",\"pendingPresentation\":\"settlement-v1\",\"reveals\":[{\"cardId\":\"c-QD\",\"from\":\"player.drawPile\",\"instanceId\":\"player-011\",\"suppliedBy\":\"player\"},{\"cardId\":\"c-QC\",\"from\":\"opponent.drawPile\",\"instanceId\":\"opponent-1-1-024\",\"suppliedBy\":\"opponent\"},{\"cardId\":\"c-KH\",\"from\":\"player.drawPile\",\"instanceId\":\"player-025\",\"suppliedBy\":\"player\"},{\"cardId\":\"c-KS\",\"from\":\"opponent.drawPile\",\"instanceId\":\"opponent-1-1-012\",\"suppliedBy\":\"opponent\"},{\"cardId\":\"c-2H\",\"from\":\"player.drawPile\",\"instanceId\":\"player-014\",\"suppliedBy\":\"player\"},{\"cardId\":\"c-2D\",\"from\":\"opponent.drawPile\",\"instanceId\":\"player-001\",\"suppliedBy\":\"opponent\"},{\"cardId\":\"c-10H\",\"from\":\"player.drawPile\",\"instanceId\":\"player-022\",\"suppliedBy\":\"player\"},{\"cardId\":\"c-6S\",\"from\":\"opponent.drawPile\",\"instanceId\":\"opponent-1-1-005\",\"suppliedBy\":\"opponent\"}],\"stakes\":[],\"stateFingerprint\":null,\"transfers\":[{\"instanceId\":\"player-011\",\"to\":\"player.wonPile\"},{\"instanceId\":\"opponent-1-1-024\",\"to\":\"player.wonPile\"},{\"instanceId\":\"player-025\",\"to\":\"player.wonPile\"},{\"instanceId\":\"opponent-1-1-012\",\"to\":\"player.wonPile\"},{\"instanceId\":\"player-014\",\"to\":\"player.wonPile\"},{\"instanceId\":\"player-001\",\"to\":\"player.wonPile\"},{\"instanceId\":\"player-022\",\"to\":\"player.wonPile\"},{\"instanceId\":\"opponent-1-1-005\",\"to\":\"player.wonPile\"}],\"turn\":24,\"type\":\"clashSettled\",\"winner\":\"player\"},\"pendingReward\":null,\"restSite\":null,\"rng\":{\"algorithm\":\"mulberry32\",\"seed\":5,\"state\":2767954873},\"route\":{\"mapId\":\"expedition-v2\",\"nodes\":[{\"id\":\"gate\",\"state\":\"active\"},{\"id\":\"market\",\"state\":\"locked\"},{\"id\":\"shrine\",\"state\":\"locked\"},{\"id\":\"court\",\"state\":\"locked\"},{\"id\":\"high-court\",\"state\":\"locked\"},{\"id\":\"bazaar\",\"state\":\"locked\"},{\"id\":\"vault\",\"state\":\"locked\"},{\"id\":\"camp\",\"state\":\"locked\"},{\"id\":\"watch\",\"state\":\"locked\"},{\"id\":\"night-watch\",\"state\":\"locked\"},{\"id\":\"sanctum\",\"state\":\"locked\"},{\"id\":\"finale\",\"state\":\"locked\"}]},\"ruleset\":{\"burn\":{\"enabled\":false},\"id\":\"mvp-no-burn-v2\"},\"runId\":\"fixture-campaign-attrition-no-burn\",\"shop\":null,\"status\":\"active\",\"turn\":24}"
+  },
+  "pendingEvent": {
+    "eventVersion": 7,
+    "id": "fixture-campaign-attrition-no-burn:clash-24",
+    "type": "clashSettled",
+    "turn": 24,
+    "encounterIndex": 0,
+    "encounterAttempt": 1,
+    "winner": "player",
+    "reveals": [
+      {
+        "instanceId": "player-011",
+        "cardId": "c-QD",
+        "suppliedBy": "player",
+        "from": "player.drawPile"
+      },
+      {
+        "instanceId": "opponent-1-1-024",
+        "cardId": "c-QC",
+        "suppliedBy": "opponent",
+        "from": "opponent.drawPile"
+      },
+      {
+        "instanceId": "player-025",
+        "cardId": "c-KH",
+        "suppliedBy": "player",
+        "from": "player.drawPile"
+      },
+      {
+        "instanceId": "opponent-1-1-012",
+        "cardId": "c-KS",
+        "suppliedBy": "opponent",
+        "from": "opponent.drawPile"
+      },
+      {
+        "instanceId": "player-014",
+        "cardId": "c-2H",
+        "suppliedBy": "player",
+        "from": "player.drawPile"
+      },
+      {
+        "instanceId": "player-001",
+        "cardId": "c-2D",
+        "suppliedBy": "opponent",
+        "from": "opponent.drawPile"
+      },
+      {
+        "instanceId": "player-022",
+        "cardId": "c-10H",
+        "suppliedBy": "player",
+        "from": "player.drawPile"
+      },
+      {
+        "instanceId": "opponent-1-1-005",
+        "cardId": "c-6S",
+        "suppliedBy": "opponent",
+        "from": "opponent.drawPile"
+      }
+    ],
+    "stakes": [],
+    "transfers": [
+      {
+        "instanceId": "player-011",
+        "to": "player.wonPile"
+      },
+      {
+        "instanceId": "opponent-1-1-024",
+        "to": "player.wonPile"
+      },
+      {
+        "instanceId": "player-025",
+        "to": "player.wonPile"
+      },
+      {
+        "instanceId": "opponent-1-1-012",
+        "to": "player.wonPile"
+      },
+      {
+        "instanceId": "player-014",
+        "to": "player.wonPile"
+      },
+      {
+        "instanceId": "player-001",
+        "to": "player.wonPile"
+      },
+      {
+        "instanceId": "player-022",
+        "to": "player.wonPile"
+      },
+      {
+        "instanceId": "opponent-1-1-005",
+        "to": "player.wonPile"
+      }
+    ],
+    "burned": [],
+    "attrition": [
+      {
+        "instanceId": "player-010",
+        "cardId": "c-JD",
+        "from": "opponent.drawPile"
+      },
+      {
+        "instanceId": "player-017",
+        "cardId": "c-5H",
+        "from": "opponent.drawPile"
+      }
+    ],
+    "stateFingerprint": "{\"activeModifiers\":[{\"grantedAtNodeId\":null,\"id\":\"vitality-cap-v1\",\"lifetime\":\"campaign\"}],\"campaignVersion\":5,\"cards\":[{\"campaignOwner\":\"player\",\"cardId\":\"c-2D\",\"instanceId\":\"player-001\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3D\",\"instanceId\":\"player-002\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4D\",\"instanceId\":\"player-003\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5D\",\"instanceId\":\"player-004\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6D\",\"instanceId\":\"player-005\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7D\",\"instanceId\":\"player-006\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8D\",\"instanceId\":\"player-007\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9D\",\"instanceId\":\"player-008\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10D\",\"instanceId\":\"player-009\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JD\",\"instanceId\":\"player-010\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QD\",\"instanceId\":\"player-011\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KD\",\"instanceId\":\"player-012\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AD\",\"instanceId\":\"player-013\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-2H\",\"instanceId\":\"player-014\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3H\",\"instanceId\":\"player-015\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4H\",\"instanceId\":\"player-016\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5H\",\"instanceId\":\"player-017\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6H\",\"instanceId\":\"player-018\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7H\",\"instanceId\":\"player-019\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8H\",\"instanceId\":\"player-020\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9H\",\"instanceId\":\"player-021\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10H\",\"instanceId\":\"player-022\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JH\",\"instanceId\":\"player-023\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QH\",\"instanceId\":\"player-024\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KH\",\"instanceId\":\"player-025\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AH\",\"instanceId\":\"player-026\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-2S\",\"instanceId\":\"opponent-1-1-001\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-3S\",\"instanceId\":\"opponent-1-1-002\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-4S\",\"instanceId\":\"opponent-1-1-003\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-5S\",\"instanceId\":\"opponent-1-1-004\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-6S\",\"instanceId\":\"opponent-1-1-005\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-7S\",\"instanceId\":\"opponent-1-1-006\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-8S\",\"instanceId\":\"opponent-1-1-007\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-9S\",\"instanceId\":\"opponent-1-1-008\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-10S\",\"instanceId\":\"opponent-1-1-009\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JS\",\"instanceId\":\"opponent-1-1-010\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QS\",\"instanceId\":\"opponent-1-1-011\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KS\",\"instanceId\":\"opponent-1-1-012\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-AS\",\"instanceId\":\"opponent-1-1-013\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-2C\",\"instanceId\":\"opponent-1-1-014\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-3C\",\"instanceId\":\"opponent-1-1-015\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-4C\",\"instanceId\":\"opponent-1-1-016\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-5C\",\"instanceId\":\"opponent-1-1-017\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-6C\",\"instanceId\":\"opponent-1-1-018\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-7C\",\"instanceId\":\"opponent-1-1-019\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-8C\",\"instanceId\":\"opponent-1-1-020\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-9C\",\"instanceId\":\"opponent-1-1-021\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-10C\",\"instanceId\":\"opponent-1-1-022\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JC\",\"instanceId\":\"opponent-1-1-023\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QC\",\"instanceId\":\"opponent-1-1-024\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KC\",\"instanceId\":\"opponent-1-1-025\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-AC\",\"instanceId\":\"opponent-1-1-026\"}],\"currency\":0,\"deckLayout\":[\"player-001\",\"player-002\",\"player-003\",\"player-004\",\"player-005\",\"player-006\",\"player-007\",\"player-008\",\"player-009\",\"player-010\",\"player-011\",\"player-012\",\"player-013\",\"player-014\",\"player-015\",\"player-016\",\"player-017\",\"player-018\",\"player-019\",\"player-020\",\"player-021\",\"player-022\",\"player-023\",\"player-024\",\"player-025\",\"player-026\"],\"encounter\":{\"damage\":1,\"id\":\"suit-opposition\",\"name\":\"Suit Opposition\",\"outcome\":null,\"rule\":{\"activeClashes\":1,\"id\":\"attrition-v1\",\"wins\":{\"opponent\":0,\"player\":0}},\"supplyMode\":{\"opponent\":\"personal\",\"player\":\"personal\"},\"tier\":\"normal\",\"traitIds\":[],\"zones\":{\"burnPile\":[\"player-010\",\"player-017\"],\"contestedPile\":[],\"inPlay\":[],\"opponent\":{\"drawPile\":[\"player-004\",\"player-016\",\"player-020\",\"player-019\",\"player-024\",\"opponent-1-1-022\",\"opponent-1-1-006\",\"opponent-1-1-019\",\"player-002\",\"player-003\",\"opponent-1-1-021\",\"opponent-1-1-011\",\"opponent-1-1-025\",\"player-007\",\"opponent-1-1-010\",\"opponent-1-1-026\",\"player-006\",\"opponent-1-1-013\",\"opponent-1-1-002\",\"player-015\",\"player-012\",\"opponent-1-1-009\"],\"wonPile\":[]},\"opponentSourcePile\":[],\"player\":{\"drawPile\":[\"opponent-1-1-023\",\"opponent-1-1-003\",\"opponent-1-1-017\",\"opponent-1-1-016\",\"player-026\",\"player-021\",\"opponent-1-1-018\",\"player-013\",\"opponent-1-1-015\",\"player-009\",\"player-008\",\"opponent-1-1-008\",\"opponent-1-1-007\",\"opponent-1-1-020\",\"opponent-1-1-001\",\"player-005\",\"player-023\",\"opponent-1-1-004\",\"opponent-1-1-014\",\"player-018\"],\"wonPile\":[\"player-011\",\"opponent-1-1-024\",\"player-025\",\"opponent-1-1-012\",\"player-014\",\"player-001\",\"player-022\",\"opponent-1-1-005\"]},\"playerSourcePile\":[]}},\"encounterAttempt\":1,\"encounterIndex\":0,\"encounterRules\":[{\"nodeId\":\"gate\",\"ruleId\":\"attrition-v1\"},{\"nodeId\":\"court\",\"ruleId\":\"double-or-nothing-v1\"},{\"nodeId\":\"high-court\",\"ruleId\":\"double-or-nothing-v1\"},{\"nodeId\":\"watch\",\"ruleId\":\"attrition-v1\"},{\"nodeId\":\"night-watch\",\"ruleId\":\"attrition-v1\"},{\"nodeId\":\"finale\",\"ruleId\":\"double-or-nothing-v1\"}],\"health\":3,\"hold\":null,\"holdChoice\":null,\"journal\":[{\"nodeId\":\"gate\",\"type\":\"route\"}],\"machineState\":\"ready\",\"maxHealth\":5,\"mode\":\"campaign\",\"nodeEvent\":null,\"outcome\":null,\"pendingEvent\":{\"attrition\":[{\"cardId\":\"c-JD\",\"from\":\"opponent.drawPile\",\"instanceId\":\"player-010\"},{\"cardId\":\"c-5H\",\"from\":\"opponent.drawPile\",\"instanceId\":\"player-017\"}],\"burned\":[],\"encounterAttempt\":1,\"encounterIndex\":0,\"eventVersion\":7,\"id\":\"fixture-campaign-attrition-no-burn:clash-24\",\"pendingPresentation\":\"settlement-v1\",\"reveals\":[{\"cardId\":\"c-QD\",\"from\":\"player.drawPile\",\"instanceId\":\"player-011\",\"suppliedBy\":\"player\"},{\"cardId\":\"c-QC\",\"from\":\"opponent.drawPile\",\"instanceId\":\"opponent-1-1-024\",\"suppliedBy\":\"opponent\"},{\"cardId\":\"c-KH\",\"from\":\"player.drawPile\",\"instanceId\":\"player-025\",\"suppliedBy\":\"player\"},{\"cardId\":\"c-KS\",\"from\":\"opponent.drawPile\",\"instanceId\":\"opponent-1-1-012\",\"suppliedBy\":\"opponent\"},{\"cardId\":\"c-2H\",\"from\":\"player.drawPile\",\"instanceId\":\"player-014\",\"suppliedBy\":\"player\"},{\"cardId\":\"c-2D\",\"from\":\"opponent.drawPile\",\"instanceId\":\"player-001\",\"suppliedBy\":\"opponent\"},{\"cardId\":\"c-10H\",\"from\":\"player.drawPile\",\"instanceId\":\"player-022\",\"suppliedBy\":\"player\"},{\"cardId\":\"c-6S\",\"from\":\"opponent.drawPile\",\"instanceId\":\"opponent-1-1-005\",\"suppliedBy\":\"opponent\"}],\"stakes\":[],\"stateFingerprint\":null,\"transfers\":[{\"instanceId\":\"player-011\",\"to\":\"player.wonPile\"},{\"instanceId\":\"opponent-1-1-024\",\"to\":\"player.wonPile\"},{\"instanceId\":\"player-025\",\"to\":\"player.wonPile\"},{\"instanceId\":\"opponent-1-1-012\",\"to\":\"player.wonPile\"},{\"instanceId\":\"player-014\",\"to\":\"player.wonPile\"},{\"instanceId\":\"player-001\",\"to\":\"player.wonPile\"},{\"instanceId\":\"player-022\",\"to\":\"player.wonPile\"},{\"instanceId\":\"opponent-1-1-005\",\"to\":\"player.wonPile\"}],\"turn\":24,\"type\":\"clashSettled\",\"winner\":\"player\"},\"pendingReward\":null,\"restSite\":null,\"rng\":{\"algorithm\":\"mulberry32\",\"seed\":5,\"state\":2767954873},\"route\":{\"mapId\":\"expedition-v2\",\"nodes\":[{\"id\":\"gate\",\"state\":\"active\"},{\"id\":\"market\",\"state\":\"locked\"},{\"id\":\"shrine\",\"state\":\"locked\"},{\"id\":\"court\",\"state\":\"locked\"},{\"id\":\"high-court\",\"state\":\"locked\"},{\"id\":\"bazaar\",\"state\":\"locked\"},{\"id\":\"vault\",\"state\":\"locked\"},{\"id\":\"camp\",\"state\":\"locked\"},{\"id\":\"watch\",\"state\":\"locked\"},{\"id\":\"night-watch\",\"state\":\"locked\"},{\"id\":\"sanctum\",\"state\":\"locked\"},{\"id\":\"finale\",\"state\":\"locked\"}]},\"ruleset\":{\"burn\":{\"enabled\":false},\"id\":\"mvp-no-burn-v2\"},\"runId\":\"fixture-campaign-attrition-no-burn\",\"shop\":null,\"status\":\"active\",\"turn\":24}",
+    "pendingPresentation": "settlement-v1"
+  }
+}

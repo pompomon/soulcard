@@ -426,6 +426,7 @@ export function createCampaignOverlay({
       if (mode === 'informed-choice') {
         appendLineSection(detailHost, 'Hold Insight', view.lines)
       }
+      if (view.stake !== null) appendLineSection(detailHost, view.stake.title, view.stake.lines)
       buttons.normal.hidden = false
       buttons.normal.disabled = (
         options.busy
@@ -451,11 +452,13 @@ export function createCampaignOverlay({
         button.disabled = options.busy
         choiceHost.append(button)
       }
+      if (view.stake !== null) appendLineSection(detailHost, view.stake.title, view.stake.lines)
       if (view.notes.length > 0) appendLineSection(detailHost, 'Opponent traits', view.notes)
       buttons.cancel.hidden = false
       buttons.cancel.disabled = options.busy
     } else if (mode === 'retry') {
-      const loss = `${match.encounter.name} dealt ${match.encounter.damage} damage. ${match.health} health remains.`
+      const damage = `${match.encounter.name} dealt ${match.encounter.damage} damage. ${match.health} health remains.`
+      const loss = view.race === null ? damage : `${view.race} ${damage}`
       heading.textContent = 'Encounter lost'
       description.textContent = boundarySaved
         ? loss
@@ -573,6 +576,7 @@ export function createCampaignOverlay({
       description.textContent = view.summary.join(' · ')
       appendLineSection(detailHost, 'Route', view.route)
       appendLineSection(detailHost, 'Active modifiers', view.modifiers)
+      if (view.rule.length > 0) appendLineSection(detailHost, 'Encounter rule', view.rule)
       if (view.traits.length > 0) appendLineSection(detailHost, 'Opponent traits', view.traits)
       appendLineSection(detailHost, 'Expedition log', view.log, {
         ordered: true,
@@ -582,9 +586,10 @@ export function createCampaignOverlay({
       buttons.close.disabled = options.busy
     } else if (mode === 'campaign-end') {
       heading.textContent = match.outcome.result === 'victory' ? 'Campaign victory' : 'Campaign defeat'
-      description.textContent = match.outcome.result === 'victory'
+      const ending = match.outcome.result === 'victory'
         ? 'You defeated the Ace Sovereign and completed the expedition.'
         : 'Your health was depleted. Start a new campaign to try again.'
+      description.textContent = view.race === null ? ending : `${view.race} ${ending}`
       appendLineSection(detailHost, 'Expedition', [view.route])
       buttons.main.hidden = false
       buttons.restart.hidden = false

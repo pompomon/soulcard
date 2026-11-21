@@ -80,6 +80,8 @@ function arrangeInability(input, unableSide) {
     .map(({ instanceId }) => instanceId)
   run.encounter.zones = emptyZones()
   run.encounter.supplyMode = { player: 'source', opponent: 'source' }
+  run.encounter.rule.activeClashes = 0
+  run.encounter.rule.wins = { player: 0, opponent: 0 }
   if (unableSide === 'player') {
     run.encounter.zones.opponentSourcePile.push(opponentIds.shift())
     run.encounter.zones.opponent.wonPile.push(...playerIds, ...opponentIds)
@@ -979,11 +981,13 @@ test('campaign pending events bind terminal reveal parity and Hold availability'
       suppliedBy: 'opponent',
       from: 'opponent.sourcePile',
     }],
+    stakes: [],
     transfers: [{
       instanceId: opponentReveal,
       to: 'opponent.wonPile',
     }],
     burned: [],
+    attrition: [],
     stateFingerprint: 'pending',
     pendingPresentation: 'settlement-v1',
   }

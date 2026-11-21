@@ -14,14 +14,13 @@ Status, open work and delivery rules. Contracts live in [ARCHITECTURE.md](ARCHIT
 | 21.3 Branching Expedition | Done (#40, #41; signed off in #49) |
 | 21.4 Encounter Archetypes and Elite Ladder | Done (#42; signed off in #49, keeping Plunder suspends Spoils of War) |
 | Faster matches: Classic short-deck setting | Done (#52) |
-| Faster matches: Campaign encounter rules ([plan](plans/campaign-encounter-rules.md)) | In progress (fight probe: #53) |
-| 21.5 Seeded Procedural Campaign | After the Campaign encounter rules |
+| Faster matches: Campaign encounter rules | Done (#53, #54) |
+| 21.5 Seeded Procedural Campaign | Next |
 | 21.6 First-class Keyboard Support | After 21.5 |
 
-Milestone 21 (post-MVP expansion) closes when 21.6 is signed off. Presentation work outside the
-21.x line (uniform piles and phone footer, Tarot card art) is complete. The faster-matches plans
-sit outside the 21.x line and come first, so that 21.5 tunes generated content with the encounter
-rules in place.
+Milestone 21 (post-MVP expansion) closes when 21.6 is signed off. Work outside the 21.x line is
+complete: uniform piles and phone footer, Tarot card art, and the faster-matches work, which came
+first so that 21.5 tunes generated content with the encounter rules in place.
 
 ## Delivery rules
 
@@ -61,8 +60,10 @@ rules in place.
   - recycle order
   - card-value effects, which need a Campaign event-version bump
   - traits on normal and boss fights, and procedural traits
-- Builds on the [Campaign encounter rules](plans/campaign-encounter-rules.md): the generator assigns
-  each generated fight a rule, and the campaign simulation extends that plan's fight probe.
+- Builds on the
+  [Campaign encounter rules](HISTORY.md#campaign-encounter-rules-plan-research-53-and-54): the
+  generator assigns each generated fight a rule ([CAMPAIGN.md](CAMPAIGN.md) §9), and the
+  campaign simulation extends the fight probe (`npm run probe:campaign`, CAMPAIGN.md §11).
 - Build simulation and report tooling for complete campaigns, including route choices and
   deterministic partial outcomes, separate from the single-match simulator.
 - Tune balance with that tooling. The inputs are in [CAMPAIGN.md](CAMPAIGN.md).
@@ -107,10 +108,10 @@ rules in place.
   - Commit an automated offline-reload and app-update browser check.
 - **Build:** the main chunk exceeds Vite's 500 kB advisory. It isn't a release blocker; code-split
   it if load time matters.
-- **Match length:** from the research in [plans/faster-matches.md](plans/faster-matches.md), the
-  [short-deck setting](HISTORY.md#classic-short-deck-plan-52) is done and the
-  [Campaign encounter rules](plans/campaign-encounter-rules.md) are scheduled above. Still open:
-  faster pacing, and bounding Classic no-burn games, which stay long on 36 cards.
+- **Match length:** the [short-deck setting](HISTORY.md#classic-short-deck-plan-52) and the
+  [Campaign encounter rules](HISTORY.md#campaign-encounter-rules-plan-research-53-and-54), from
+  the faster-matches research, are done. Still open: faster pacing, and bounding Classic no-burn
+  games, which stay long on 36 cards.
 
 ## Release checklist
 

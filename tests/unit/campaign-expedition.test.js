@@ -14,6 +14,10 @@ import {
   getCampaignRestSite,
 } from '../../src/domain/campaign-content.js'
 import { deckEditRequiresTarget } from '../../src/domain/campaign-deck.js'
+import {
+  getEncounterRule,
+  isEncounterRuleActive,
+} from '../../src/domain/campaign-encounter-rules.js'
 import { replayCampaignJournal } from '../../src/domain/campaign-journal.js'
 import {
   CAMPAIGN_HOLD_DECISION_STATES,
@@ -325,16 +329,47 @@ function recordDecision(ledger, prev, next, entry) {
   }
 }
 
-// Under burn rules the clash loser's revealed cards burn, unless the winner holds the
+// The contest is the first reveal round, then the stakes, then any tie rounds.
+function contestOf(event) {
+  return [...event.reveals.slice(0, 2), ...event.stakes, ...event.reveals.slice(2)]
+}
+
+function regularSupply({ encounter: { zones } }, side) {
+  return zones[`${side}SourcePile`].length
+    + zones[side].drawPile.length
+    + zones[side].wonPile.length
+}
+
+// An active Attrition clash burns the loser's next cards after it settles, fewer only when
+// the loser runs out, and appends them to the burn pile after the settlement's burns.
+function recordAttrition(ledger, next, event, loser) {
+  const { effect, parameter } = getEncounterRule(next.encounter)
+  if (effect !== 'attrition' || !isEncounterRuleActive(next.encounter)) {
+    assert.deepEqual(event.attrition, [])
+    return
+  }
+  const burned = event.attrition.map(({ instanceId: id }) => id)
+  assert.ok(burned.length <= parameter)
+  if (burned.length < parameter) assert.equal(regularSupply(next, loser), 0)
+  if (burned.length > 0) {
+    assert.deepEqual(next.encounter.zones.burnPile.slice(-burned.length), burned)
+    ledger.coverage.add('attrition')
+  }
+}
+
+// Under burn rules the clash loser's contested cards burn, unless the winner holds the
 // effect that claims them: Spoils of War for the player, or Plunder for the opponent.
 // Plunder suspends Spoils of War, so the player's wins against it always burn.
-function recordSettlement(ledger, prev, event) {
+function recordSettlement(ledger, prev, next, event) {
+  const loser = event.winner === 'player' ? 'opponent' : 'player'
+  if (event.stakes.length > 0) ledger.coverage.add('stakes')
+  if (next.encounter.outcome?.reason === 'raceTargetReached') ledger.coverage.add('race')
+  recordAttrition(ledger, next, event, loser)
   if (!prev.ruleset.burn.enabled) {
     assert.deepEqual(event.burned, [])
     return
   }
-  const loser = event.winner === 'player' ? 'opponent' : 'player'
-  const lost = event.reveals
+  const lost = contestOf(event)
     .filter(({ suppliedBy }) => suppliedBy === loser)
     .map(({ instanceId: id }) => id)
   const plunder = prev.encounter.traitIds.includes(PLUNDER_TRAIT_ID)
@@ -370,7 +405,7 @@ function recordStep(ledger, prev, next) {
   assert.notEqual(prev.encounter, null, 'only fights advance without a decision')
   if (prev.machineState === 'ready') recordHoldTargets(ledger, prev)
   if (next.turn !== prev.turn && next.pendingEvent.type === 'clashSettled') {
-    recordSettlement(ledger, prev, next.pendingEvent)
+    recordSettlement(ledger, prev, next, next.pendingEvent)
   }
   if (next.machineState === 'awaitingRetry' || next.outcome?.result === 'defeat') {
     ledger.coverage.add('lost fight')
@@ -398,7 +433,8 @@ function recycleDraws(run, side) {
 // The draws a step may take, derived from visible state alone. Entering or retrying a fight
 // shuffles the non-held layout, then the opponent deck. Preparing a Hold decision prepares
 // the player's supply, and with Hold Insight the opponent's as well. A clash recycles a
-// side's won pile whenever that side reveals from an empty draw pile. Nothing else draws.
+// side's won pile whenever that side reveals, stakes, or burns to Attrition from an empty
+// draw pile, in contest order and then Attrition. Nothing else draws.
 function expectedDraws(prev, next) {
   if (next.journal.length !== prev.journal.length) {
     const { type, nodeId } = next.journal.at(-1)
@@ -418,8 +454,14 @@ function expectedDraws(prev, next) {
     const { drawPile, wonPile } = prev.encounter.zones[side]
     piles[side] = { draw: drawPile.length, won: wonPile.length }
   }
+  const event = next.pendingEvent
+  const loser = event.winner === 'player' ? 'opponent' : 'player'
+  const supplied = [
+    ...contestOf(event),
+    ...(event.attrition ?? []).map(({ from }) => ({ suppliedBy: loser, from })),
+  ]
   let draws = 0
-  for (const { suppliedBy, from } of next.pendingEvent.reveals) {
+  for (const { suppliedBy, from } of supplied) {
     if (from !== `${suppliedBy}.drawPile`) continue
     const pile = piles[suppliedBy]
     if (pile.draw === 0) {
@@ -640,7 +682,7 @@ test('every route alternates fights with other stops, climbs at most two elites,
 })
 
 // One seed per policy plays every edge-covering route.
-const FULL_PLAY_SEEDS = Object.freeze({ scripted: 12, contrasting: 40 })
+const FULL_PLAY_SEEDS = Object.freeze({ scripted: 37, contrasting: 20 })
 
 test('every map link balances coins, health, cards, modifiers, and RNG draws with a content ledger', () => {
   const outcomes = []
@@ -662,20 +704,21 @@ test('every map link balances coins, health, cards, modifiers, and RNG draws wit
   // the sanctum leaves its later links to the other policy.
   assert.deepEqual([...traversed].sort(), MAP_LINKS)
   assert.deepEqual(outcomes, [
-    'scripted market/court/bazaar/watch: victory, 1 retries',
-    'scripted shrine/court/vault/night-watch: victory, 2 retries',
-    'scripted market/court/camp/watch: victory, 0 retries',
+    'scripted market/court/bazaar/watch: victory, 0 retries',
+    'scripted shrine/court/vault/night-watch: defeat at finale, 1 retries',
+    'scripted market/court/camp/watch: defeat at finale, 2 retries',
     'scripted shrine/high-court/bazaar/night-watch: defeat at night-watch, 1 retries',
     'scripted market/high-court/vault/watch: defeat at high-court, 1 retries',
-    'scripted shrine/high-court/camp/night-watch: defeat at night-watch, 1 retries',
-    'contrasting market/court/bazaar/watch: defeat at finale, 1 retries',
-    'contrasting shrine/court/vault/night-watch: defeat at night-watch, 2 retries',
-    'contrasting market/court/camp/watch: defeat at finale, 1 retries',
-    'contrasting shrine/high-court/bazaar/night-watch: defeat at night-watch, 3 retries',
-    'contrasting market/high-court/vault/watch: defeat at finale, 2 retries',
+    'scripted shrine/high-court/camp/night-watch: victory, 0 retries',
+    'contrasting market/court/bazaar/watch: victory, 0 retries',
+    'contrasting shrine/court/vault/night-watch: defeat at finale, 2 retries',
+    'contrasting market/court/camp/watch: victory, 0 retries',
+    'contrasting shrine/high-court/bazaar/night-watch: victory, 2 retries',
+    'contrasting market/high-court/vault/watch: victory, 0 retries',
     'contrasting shrine/high-court/camp/night-watch: defeat at finale, 3 retries',
   ])
   assert.deepEqual([...coverage].sort(), [
+    'attrition',
     'boss defeat',
     'boss victory',
     'capped heal',
@@ -698,6 +741,7 @@ test('every map link balances coins, health, cards, modifiers, and RNG draws wit
     'purchase modifier',
     'purchase remove',
     'purchase replace',
+    'race',
     'rest',
     'rest cleanse',
     'rest heal',
@@ -706,12 +750,14 @@ test('every map link balances coins, health, cards, modifiers, and RNG draws wit
     'retry',
     'reward',
     'reward add',
+    'reward duplicate',
     'reward mend',
     'reward modifier',
     'reward remove',
     'route',
     'sold out',
     'spoils',
+    'stakes',
     'victory',
   ])
 })
@@ -751,10 +797,10 @@ test('the RNG ledger rejects a step that draws once more or once less than visib
 
 test('the same seed, route, and policy replay to an identical expedition', () => {
   // The scripted play falls at the High Court elite after one retry; the contrasting play
-  // falls at the Ace Sovereign after one retry.
+  // falls at the Ace Sovereign after two retries.
   for (const [policy, seed, route, highlight] of [
     ['scripted', FULL_PLAY_SEEDS.scripted, EDGE_COVERING_ROUTES[4], 'elite'],
-    ['contrasting', FULL_PLAY_SEEDS.contrasting, EDGE_COVERING_ROUTES[0], 'boss defeat'],
+    ['contrasting', FULL_PLAY_SEEDS.contrasting, EDGE_COVERING_ROUTES[1], 'boss defeat'],
   ]) {
     const first = firstPlay(policy, seed, route)
     const second = playExpedition(policy, seed, route)

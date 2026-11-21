@@ -9,10 +9,11 @@ import {
   getCampaignShopTargets,
   getEligibleHoldTargets,
 } from '../../src/domain/campaign-machine.js'
+import { describeEncounterRule } from '../../src/domain/campaign-encounter-rules.js'
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { restoreRunSave } from '../../src/persistence/run-schema.js'
-import { blockerText } from '../../src/ui/campaign-view.js'
+import { blockerText, encounterRuleText } from '../../src/ui/campaign-view.js'
 import { createGameScreen } from '../../src/ui/hud.js'
 import { createCampaignOverlay } from '../../src/ui/overlays.js'
 import { createUpdateNotice } from '../../src/ui/update-notice.js'
@@ -22,8 +23,12 @@ import {
   chooseRestOption,
   chooseRoute,
   claimReward,
+  fingerprint,
   loseEncounter,
+  mutableReady,
   passThrough,
+  playUntilTransition,
+  retryEncounter,
   startCampaign,
   winEncounter,
 } from '../fixtures/campaign-route.js'
@@ -682,7 +687,7 @@ test('Campaign reward drafts unlock after their save and hold the next encounter
         return write.promise
       },
     },
-    initialMatch: restoredFixture('campaign-save-reward-v8.json'),
+    initialMatch: restoredFixture('campaign-save-reward-v9.json'),
   })
   const presented = []
   const screen = createGameScreen({
@@ -716,7 +721,7 @@ test('Campaign reward drafts unlock after their save and hold the next encounter
   assert.deepEqual(
     parts.offers().map((button) => [button.dataset.rewardOffer, button.textContent]),
     [
-      ['new-card', 'New card: QS'],
+      ['new-card', 'New card: KS'],
       ['deck-edit', 'Remove a card'],
       ['modifier', 'Modifier: Hold Insight'],
       ['mend', 'Mend'],
@@ -735,9 +740,10 @@ test('Campaign reward drafts unlock after their save and hold the next encounter
   await controller.whenIdle()
   await flushMicrotasks()
 
+  // The fixture's gate fight ended in its race.
   assert.equal(
     parts.description.textContent,
-    'Choose one reward before returning to the map. The Suit Opposition bounty pays 3 coins when you choose.',
+    'Won the race 10–7. Choose one reward before returning to the map. The Suit Opposition bounty pays 3 coins when you choose.',
   )
   assert.ok(parts.offers().every((button) => !button.disabled))
   assert.equal(retrySave.hidden, true)
@@ -908,7 +914,7 @@ test('Targeted campaign rewards list eligible deck cards and return with Back', 
     globalThis.document = previousDocument
   })
 
-  const draft = restoredFixture('campaign-save-reward-v8.json')
+  const draft = restoredFixture('campaign-save-reward-v9.json')
   const controller = createRunController({
     repository: {
       load: async () => ({ status: 'resumable', savedAt: CAMPAIGN_SAVED_AT, match: draft }),
@@ -970,7 +976,7 @@ test('Informed Hold choices show both next cards and Run details stays read-only
     globalThis.document = previousDocument
   })
 
-  const informed = restoredFixture('campaign-save-informed-v8.json')
+  const informed = restoredFixture('campaign-save-informed-v9.json')
   const cardText = (instanceId) => {
     const { cardId } = informed.cards.find((card) => card.instanceId === instanceId)
     return cardId.slice(2)
@@ -1126,7 +1132,7 @@ test('Campaign route maps list every node and hold a route choice until it saves
   installFakeDocument(t)
   let mainMenuCalls = 0
   const { controller, screen, presented, writes, parts } = await restoredCampaignScreen(
-    restoredFixture('campaign-save-route-v8.json'),
+    restoredFixture('campaign-save-route-v9.json'),
     { onMainMenu: () => { mainMenuCalls += 1 } },
   )
   const status = descendants(screen.element).find(
@@ -1164,18 +1170,18 @@ test('Campaign route maps list every node and hold a route choice until it saves
     ],
   )
   assert.deepEqual(parts.choiceDetails(), [
-    'Fight · Suit Legion archetype · 1 damage on a loss · 3-coin bounty · Completed',
+    'Fight · Suit Legion archetype · 1 damage on a loss · 3-coin bounty · Completed. Rule: Race to 10.',
     'Shop · Available',
     'Event · Available',
-    'Fight · Court archetype · 1 damage on a loss · 4-coin bounty · Locked',
-    'Elite fight · Court archetype · 2 damage on a loss · 6-coin bounty · Locked. Elite reward: a high card or Greater Mend. Court Etiquette: Opponent trait. In this encounter, an empty Hold can capture only a 2–10, and an occupied Hold can be replaced only by a 2–10.',
+    'Fight · Court archetype · 1 damage on a loss · 4-coin bounty · Locked. Rule: Double or nothing.',
+    'Elite fight · Court archetype · 2 damage on a loss · 6-coin bounty · Locked. Elite reward: a high card or Greater Mend. Rule: Attrition. Court Etiquette: Opponent trait. In this encounter, an empty Hold can capture only a 2–10, and an occupied Hold can be replaced only by a 2–10.',
     'Shop · Locked',
     'Event · Locked',
     'Rest · Locked',
-    'Fight · Watch archetype · 1 damage on a loss · Locked',
-    'Elite fight · Watch archetype · 2 damage on a loss · Locked. Elite reward: a high card or Greater Mend. Plunder: Opponent trait. Clashes this opponent wins send your cards to its won pile instead of burning them. They return to your deck after the encounter. Spoils of War has no effect against it.',
+    'Fight · Watch archetype · 1 damage on a loss · Locked. Rule: Double or nothing.',
+    'Elite fight · Watch archetype · 2 damage on a loss · Locked. Elite reward: a high card or Greater Mend. Rule: Attrition. Plunder: Opponent trait. Clashes this opponent wins send your cards to its won pile instead of burning them. They return to your deck after the encounter. Spoils of War has no effect against it.',
     'Rest · Locked',
-    'Boss fight · Sovereign archetype · 2 damage on a loss · Locked. Defeat to complete the expedition.',
+    'Boss fight · Sovereign archetype · 2 damage on a loss · Locked. Defeat to complete the expedition. Rule: Attrition.',
   ])
   assert.ok(parts.routeButtons().every((button) => !button.disabled))
   assert.deepEqual(parts.details().slice(0, 5), [
@@ -1234,7 +1240,7 @@ test('Campaign route maps list every node and hold a route choice until it saves
 
 test('Campaign shops price every item, explain blocked items, and buy with a deck target', async (t) => {
   installFakeDocument(t)
-  const shop = restoredFixture('campaign-save-shop-v8.json')
+  const shop = restoredFixture('campaign-save-shop-v9.json')
   const { controller, screen, writes, parts } = await restoredCampaignScreen(shop)
   const status = descendants(screen.element).find(
     (element) => Object.hasOwn(element.dataset, 'statusHost'),
@@ -1251,8 +1257,8 @@ test('Campaign shops price every item, explain blocked items, and buy with a dec
   assert.deepEqual(
     items().map((button) => [button.dataset.shopItem, button.textContent, button.disabled]),
     [
-      ['card-1', 'New card: 8S · 3 coins', false],
-      ['service-1', 'Replace a card with 5C · 2 coins', false],
+      ['card-1', 'New card: JS · 3 coins', false],
+      ['service-1', 'Replace a card with 7S · 2 coins', false],
       ['modifier-1', 'Modifier: Vow of Constancy · 4 coins', true],
     ],
   )
@@ -1265,7 +1271,7 @@ test('Campaign shops price every item, explain blocked items, and buy with a dec
 
   items()[1].dispatch('click')
   const eligible = getCampaignShopTargets(shop, 'service-1')
-  assert.equal(parts.heading.textContent, 'Choose a card to replace with 5C')
+  assert.equal(parts.heading.textContent, 'Choose a card to replace with 7S')
   assert.equal(
     parts.description.textContent,
     'Choose one card from your campaign deck. It costs 2 coins.',
@@ -1293,7 +1299,7 @@ test('Campaign shops price every item, explain blocked items, and buy with a dec
     nodeId: 'market',
     itemId: 'service-1',
     kind: 'replace',
-    cardId: 'c-5C',
+    cardId: 'c-7S',
     modifierId: null,
     price: 2,
     targetInstanceId: replaced,
@@ -1302,8 +1308,8 @@ test('Campaign shops price every item, explain blocked items, and buy with a dec
   assert.equal(parts.heading.textContent, 'Wayside Market')
   assert.deepEqual(items().map((button) => button.disabled), [true, true, true])
   assert.deepEqual(parts.choiceDetails().slice(0, 2), [
-    'Add 8S to your deck. Not enough coins.',
-    'Choose a card in your deck to swap for 5C. Sold.',
+    'Add JS to your deck. Not enough coins.',
+    'Choose a card in your deck to swap for 7S. Sold.',
   ])
 
   items()[1].dispatch('click')
@@ -1324,7 +1330,7 @@ test('Campaign shops price every item, explain blocked items, and buy with a dec
 
 test('Campaign events state each cost and gain, explain blocked options, and pick targets', async (t) => {
   installFakeDocument(t)
-  const event = restoredFixture('campaign-save-event-v8.json')
+  const event = restoredFixture('campaign-save-event-v9.json')
   const { controller, screen, writes, parts } = await restoredCampaignScreen(event)
   const back = byAction(screen, 'campaign-back')
   const options = () => parts.withData('eventOption')
@@ -1365,7 +1371,7 @@ test('Campaign events state each cost and gain, explain blocked options, and pic
   await controller.destroy()
 
   const vault = chooseRoute(
-    claimReward(winEncounter(passThrough(restoredFixture('campaign-save-route-v8.json'), 'shrine', 'court')), 'mend'),
+    claimReward(winEncounter(passThrough(restoredFixture('campaign-save-route-v9.json'), 'shrine', 'court')), 'mend'),
     'vault',
   )
   const second = await restoredCampaignScreen(vault)
@@ -1385,7 +1391,7 @@ test('Campaign events state each cost and gain, explain blocked options, and pic
 
 test('Campaign rest sites list cost-free options, pick training targets, and rest to the next stage', async (t) => {
   installFakeDocument(t)
-  const rest = restoredFixture('campaign-save-rest-v8.json')
+  const rest = restoredFixture('campaign-save-rest-v9.json')
   const { controller, screen, writes, parts } = await restoredCampaignScreen(rest)
   const status = descendants(screen.element).find(
     (element) => Object.hasOwn(element.dataset, 'statusHost'),
@@ -1418,7 +1424,7 @@ test('Campaign rest sites list cost-free options, pick training targets, and res
     'Health 2/5',
     'Coins 14',
     'Deck 28 cards',
-    'Held card: 8D',
+    'Held card: 7D',
   ])
   assert.equal(status.textContent, 'Choose a rest option to continue.')
   assert.equal(byAction(screen, 'campaign-leave').hidden, true)
@@ -1564,7 +1570,7 @@ test('Rest site saves retry after a failure, and a refused rest option keeps the
         return write.promise
       },
     },
-    initialMatch: restoredFixture('campaign-save-rest-v8.json'),
+    initialMatch: restoredFixture('campaign-save-rest-v9.json'),
   })
   const screen = createGameScreen({
     runController: controller,
@@ -1644,7 +1650,7 @@ test('Rest site saves retry after a failure, and a refused rest option keeps the
       load: async () => ({
         status: 'resumable',
         savedAt: CAMPAIGN_SAVED_AT,
-        match: restoredFixture('campaign-save-rest-v8.json'),
+        match: restoredFixture('campaign-save-rest-v9.json'),
       }),
       save: async () => ({ status: 'saved', savedAt: CAMPAIGN_SAVED_AT }),
     },
@@ -1761,7 +1767,7 @@ test('Campaign rest overlays explain blocked options and wait for the rest site 
 test('Elite reward drafts offer Greater Mend and log it with the elite bounty', async (t) => {
   installFakeDocument(t)
   const { controller, screen, writes, parts } = await restoredCampaignScreen(
-    restoredFixture('campaign-save-elite-reward-v8.json'),
+    restoredFixture('campaign-save-elite-reward-v9.json'),
   )
   assert.equal(parts.heading.textContent, 'Encounter won')
   assert.equal(
@@ -1771,7 +1777,7 @@ test('Elite reward drafts offer Greater Mend and log it with the elite bounty', 
   assert.deepEqual(
     parts.offers().map((button) => [button.dataset.rewardOffer, button.textContent]),
     [
-      ['new-card', 'New card: AS'],
+      ['new-card', 'New card: AC'],
       ['deck-edit', 'Duplicate a card'],
       ['modifier', 'Modifier: Vow of Constancy'],
       ['mend', 'Greater Mend'],
@@ -1801,17 +1807,18 @@ test('Elite reward drafts offer Greater Mend and log it with the elite bounty', 
 
 test('Elite fights explain their Hold restriction in Hold capture and list traits in Run details', async (t) => {
   installFakeDocument(t)
-  const choice = restoredFixture('campaign-save-elite-choice-v8.json')
+  const choice = restoredFixture('campaign-save-elite-choice-v9.json')
   const traitText = 'Court Etiquette: Opponent trait. In this encounter, an empty Hold can capture only a 2–10, and an occupied Hold can be replaced only by a 2–10.'
   for (const nodeId of ['high-court', 'court']) {
-    const fight = advanceClash(advanceClash(chooseRoute(choice, nodeId)))
+    let fight = chooseRoute(choice, nodeId)
+    for (let clash = 0; clash < 4; clash += 1) fight = advanceClash(fight)
     const elite = nodeId === 'high-court'
     const eligible = getEligibleHoldTargets(fight).map(({ instanceId }) => instanceId)
     assert.equal(fight.machineState, 'ready', nodeId)
-    // Both fights put the same player-owned Ace in the won pile; only Court Etiquette keeps
-    // it out of Hold.
-    assert.deepEqual(fight.encounter.zones.player.wonPile, ['player-026'], nodeId)
-    assert.deepEqual(eligible, elite ? [] : ['player-026'], nodeId)
+    // After four clashes both fights put the same player-owned Ace in the won pile; only
+    // Court Etiquette keeps it out of Hold.
+    assert.deepEqual(fight.encounter.zones.player.wonPile, ['player-013'], nodeId)
+    assert.deepEqual(eligible, elite ? [] : ['player-013'], nodeId)
     const { controller, screen, parts } = await restoredCampaignScreen(fight)
     const hold = byAction(screen, 'hold')
     assert.equal(parts.overlay.hidden, true, nodeId)
@@ -1860,10 +1867,138 @@ test('Elite fights explain their Hold restriction in Hold capture and list trait
   }
 })
 
+test('Campaign fights show their encounter rule in the Stage metric and Run details', async (t) => {
+  installFakeDocument(t)
+  const stakes = 'each clash stakes 0, 1, 3, 7… face-down cards a side, matched to the shorter side.'
+  const attrition = 'Attrition: once both sides replay their own cards, the loser of each clash burns its next 2 cards.'
+  for (const [name, stage, rule] of [
+    [
+      'campaign-save-race-v9.json',
+      'Race 2–2 of 10',
+      'Race to 10: once both sides replay their own cards, the first to win 10 clashes wins the fight.',
+    ],
+    [
+      'campaign-save-stakes-v9.json',
+      'Stake 3 each',
+      `Double or nothing: once either side replays its own cards, ${stakes}`,
+    ],
+    ['campaign-save-attrition-v9.json', 'Attrition 2', attrition],
+    // The boss's rule is not active before its first reveal.
+    ['campaign-save-boss-v9.json', 'P Source · O Source', attrition],
+  ]) {
+    const { controller, screen, parts } = await restoredCampaignScreen(restoredFixture(name))
+    assert.equal(byValue(screen, 'stage').textContent, stage, name)
+
+    byAction(screen, 'inspect').dispatch('click')
+    assert.equal(parts.heading.textContent, 'Run details', name)
+    const details = parts.details()
+    assert.deepEqual(
+      details.slice(details.indexOf('Encounter rule'), details.indexOf('Expedition log')),
+      ['Encounter rule', rule],
+      name,
+    )
+    screen.teardown()
+    await controller.destroy()
+  }
+  // Elite and boss Double or nothing fights wait for both sides.
+  assert.equal(
+    encounterRuleText(restoredFixture('campaign-save-elite-reward-v9.json')),
+    `Double or nothing: once both sides replay their own cards, ${stakes}`,
+  )
+})
+
+test('Hold overlays show the coming Double or nothing stake for a normal and a Hold reveal', async (t) => {
+  installFakeDocument(t)
+  const stakes = restoredFixture('campaign-save-stakes-v9.json')
+  {
+    const { controller, screen, parts } = await restoredCampaignScreen(stakes)
+    byAction(screen, 'hold').dispatch('click')
+    assert.equal(parts.heading.textContent, 'Capture into Hold')
+    assert.deepEqual(parts.details(), ['Double or nothing', 'Stake 3 each'])
+    screen.teardown()
+    await controller.destroy()
+  }
+
+  // With three player cards left, the player's supply caps the stake. Capturing into Hold
+  // takes one, a normal reveal another, and a Hold reveal leaves the prepared card to stake.
+  const short = mutableReady(stakes)
+  const { player, burnPile } = short.encounter.zones
+  const supply = [...player.drawPile, ...player.wonPile]
+  player.drawPile = supply.slice(0, 3)
+  player.wonPile = []
+  burnPile.push(...supply.slice(3))
+  const { controller, screen, parts } = await restoredCampaignScreen(fingerprint(short), {
+    save: async () => ({ status: 'saved', savedAt: CAMPAIGN_SAVED_AT }),
+  })
+  assert.equal(byValue(screen, 'stage').textContent, 'Stake 2 each')
+
+  byAction(screen, 'hold').dispatch('click')
+  assert.deepEqual(parts.details(), ['Double or nothing', 'Stake 1 each (2 with Hold)'])
+  parts.withData('holdTarget')[0].dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.equal(parts.overlay.hidden, true)
+  assert.equal(byValue(screen, 'stage').textContent, 'Stake 1 each')
+
+  byAction(screen, 'reveal').dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.equal(parts.heading.textContent, 'Choose your reveal')
+  assert.deepEqual(parts.details(), ['Double or nothing', 'Stake 1 each (2 with Hold)'])
+
+  byAction(screen, 'campaign-hold').dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.deepEqual(
+    controller.currentMatch.pendingEvent.stakes.map(({ suppliedBy }) => suppliedBy),
+    ['player', 'player', 'opponent', 'opponent'],
+  )
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Race losses name the final score in the retry and defeat overlays', async (t) => {
+  installFakeDocument(t)
+  // Plays the gate fight until its race is on, then sets a score the next clashes settle.
+  const raceAt = (input, wins) => {
+    let run = input
+    while (!describeEncounterRule(run.encounter).active) run = advanceClash(run)
+    run = mutableReady(run)
+    Object.assign(run.encounter.rule, { wins, activeClashes: wins.player + wins.opponent })
+    run.turn = Math.max(run.turn, run.encounter.rule.activeClashes)
+    return fingerprint(run)
+  }
+  const gate = startCampaign({ runId: 'hud-race-loss', seed: 8, ruleset: BASELINE_RULESET })
+  {
+    const lost = playUntilTransition(raceAt(gate, { player: 7, opponent: 9 }))
+    const { controller, screen, parts } = await restoredCampaignScreen(lost)
+    assert.equal(parts.heading.textContent, 'Encounter lost')
+    assert.equal(
+      parts.description.textContent,
+      'Lost the race 7–10. Suit Opposition dealt 1 damage. 2 health remains.',
+    )
+    screen.teardown()
+    await controller.destroy()
+  }
+
+  const lastTry = retryEncounter(loseEncounter(retryEncounter(loseEncounter(gate))))
+  const defeated = playUntilTransition(raceAt(lastTry, { player: 7, opponent: 9 }))
+  const { controller, screen, parts } = await restoredCampaignScreen(defeated)
+  assert.equal(parts.heading.textContent, 'Campaign defeat')
+  assert.equal(
+    parts.description.textContent,
+    'Lost the race 8–10. Your health was depleted. Start a new campaign to try again.',
+  )
+
+  screen.teardown()
+  await controller.destroy()
+})
+
 test('Campaign victory names the defeated Ace Sovereign', async (t) => {
   installFakeDocument(t)
   const { controller, screen, parts } = await restoredCampaignScreen(
-    restoredFixture('campaign-save-victory-v8.json'),
+    restoredFixture('campaign-save-victory-v9.json'),
   )
   const status = descendants(screen.element).find(
     (element) => Object.hasOwn(element.dataset, 'statusHost'),
@@ -1998,7 +2133,7 @@ test('Campaign shop overlays announce an emptied shop and keep Leave shop availa
 
 test('A restored sold-out Campaign shop explains every sold item and leaves to the stage-5 fights', async (t) => {
   installFakeDocument(t)
-  const exhausted = restoredFixture('campaign-save-shop-exhausted-v8.json')
+  const exhausted = restoredFixture('campaign-save-shop-exhausted-v9.json')
   const { controller, screen, writes, parts } = await restoredCampaignScreen(exhausted)
   const leave = byAction(screen, 'campaign-leave')
   const items = () => parts.withData('shopItem')
@@ -2015,10 +2150,10 @@ test('A restored sold-out Campaign shop explains every sold item and leaves to t
   assert.deepEqual(
     items().map((button) => [button.dataset.shopItem, button.textContent, button.disabled]),
     [
-      ['card-1', 'New card: AC · 3 coins', true],
-      ['card-2', 'New card: 4C · 3 coins', true],
-      ['service-1', 'Remove a card · 2 coins', true],
-      ['modifier-1', 'Modifier: Vow of Patience · 4 coins', true],
+      ['card-1', 'New card: JS · 3 coins', true],
+      ['card-2', 'New card: QC · 3 coins', true],
+      ['service-1', 'Duplicate a card · 2 coins', true],
+      ['modifier-1', 'Modifier: Vow of Constancy · 4 coins', true],
     ],
   )
   assert.ok(parts.choiceDetails().every((detail) => detail.endsWith(' Sold.')))
@@ -2124,21 +2259,21 @@ test('Restored Campaign boundaries lead to fights that wait for a manual first r
     ruleset: BASELINE_RULESET,
   }))
   const boundaries = [
-    ['route', restoredFixture('campaign-save-route-v8.json'), [
+    ['route', restoredFixture('campaign-save-route-v9.json'), [
       ['route', 'shrine'],
       ['event', 'walk-on'],
       ['route', 'court'],
     ]],
-    ['shop', restoredFixture('campaign-save-shop-v8.json'), [['leave'], ['route', 'court']]],
-    ['sold-out shop', restoredFixture('campaign-save-shop-exhausted-v8.json'), [
+    ['shop', restoredFixture('campaign-save-shop-v9.json'), [['leave'], ['route', 'court']]],
+    ['sold-out shop', restoredFixture('campaign-save-shop-exhausted-v9.json'), [
       ['leave'],
       ['route', 'watch'],
     ]],
-    ['event', restoredFixture('campaign-save-event-v8.json'), [
+    ['event', restoredFixture('campaign-save-event-v9.json'), [
       ['event', 'walk-on'],
       ['route', 'court'],
     ]],
-    ['rest', restoredFixture('campaign-save-rest-v8.json'), [
+    ['rest', restoredFixture('campaign-save-rest-v9.json'), [
       ['rest', 'rest'],
       ['route', 'night-watch'],
     ]],
@@ -2749,7 +2884,7 @@ test('update preparation disarms Auto-reveal through the mounted notice event', 
 test('Campaign HUD recomputes inert when an update stops blocking the Game screen', async (t) => {
   installFakeDocument(t)
   const { controller, screen, writes, parts } = await restoredCampaignScreen(
-    restoredFixture('campaign-save-elite-choice-v8.json'),
+    restoredFixture('campaign-save-elite-choice-v9.json'),
   )
   const hud = descendants(screen.element).find(
     (element) => element.className === 'game-hud',
@@ -3202,6 +3337,21 @@ test('Game gates committed presentation on save completion and publishes live pr
   assert.equal(status.textContent, 'Revealing committed card.')
   assert.equal(comparisonProgress.textContent, 'Revealing cards · 1 of 3')
   assert.equal(reveal.disabled, true)
+  for (const [stepKind, statusText, progressText] of [
+    ['stake', 'Staking face-down cards.', 'Staking cards · 2 of 3'],
+    ['attrition', 'Burning attrition cards.', 'Burning attrition cards · 2 of 3'],
+  ]) {
+    presentationState({
+      status: 'playing',
+      eventId: controller.currentMatch.pendingEvent.id,
+      stepIndex: 1,
+      stepCount: 3,
+      stepKind,
+      reason: null,
+    })
+    assert.equal(status.textContent, statusText)
+    assert.equal(comparisonProgress.textContent, progressText)
+  }
   presentationState({
     status: 'skipped',
     eventId: controller.currentMatch.pendingEvent.id,

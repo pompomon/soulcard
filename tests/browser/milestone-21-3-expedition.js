@@ -8,8 +8,8 @@ const consoleErrors = []
 const originalConsoleError = console.error.bind(console)
 const SOLD_OUT_TEXT = 'Out of stock. Everything here has been sold.'
 const MARKET_ITEMS = Object.freeze([
-  ['card-1', true, 'New card: 8S · 3 coins'],
-  ['service-1', true, 'Replace a card with 5C · 2 coins'],
+  ['card-1', true, 'New card: JS · 3 coins'],
+  ['service-1', true, 'Replace a card with 7S · 2 coins'],
   ['modifier-1', false, 'Modifier: Vow of Constancy · 4 coins'],
 ])
 const SHRINE_OPTIONS = Object.freeze([
@@ -21,7 +21,7 @@ const MARKET_LOG = Object.freeze([
   'Stage 1: entered Suit Opposition',
   'Suit Opposition: gained Hold Insight and collected 3 coins',
   'Stage 2: entered Wayside Market',
-  'Wayside Market: replaced 2H with 5C for 2 coins',
+  'Wayside Market: replaced 2H with 7S for 2 coins',
   'Wayside Market: left the shop',
 ])
 
@@ -291,9 +291,9 @@ async function openTargets(selector, targetSelector, name) {
 
 async function run() {
   const fixtures = {
-    route: await loadFixture('campaign-save-route-v8.json'),
-    event: await loadFixture('campaign-save-event-v8.json'),
-    exhausted: await loadFixture('campaign-save-shop-exhausted-v8.json'),
+    route: await loadFixture('campaign-save-route-v9.json'),
+    event: await loadFixture('campaign-save-event-v9.json'),
+    exhausted: await loadFixture('campaign-save-shop-exhausted-v9.json'),
   }
 
   // Route map: only available nodes are buttons, and closed nodes say why.
@@ -356,7 +356,7 @@ async function run() {
     targetCount: firstTargets.length,
   })
   assert(
-    shopTarget.heading === 'Choose a card to replace with 5C',
+    shopTarget.heading === 'Choose a card to replace with 7S',
     'The target list must name the replacement card',
   )
   assert(shopTarget.description.endsWith('It costs 2 coins.'), 'Targets must restate the price')

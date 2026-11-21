@@ -7,7 +7,7 @@ import {
   prepareCampaignReveal,
 } from '../../src/domain/campaign-machine.js'
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
-import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
+import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
 import { restoreRunSave } from '../../src/persistence/run-schema.js'
 import {
   ACTIVE_DECK_HALO_RING,
@@ -18,9 +18,13 @@ import { createEventTimeline } from '../../src/presentation/event-player.js'
 import { createTextureCache } from '../../src/presentation/texture-cache.js'
 import { createThemeRegistry } from '../../src/presentation/themes/registry.js'
 import {
+  attritionFixtureRun,
   claimReward,
+  gateFightUntil,
   modifiersFixtureRun,
   passThrough,
+  stakesDrawFixtureRun,
+  stakesFixtureRun,
   winEncounter,
 } from '../fixtures/campaign-route.js'
 import {
@@ -1475,7 +1479,7 @@ test('campaign informed Hold choices render both peeked top cards face-up', () =
   windowObject.flushFrames()
 
   const map = restoreRunSave(JSON.parse(readFileSync(
-    new URL('../fixtures/campaign-save-route-v8.json', import.meta.url),
+    new URL('../fixtures/campaign-save-route-v9.json', import.meta.url),
     'utf8',
   )))
   const ready = passThrough(map, 'shrine', 'court')
@@ -1514,6 +1518,124 @@ test('campaign informed Hold choices render both peeked top cards face-up', () =
   )
 
   handle.teardown()
+})
+
+test('campaign stakes and attrition move as bounded labelled piles', () => {
+  const host = createHost(768, 1024)
+  const windowObject = createWindow({ width: 768, height: 1024 })
+  const observer = createObserverHarness()
+  const renderers = []
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory(options) {
+      const renderer = new FakeRenderer(host, options)
+      renderers.push(renderer)
+      return renderer
+    },
+    textureCacheFactory: () => createTextureCacheHarness().cache,
+    createLabelCanvas: createFakeCanvas,
+  })
+  windowObject.flushFrames()
+  const scene = renderers[0].scene
+  const labels = new Map()
+  const disposed = new Set()
+  const visibleLabels = () => {
+    const names = []
+    scene.traverse((object) => {
+      if (!object.name.startsWith('battlefield-count:')) return
+      names.push(object.name)
+      for (const resource of [object.material, object.material.map]) {
+        if (labels.has(resource)) continue
+        labels.set(resource, object.name)
+        resource.addEventListener('dispose', () => disposed.add(resource))
+      }
+    })
+    return names.sort()
+  }
+  const contestCards = () => scene
+    .getObjectByName('battlefield-zone:contestedPile')
+    .children.filter(({ name }) => name.startsWith('battlefield-card:')).length
+
+  // Seed 4 stakes 7 cards a side and ties again; seed 193 ties three more times after a stake,
+  // which overflows eight transient cards; seed 1297 without burns draws with 25 cards a side
+  // staked and retained on the table.
+  const largeStakes = gateFightUntil(4, 'battlefield-large-stakes', (run) => (
+    run.machineState === 'ready' && run.pendingEvent.stakes.length >= 14
+  ))
+  const longTie = gateFightUntil(193, 'battlefield-long-tie-stakes', (run) => (
+    run.machineState === 'ready'
+    && run.pendingEvent.stakes.length > 0
+    && run.pendingEvent.reveals.length >= 8
+  ))
+  const allInDraw = gateFightUntil(1297, 'battlefield-all-in-draw', (run) => (
+    run.pendingEvent.type === 'clashDrawn'
+  ), NO_BURN_RULESET)
+  assert.equal(allInDraw.pendingEvent.stakes.length, 50)
+  const runs = [
+    largeStakes,
+    longTie,
+    allInDraw,
+    stakesFixtureRun(),
+    attritionFixtureRun(),
+    stakesDrawFixtureRun(),
+  ]
+  for (const run of runs) {
+    const event = run.pendingEvent
+    const timeline = createEventTimeline(event)
+    handle.beginEvent(event, run)
+    assert.equal(contestCards(), 0, event.id)
+    for (const [index, step] of timeline.entries()) {
+      handle.applyStep(step, {
+        event,
+        match: run,
+        stepIndex: index,
+        stepCount: timeline.length,
+        durationMs: 0,
+      })
+      renderers.at(-1).animationLoop(index * 20)
+      const { transientCards } = handle.getPresentationState()
+      // A settling card trimmed during a long tie comes back beside the eight kept ones.
+      const settling = step.kind === 'transfer' || step.kind === 'burn'
+      assert.ok(transientCards <= (settling ? 9 : 8), `${event.id} ${step.kind} ${transientCards}`)
+      if (step.kind === 'stake') {
+        const count = step.piles[0].count
+        assert.deepEqual(visibleLabels(), [`battlefield-count:${count}`, `battlefield-count:${count}`])
+        assert.equal(handle.getPresentationState().phase, 'stake')
+      } else if (step.kind === 'attrition') {
+        assert.deepEqual(visibleLabels(), [`battlefield-count:${step.count}`])
+        assert.equal(handle.getPresentationState().phase, 'attrition')
+      } else {
+        visibleLabels()
+      }
+    }
+    assert.equal(handle.getPresentationState().eventId, event.id)
+
+    handle.syncSnapshot(run, { reason: 'completed' })
+    assert.equal(handle.getPresentationState().transientCards, 0, event.id)
+    assert.deepEqual(visibleLabels(), [])
+    assert.ok(contestCards() <= 4, event.id)
+  }
+  assert.ok(labels.size > 0)
+  assert.deepEqual([...labels.keys()].filter((resource) => !disposed.has(resource)), [])
+
+  // A context restored mid-stake rebuilds the same piles and labels from the applied steps.
+  const event = largeStakes.pendingEvent
+  const timeline = createEventTimeline(event)
+  handle.beginEvent(event, largeStakes)
+  for (const step of timeline.slice(0, 3)) handle.applyStep(step, { durationMs: 100 })
+  const staked = handle.getPresentationState()
+  const stakedLabels = visibleLabels()
+  renderers.at(-1).domElement.dispatch('webglcontextlost')
+  renderers.at(-1).domElement.dispatch('webglcontextrestored')
+  assert.equal(handle.getContextState().status, 'ready')
+  assert.equal(handle.getPresentationState().phase, 'stake')
+  assert.equal(handle.getPresentationState().transientCards, staked.transientCards)
+  assert.equal(handle.getPresentationState().tweens, 0)
+  assert.deepEqual(visibleLabels(), stakedLabels)
+
+  handle.teardown()
+  assert.deepEqual([...labels.keys()].filter((resource) => !disposed.has(resource)), [])
 })
 
 test('campaign boundaries between encounters render only the held card without deck input', () => {

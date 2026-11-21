@@ -13,6 +13,8 @@ const EXPECTED_LOG = Object.freeze([
   'Crossroads Shrine: Walk on',
   'Stage 3: entered Royal Court',
 ])
+// The fixture run draws Double or nothing for the Royal Court, a normal fight.
+const EXPECTED_RULE = 'Double or nothing: once either side replays its own cards, each clash stakes 0, 1, 3, 7… face-down cards a side, matched to the shorter side.'
 
 console.error = (...values) => {
   consoleErrors.push(values.map(String).join(' '))
@@ -123,7 +125,7 @@ function createUpdateController() {
 }
 
 async function loadRewardDraft() {
-  const response = await fetch(new URL('../fixtures/campaign-save-reward-v8.json', import.meta.url))
+  const response = await fetch(new URL('../fixtures/campaign-save-reward-v9.json', import.meta.url))
   if (!response.ok) throw new Error('The saved reward draft fixture could not be loaded')
   return restoreRunSave(await response.json())
 }
@@ -351,11 +353,16 @@ async function run() {
       .map((title) => title.textContent.trim()),
     route: detailSectionLines('Route'),
     modifiers: detailSectionLines('Active modifiers'),
+    rule: detailSectionLines('Encounter rule'),
     log: detailSectionLines('Expedition log'),
   })
   assert(
-    inspection.sections.join() === 'Route,Active modifiers,Expedition log',
-    'Run details must show the route, modifiers, and log in order',
+    inspection.sections.join() === 'Route,Active modifiers,Encounter rule,Expedition log',
+    'Run details must show the route, modifiers, encounter rule, and log in order',
+  )
+  assert(
+    inspection.rule.join('\n') === EXPECTED_RULE,
+    "Run details must name the fight's encounter rule and when it starts",
   )
   assert(
     inspection.modifiers.some((line) => line.startsWith('Hold Insight (Permanent)')),

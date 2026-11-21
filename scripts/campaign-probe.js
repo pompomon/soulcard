@@ -2,6 +2,10 @@ import { parseArgs } from 'node:util'
 import { compareCards, getCard } from '../src/domain/cards.js'
 import { CAMPAIGN_MEND_OFFER_ID } from '../src/domain/campaign-content.js'
 import {
+  CAMPAIGN_ENCOUNTER_RULES,
+  assignCampaignEncounterRules,
+} from '../src/domain/campaign-encounter-rules.js'
+import {
   CAMPAIGN_GAME_RULES_VERSION,
   CAMPAIGN_HOLD_DECISION_STATES,
   captureCampaignHold,
@@ -29,9 +33,10 @@ import { DEFAULT_TIMING_PROFILE } from '../src/domain/simulation.js'
 
 // Plays first-attempt Campaign fights with the starter deck through the real Campaign
 // machine. Each fight is reached by conceding the fights before it, taking Mend and walking
-// on, then dealt from the seed's initial RNG state, as a run's first fight would be.
+// on, then dealt from the seed's initial RNG state, as a run's first fight would be. The
+// run seed picks the fight's encounter rule, so each rule's deals pair with the others'.
 
-const REPORT_VERSION = 1
+const REPORT_VERSION = 2
 const UINT32_MAX = 0xffffffff
 const MAX_SEEDS = 10_000
 const MAX_FIGHT_CLASHES = 100_000
@@ -43,17 +48,20 @@ const POLICIES = Object.freeze(['never', 'blind', 'informed'])
 const RULESETS = Object.freeze([BASELINE_RULESET, NO_BURN_RULESET])
 const FIGHT_NODES = Object.freeze(CAMPAIGN_MAP.nodes.filter(({ kind }) => kind === 'fight'))
 const FIGHT_IDS = Object.freeze(FIGHT_NODES.map(({ contentId }) => contentId))
+const RULE_IDS = Object.freeze(CAMPAIGN_ENCOUNTER_RULES.map(({ id }) => id))
 const RULESET_IDS = Object.freeze(RULESETS.map(({ id }) => id))
 
 function usage() {
   return [
     'Usage: npm run probe:campaign -- [--seed UINT32 | --start UINT32 --count INTEGER]',
-    '                                 [--fight FIGHT_ID] [--policy never|blind|informed]',
+    '                                 [--fight FIGHT_ID] [--rule RULE_ID]',
+    '                                 [--policy never|blind|informed]',
     `                                 [--ruleset ${RULESET_IDS.join('|')}]`,
     '',
     'Plays first-attempt Campaign fights with the starter deck. Without options it runs every',
-    `fight and Hold policy under ${BASELINE_RULESET.id} for seeds 0 through 199.`,
+    `fight, encounter rule and Hold policy under ${BASELINE_RULESET.id} for seeds 0 through 199.`,
     `Fights: ${FIGHT_IDS.join(', ')}.`,
+    `Rules: ${RULE_IDS.join(', ')}.`,
   ].join('\n')
 }
 
@@ -109,6 +117,7 @@ function parseArguments(args) {
       start: { type: 'string' },
       count: { type: 'string' },
       fight: { type: 'string' },
+      rule: { type: 'string' },
       policy: { type: 'string' },
       ruleset: { type: 'string' },
     },
@@ -125,6 +134,7 @@ function parseArguments(args) {
   return {
     seeds: parseSeeds(values),
     fightNodes: FIGHT_NODES.filter(({ contentId }) => fightIds.includes(contentId)),
+    ruleIds: parseChoice(values.rule, '--rule', RULE_IDS),
     policies: parseChoice(values.policy, '--policy', POLICIES),
     rulesets: RULESETS.filter(({ id }) => rulesetIds.includes(id)),
   }
@@ -158,7 +168,8 @@ function revealNormally(run) {
 }
 
 // Ends a fight on the way to the probed one as a win without drawing from the RNG: the
-// opponent's undealt cards move to the player's won pile, so it can't reveal.
+// opponent's undealt cards move to the player's won pile, so it can't reveal. The clash
+// never completes a reveal round, so no encounter rule stakes or burns.
 function concede(input) {
   const run = structuredClone(input)
   const { zones } = run.encounter
@@ -166,6 +177,9 @@ function concede(input) {
   const { match } = revealNormally(reseal(run))
   if (match.machineState !== 'awaitingReward') {
     throw new Error(`Conceding ${input.encounter.id} did not open its reward`)
+  }
+  if (match.rng.state !== input.rng.state) {
+    throw new Error(`Conceding ${input.encounter.id} drew from the run RNG`)
   }
   return match
 }
@@ -200,12 +214,31 @@ function passThrough(input, nodeId) {
   }
 }
 
-function seatFight(nodeId, seed, ruleset) {
-  let run = createCampaignRun({ runId: `probe-${seed}`, seed, ruleset })
+// The first run seed from `seed` upward, wrapping at uint32, that assigns `ruleId` to the
+// fight node.
+function runSeedFor(seed, nodeId, ruleId) {
+  for (let offset = 0; offset <= UINT32_MAX; offset += 1) {
+    const runSeed = (seed + offset) % (UINT32_MAX + 1)
+    const assigned = assignCampaignEncounterRules(runSeed)
+      .find((assignment) => assignment.nodeId === nodeId)
+    if (assigned.ruleId === ruleId) return runSeed
+  }
+  throw new Error(`No run seed assigns ${ruleId} to ${nodeId}`)
+}
+
+// The run keeps its seed, which fixes the encounter rules, but deals the fight from the
+// deal seed's initial RNG state.
+function seatFight(nodeId, ruleId, seed, ruleset) {
+  const runSeed = runSeedFor(seed, nodeId, ruleId)
+  let run = createCampaignRun({ runId: `probe-${seed}`, seed: runSeed, ruleset })
   for (const viaId of routeTo(nodeId)) run = passThrough(run, viaId)
   const dealt = structuredClone(run)
-  dealt.rng = createRng(seed).snapshot()
-  return chooseCampaignRoute(reseal(dealt), { nodeId, step: step(run) })
+  dealt.rng = { ...run.rng, state: createRng(seed).snapshot().state }
+  const seated = chooseCampaignRoute(reseal(dealt), { nodeId, step: step(run) })
+  if (seated.encounter.rule.id !== ruleId) {
+    throw new Error(`Run seed ${runSeed} did not seat ${ruleId} at ${nodeId}`)
+  }
+  return seated
 }
 
 function cardValue(run, instanceId) {
@@ -246,11 +279,13 @@ function revealChoice(prepared, policy) {
   return !normalWins && heldWins ? 'hold' : 'normal'
 }
 
+// Stakes are priced as one more reveal step, and attrition burns like settlement burns.
 function eventDurationMs(event) {
   let durationMs = event.reveals.length * DEFAULT_TIMING_PROFILE.revealMs
+  if (event.stakes.length > 0) durationMs += DEFAULT_TIMING_PROFILE.revealMs
   if (event.type === 'clashSettled') {
     durationMs += DEFAULT_TIMING_PROFILE.settlementMs
-    durationMs += event.burned.length * DEFAULT_TIMING_PROFILE.burnMs
+    durationMs += (event.burned.length + event.attrition.length) * DEFAULT_TIMING_PROFILE.burnMs
   }
   return durationMs
 }
@@ -273,7 +308,12 @@ function playFight(seated, policy) {
     clashes += 1
     durationMs += eventDurationMs(transition.event) + AUTO_REVEAL_MS_PER_CLASH
   }
-  return { result: fightResult(run.encounter.outcome), clashes, seconds: durationMs / 1000 }
+  return {
+    result: fightResult(run.encounter.outcome),
+    raceTarget: run.encounter.outcome.reason === 'raceTargetReached',
+    clashes,
+    seconds: durationMs / 1000,
+  }
 }
 
 function fightResult(outcome) {
@@ -300,23 +340,25 @@ function distribution(values) {
   }
 }
 
-function probeCell(node, ruleset, policy, seeds) {
+function probeCell(node, ruleId, ruleset, policy, seeds) {
   const fights = []
   for (let seed = seeds.start; seed < seeds.start + seeds.count; seed += 1) {
-    fights.push(playFight(seatFight(node.id, seed, ruleset), policy))
+    fights.push(playFight(seatFight(node.id, ruleId, seed, ruleset), policy))
   }
-  const count = (result) => fights.filter((fight) => fight.result === result).length
-  const percent = (result) => round1((100 * count(result)) / fights.length)
+  const share = (matches) => round1((100 * fights.filter(matches).length) / fights.length)
+  const percent = (result) => share((fight) => fight.result === result)
   const clashes = fights.map((fight) => fight.clashes)
   return {
     ruleset: ruleset.id,
     fightId: node.contentId,
     nodeId: node.id,
+    ruleId,
     policy,
     fights: fights.length,
     winPercent: percent('win'),
     lossPercent: percent('loss'),
     drawPercent: percent('draw'),
+    raceTargetPercent: share((fight) => fight.raceTarget),
     clashes: {
       mean: round1(clashes.reduce((sum, value) => sum + value, 0) / clashes.length),
       ...distribution(clashes),
@@ -325,11 +367,15 @@ function probeCell(node, ruleset, policy, seeds) {
   }
 }
 
-function createReport({ seeds, fightNodes, policies, rulesets }) {
+function createReport({ seeds, fightNodes, ruleIds, policies, rulesets }) {
   const cells = []
   for (const ruleset of rulesets) {
     for (const node of fightNodes) {
-      for (const policy of policies) cells.push(probeCell(node, ruleset, policy, seeds))
+      for (const ruleId of ruleIds) {
+        for (const policy of policies) {
+          cells.push(probeCell(node, ruleId, ruleset, policy, seeds))
+        }
+      }
     }
   }
   return {

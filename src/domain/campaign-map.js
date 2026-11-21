@@ -91,7 +91,8 @@ function isSortedAndDistinct(ids) {
 }
 
 // A rank is covered when some deck card ties or beats it, so a player card of that rank
-// can lose a clash. Under burn rules an uncovered rank can never be burned.
+// can lose a clash. Under burn rules an uncovered rank never burns as a revealed card;
+// Double or nothing stakes and Attrition can still burn it.
 export function uncoveredCampaignRanks(cardIds) {
   return RANKS
     .map(({ rank }) => rank)

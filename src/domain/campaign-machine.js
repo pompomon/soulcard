@@ -16,6 +16,12 @@ import {
   playerInstanceId,
 } from './campaign-deck.js'
 import {
+  assignCampaignEncounterRules,
+  getEncounterRule,
+  getEncounterStake,
+  isEncounterRuleActive,
+} from './campaign-encounter-rules.js'
+import {
   CAMPAIGN_EVENT_VERSION,
   createCampaignClashDrawnEvent,
   createCampaignClashSettledEvent,
@@ -55,8 +61,8 @@ import {
   validateRuleset,
 } from './ruleset.js'
 
-export const CAMPAIGN_VERSION = 4
-export const CAMPAIGN_GAME_RULES_VERSION = 7
+export const CAMPAIGN_VERSION = 5
+export const CAMPAIGN_GAME_RULES_VERSION = 8
 export const HOLD_POSITION = 'holdPosition'
 export const CAMPAIGN_HOLD_DECISION_STATES = Object.freeze([
   'awaitingHoldChoice',
@@ -105,6 +111,7 @@ const CAMPAIGN_KEYS = Object.freeze([
   'encounterIndex',
   'encounterAttempt',
   'route',
+  'encounterRules',
   'cards',
   'deckLayout',
   'hold',
@@ -133,10 +140,12 @@ const ENCOUNTER_KEYS = Object.freeze([
   'tier',
   'damage',
   'traitIds',
+  'rule',
   'supplyMode',
   'zones',
   'outcome',
 ])
+const ENCOUNTER_RULE_STATE_KEYS = Object.freeze(['id', 'activeClashes', 'wins'])
 const ZONE_KEYS = Object.freeze([
   'playerSourcePile',
   'opponentSourcePile',
@@ -443,6 +452,10 @@ function assertDeckLayout(run, instances) {
   }
 }
 
+function otherSide(side) {
+  return side === 'player' ? 'opponent' : 'player'
+}
+
 function hasRegularSupply(zones, side) {
   return (
     zones[`${side}SourcePile`].length > 0
@@ -451,7 +464,66 @@ function hasRegularSupply(zones, side) {
   )
 }
 
-function assertEncounterShape(run, definition) {
+function keepsMoreThanTransfers(zones, side, transfers) {
+  return (
+    zones[`${side}SourcePile`].length > 0
+    || zones[side].drawPile.length > 0
+    || zones[side].wonPile.length !== transfers
+  )
+}
+
+// The rule state of the active fight. Race wins count every active clash; other rules
+// count none. Whether a side may sit at the race target depends on the outcome.
+function assertEncounterRuleState(run, ruleId) {
+  const state = run.encounter.rule
+  const name = 'campaign.encounter.rule'
+  assertPlainObject(state, name)
+  assertExactKeys(state, ENCOUNTER_RULE_STATE_KEYS, name)
+  if (state.id !== ruleId) {
+    throw new Error(`${name}.id must match the rule assigned to its fight`)
+  }
+  assertPlainObject(state.wins, `${name}.wins`)
+  assertExactKeys(state.wins, SIDES, `${name}.wins`)
+  for (const [key, count] of [
+    ['activeClashes', state.activeClashes],
+    ['wins.player', state.wins.player],
+    ['wins.opponent', state.wins.opponent],
+  ]) {
+    if (!Number.isSafeInteger(count) || count < 0) {
+      throw new TypeError(`${name}.${key} must be a nonnegative safe integer`)
+    }
+  }
+  if (state.activeClashes > run.turn) {
+    throw new Error('A campaign encounter rule cannot count more clashes than were played')
+  }
+  if (state.activeClashes > 0 && !isEncounterRuleActive(run.encounter)) {
+    throw new Error('A campaign encounter rule counts clashes only once it is active')
+  }
+  const rule = getEncounterRule(run.encounter)
+  const wins = state.wins.player + state.wins.opponent
+  if (rule.effect === 'race' ? wins !== state.activeClashes : wins !== 0) {
+    throw new Error('Only a race counts clash wins, one for each active clash')
+  }
+  return rule
+}
+
+// Only the winner of a race that ended at its target may have reached the target.
+function assertRaceTarget(run, rule, raceWinner) {
+  if (rule.effect !== 'race') {
+    if (raceWinner !== null) {
+      throw new Error('Only a race can end a campaign encounter at its target')
+    }
+    return
+  }
+  for (const side of SIDES) {
+    const wins = run.encounter.rule.wins[side]
+    if (side === raceWinner ? wins !== rule.parameter : wins >= rule.parameter) {
+      throw new Error('Only the winner of a finished race can reach the race target')
+    }
+  }
+}
+
+function assertEncounterShape(run, definition, ruleId) {
   assertPlainObject(run.encounter, 'campaign.encounter')
   assertExactKeys(run.encounter, ENCOUNTER_KEYS, 'campaign.encounter')
   if (
@@ -479,6 +551,7 @@ function assertEncounterShape(run, definition) {
       throw new TypeError(`campaign.encounter.supplyMode.${side} is invalid`)
     }
   }
+  const rule = assertEncounterRuleState(run, ruleId)
   const zones = run.encounter.zones
   assertPlainObject(zones, 'campaign.encounter.zones')
   assertExactKeys(zones, ZONE_KEYS, 'campaign.encounter.zones')
@@ -515,8 +588,8 @@ function assertEncounterShape(run, definition) {
       throw new Error(`Campaign ${side} source supply mode requires an empty personal draw pile`)
     }
   }
-  if (!run.ruleset.burn.enabled && zones.burnPile.length > 0) {
-    throw new Error('A no-burn campaign cannot contain burned cards')
+  if (!run.ruleset.burn.enabled && rule.effect !== 'attrition' && zones.burnPile.length > 0) {
+    throw new Error('A no-burn campaign cannot contain burned cards outside Attrition')
   }
   if (zones.inPlay.length !== 0) {
     throw new Error('Campaign stable boundaries require an empty inPlay zone')
@@ -531,6 +604,7 @@ function assertEncounterShape(run, definition) {
     if (['awaitingRetry', 'awaitingReward', 'ended'].includes(run.machineState)) {
       throw new Error('A terminal campaign transition requires an encounter outcome')
     }
+    assertRaceTarget(run, rule, null)
     return
   }
   assertPlainObject(run.encounter.outcome, 'campaign.encounter.outcome')
@@ -544,22 +618,26 @@ function assertEncounterShape(run, definition) {
       ['result', 'winner', 'reason'],
       'campaign.encounter.outcome',
     )
-    if (!SIDES.includes(run.encounter.outcome.winner)) {
+    const { winner, reason } = run.encounter.outcome
+    if (!SIDES.includes(winner)) {
       throw new TypeError('campaign encounter winner must be player or opponent')
     }
-    const expectedReason = run.encounter.outcome.winner === 'player'
+    const inabilityReason = winner === 'player'
       ? 'opponentUnableToReveal'
       : 'playerUnableToReveal'
-    if (run.encounter.outcome.reason !== expectedReason) {
-      throw new TypeError(`campaign encounter reason must be ${expectedReason}`)
+    if (![inabilityReason, 'raceTargetReached'].includes(reason)) {
+      throw new TypeError(
+        `campaign encounter reason must be ${inabilityReason} or raceTargetReached`,
+      )
     }
     if (zones.contestedPile.length !== 0) {
       throw new Error('A won campaign encounter cannot retain a contested pile')
     }
-    const loser = run.encounter.outcome.winner === 'player' ? 'opponent' : 'player'
-    if (hasRegularSupply(zones, loser)) {
+    // A race can end while its loser still has cards to reveal.
+    if (reason === inabilityReason && hasRegularSupply(zones, otherSide(winner))) {
       throw new Error('A campaign encounter loser must have no regular supply')
     }
+    assertRaceTarget(run, rule, reason === 'raceTargetReached' ? winner : null)
   } else if (resultDescriptor.value === 'draw') {
     assertExactKeys(
       run.encounter.outcome,
@@ -575,6 +653,7 @@ function assertEncounterShape(run, definition) {
     if (SIDES.some((side) => hasRegularSupply(zones, side))) {
       throw new Error('A drawn campaign encounter requires both sides to exhaust regular supply')
     }
+    assertRaceTarget(run, rule, null)
   } else {
     throw new TypeError('campaign encounter outcome must be win or draw')
   }
@@ -663,6 +742,57 @@ function refreshFingerprint(run) {
   run.stateFingerprint = createCampaignStateFingerprint(run)
 }
 
+// A settled clash with complete reveal rounds was decided by a comparison; one with an odd
+// count ended when a side could not reveal. Only a decided clash advances the rule.
+function assertPendingRule(run, event) {
+  const zones = run.encounter.zones
+  const state = run.encounter.rule
+  const rule = getEncounterRule(run.encounter)
+  const settled = event.type === 'clashSettled'
+  const counted = settled
+    && event.reveals.length % 2 === 0
+    && isEncounterRuleActive(run.encounter)
+  const before = state.activeClashes - (counted ? 1 : 0)
+  if (before < 0) {
+    throw new Error('A clash settled under an active encounter rule must be counted')
+  }
+  const schedule = rule.effect === 'stakes' && event.reveals.length >= 2
+    ? rule.parameter ** before - 1
+    : 0
+  const [playerStakes, opponentStakes] = SIDES.map((side) => (
+    event.stakes.filter(({ suppliedBy }) => suppliedBy === side).length
+  ))
+  if (playerStakes !== opponentStakes || playerStakes > schedule) {
+    throw new Error('Both sides must stake the same count, at most the Double or nothing schedule')
+  }
+  // Stakes fall short of the schedule only when the shorter side runs out. That side can
+  // reveal nothing more; it keeps nothing if it loses, and only the clash's transfers if it
+  // wins.
+  const ranOut = (side) => !(
+    event.reveals.slice(2).some(({ suppliedBy }) => suppliedBy === side)
+    || (settled && (
+      event.winner === side
+        ? keepsMoreThanTransfers(zones, side, event.transfers.length)
+        : hasRegularSupply(zones, side)
+    ))
+  )
+  if (playerStakes < schedule && !SIDES.some(ranOut)) {
+    throw new Error('Stakes may fall short of the Double or nothing schedule only when a side runs out')
+  }
+  if (!settled) return
+  const attritionDue = counted && rule.effect === 'attrition'
+  if (event.attrition.length > 0 && (!attritionDue || run.encounter.outcome !== null)) {
+    throw new Error('Only Attrition burns cards, after an active clash that the fight survives')
+  }
+  if (
+    attritionDue
+    && event.attrition.length < rule.parameter
+    && hasRegularSupply(zones, otherSide(event.winner))
+  ) {
+    throw new Error('Attrition must burn its full count unless the loser runs out')
+  }
+}
+
 function assertPendingEvent(run, instances) {
   const terminalTransition = ['awaitingRetry', 'awaitingReward', 'ended']
     .includes(run.machineState)
@@ -676,58 +806,65 @@ function assertPendingEvent(run, instances) {
     throw new Error('A Hold choice boundary cannot retain a pending event')
   }
   validateCampaignEvent(run.pendingEvent)
+  const event = run.pendingEvent
+  if (event.eventVersion !== CAMPAIGN_EVENT_VERSION) {
+    throw new Error(`A campaign pending event must use event version ${CAMPAIGN_EVENT_VERSION}`)
+  }
   if (
-    run.pendingEvent.id !== `${run.runId}:clash-${run.turn}`
-    || run.pendingEvent.turn !== run.turn
-    || run.pendingEvent.encounterIndex !== run.encounterIndex
-    || run.pendingEvent.encounterAttempt !== run.encounterAttempt
+    event.id !== `${run.runId}:clash-${run.turn}`
+    || event.turn !== run.turn
+    || event.encounterIndex !== run.encounterIndex
+    || event.encounterAttempt !== run.encounterAttempt
   ) {
     throw new Error('Campaign pending event must describe the latest clash')
   }
   const encounterOutcome = run.encounter.outcome
-  if (encounterOutcome === null && run.pendingEvent.type === 'clashDrawn') {
+  const decided = event.type === 'clashSettled' && event.reveals.length % 2 === 0
+  if (encounterOutcome === null && event.type === 'clashDrawn') {
     throw new Error('A campaign draw event requires a drawn encounter outcome')
   }
-  if (
-    encounterOutcome === null
-    && run.pendingEvent.type === 'clashSettled'
-    && run.pendingEvent.reveals.length % 2 !== 0
-  ) {
+  if (encounterOutcome === null && event.type === 'clashSettled' && !decided) {
     throw new Error('A nonterminal campaign event requires complete reveal rounds')
   }
   if (
     encounterOutcome?.result === 'draw'
-    && run.pendingEvent.type !== 'clashDrawn'
+    && event.type !== 'clashDrawn'
   ) {
     throw new Error('A drawn campaign encounter requires a draw event')
   }
-  if (
-    encounterOutcome?.result === 'win'
-    && (
-      run.pendingEvent.type !== 'clashSettled'
-      || run.pendingEvent.winner !== encounterOutcome.winner
-      || run.pendingEvent.reveals.length % 2 !== 1
-    )
-  ) {
-    throw new Error('A won campaign encounter requires a matching settled event with terminal inability')
+  if (encounterOutcome?.result === 'win') {
+    const raceWon = encounterOutcome.reason === 'raceTargetReached'
+    if (
+      event.type !== 'clashSettled'
+      || event.winner !== encounterOutcome.winner
+      || decided !== raceWon
+    ) {
+      throw new Error(raceWon
+        ? 'A race win requires a matching settled event with complete reveal rounds'
+        : 'A won campaign encounter requires a matching settled event with terminal inability')
+    }
   }
   if (
     encounterOutcome?.result === 'win'
     && encounterOutcome.winner === 'opponent'
     && run.hold !== null
-    && run.pendingEvent.reveals.length === 1
+    && event.reveals.length === 1
   ) {
     throw new Error('A first-round player inability cannot bypass occupied Hold')
   }
-  for (const reveal of run.pendingEvent.reveals) {
-    if (instances.get(reveal.instanceId)?.cardId !== reveal.cardId) {
+  // Stakes join the contest after the first reveal round and before any tie round.
+  const contest = [...event.reveals.slice(0, 2), ...event.stakes, ...event.reveals.slice(2)]
+  const attrition = event.type === 'clashSettled' ? event.attrition : []
+  for (const record of [...contest, ...attrition]) {
+    if (instances.get(record.instanceId)?.cardId !== record.cardId) {
       throw new Error('Campaign event card identities must match their instances')
     }
   }
-  if (run.pendingEvent.type === 'clashSettled') {
-    const winner = run.pendingEvent.winner
-    const transfers = run.pendingEvent.transfers.map(({ instanceId }) => instanceId)
-    const burned = run.pendingEvent.burned
+  assertPendingRule(run, event)
+  if (event.type === 'clashSettled') {
+    const winner = event.winner
+    const transfers = event.transfers.map(({ instanceId }) => instanceId)
+    const burned = event.burned
     const burns = ({ suppliedBy }) => contestCardBurns({
       ruleset: run.ruleset,
       activeModifiers: run.activeModifiers,
@@ -735,10 +872,10 @@ function assertPendingEvent(run, instances) {
       winner,
       suppliedBy,
     })
-    const expectedTransfers = run.pendingEvent.reveals
-      .filter((reveal) => !burns(reveal))
+    const expectedTransfers = contest
+      .filter((record) => !burns(record))
       .map(({ instanceId }) => instanceId)
-    const expectedBurned = run.pendingEvent.reveals
+    const expectedBurned = contest
       .filter(burns)
       .map(({ instanceId }) => instanceId)
     if (
@@ -758,26 +895,27 @@ function assertPendingEvent(run, instances) {
       throw new Error('Campaign event transfers must be the winner won-pile suffix')
     }
     const burnPile = run.encounter.zones.burnPile
-    const burnStart = burnPile.length - burned.length
+    const removed = [...burned, ...attrition.map(({ instanceId }) => instanceId)]
+    const burnStart = burnPile.length - removed.length
     if (
       burnStart < 0
-      || burned.some((instanceId, index) => burnPile[burnStart + index] !== instanceId)
+      || removed.some((instanceId, index) => burnPile[burnStart + index] !== instanceId)
     ) {
       throw new Error('Campaign event burns must be the burn-pile suffix')
     }
   } else if (
-    run.pendingEvent.reveals.length !== run.encounter.zones.contestedPile.length
-    || run.pendingEvent.reveals.some((reveal, index) => {
+    contest.length !== run.encounter.zones.contestedPile.length
+    || contest.some((record, index) => {
       const contested = run.encounter.zones.contestedPile[index]
       return (
-        reveal.instanceId !== contested.instanceId
-        || reveal.suppliedBy !== contested.suppliedBy
+        record.instanceId !== contested.instanceId
+        || record.suppliedBy !== contested.suppliedBy
       )
     })
   ) {
     throw new Error('Campaign draw event must match its retained contest')
   }
-  if (run.pendingEvent.stateFingerprint !== run.stateFingerprint) {
+  if (event.stateFingerprint !== run.stateFingerprint) {
     throw new Error('Campaign event and state fingerprints must match')
   }
 }
@@ -996,6 +1134,13 @@ function inspectCampaignState(run) {
   assertPlainObject(run.rng, 'campaign.rng')
   assertExactKeys(run.rng, ['algorithm', 'seed', 'state'], 'campaign.rng')
   restoreRng(run.rng)
+  const encounterRules = assignCampaignEncounterRules(run.rng.seed)
+  assertFixedData(
+    run.encounterRules,
+    encounterRules,
+    'campaign.encounterRules',
+    'the rules its seed assigns',
+  )
   if (!MACHINE_STATES.includes(run.machineState)) {
     throw new TypeError('campaign.machineState is not a public stable boundary')
   }
@@ -1056,7 +1201,7 @@ function inspectCampaignState(run) {
   if (fight === null) {
     assertNoEncounter(run)
   } else {
-    assertEncounterShape(run, fight)
+    assertEncounterShape(run, fight, assignedRuleId(encounterRules, replay.activeNodeId))
     collectEncounterInstances(run, instances)
   }
   assertDeckLayout(run, instances)
@@ -1111,7 +1256,12 @@ function createEmptyZones(playerSourcePile, opponentSourcePile) {
   }
 }
 
-function setUpEncounter(run, rng, fight) {
+function assignedRuleId(encounterRules, nodeId) {
+  return encounterRules.find((assignment) => assignment.nodeId === nodeId).ruleId
+}
+
+function setUpEncounter(run, rng, nodeId) {
+  const fight = getCampaignFight(getCampaignMapNode(nodeId).contentId)
   assertDistinctModifierHooks(run.activeModifiers)
   const opponentCards = createOpponentCards(run.encounterIndex, run.encounterAttempt, fight)
   run.cards = [
@@ -1120,13 +1270,19 @@ function setUpEncounter(run, rng, fight) {
   ]
   const playerInput = run.deckLayout.filter((entry) => entry !== HOLD_POSITION)
   const opponentInput = opponentCards.map(({ instanceId }) => instanceId)
-  // Tier and traits come from content and draw nothing, so shuffles are unchanged.
+  // Tier, traits, and the assigned rule draw nothing, so shuffles are unchanged. A retry
+  // starts the rule afresh.
   run.encounter = {
     id: fight.id,
     name: fight.name,
     tier: fight.tier,
     damage: fight.damage,
     traitIds: encounterTraitIds(fight, run.ruleset),
+    rule: {
+      id: assignedRuleId(run.encounterRules, nodeId),
+      activeClashes: 0,
+      wins: { player: 0, opponent: 0 },
+    },
     supplyMode: { player: 'source', opponent: 'source' },
     zones: createEmptyZones(
       shuffle(playerInput, rng),
@@ -1146,6 +1302,7 @@ function setUpEncounter(run, rng, fight) {
 
 // A new run opens on the route map with only the start node available. Choosing the route
 // never draws from the run RNG, so the first fight shuffles exactly as before routes.
+// Encounter rules come from their own derived stream, so they draw nothing from it either.
 export function createCampaignRun(options) {
   assertPlainObject(options, 'options')
   assertExactKeys(options, ['runId', 'seed', 'ruleset'], 'options')
@@ -1174,6 +1331,7 @@ export function createCampaignRun(options) {
     encounterIndex: 0,
     encounterAttempt: 1,
     route: { mapId: CAMPAIGN_MAP.id, nodes: createInitialRouteNodes() },
+    encounterRules: cloneData(assignCampaignEncounterRules(rng.snapshot().seed)),
     cards: cloneData(replay.playerCards),
     deckLayout: replay.playerCards.map(({ instanceId }) => instanceId),
     hold: null,
@@ -1262,7 +1420,7 @@ function revealHeld(run, reveals) {
   return card.cardId
 }
 
-function settleContest(run, winner, reveals) {
+function settleContest(run, winner) {
   const transfers = []
   const burned = []
   while (run.encounter.zones.contestedPile.length > 0) {
@@ -1284,7 +1442,26 @@ function settleContest(run, winner, reveals) {
       })
     }
   }
-  return { reveals: cloneData(reveals), transfers, burned }
+  return { transfers, burned }
+}
+
+// Attrition burns the loser's next cards through regular supply, never from Hold, and
+// skips burn-settlement effects.
+function burnAttrition(run, rng, side, count) {
+  const instances = cardMap(run)
+  const attrition = []
+  while (attrition.length < count) {
+    const prepared = prepareSupply(run, side, rng)
+    if (prepared.candidate === null) break
+    const instanceId = prepared.pile.shift()
+    run.encounter.zones.burnPile.push(instanceId)
+    attrition.push({
+      instanceId,
+      cardId: instances.get(instanceId).cardId,
+      from: prepared.from,
+    })
+  }
+  return attrition
 }
 
 function encounterWinningOutcome(winner) {
@@ -1327,6 +1504,8 @@ function applyTerminalTransition(run, encounterOutcome) {
   }
 }
 
+// The private envelope and the public event come from one payload, so the fingerprint
+// covers every event field.
 function createEventEnvelope(run, type, payload) {
   const common = {
     eventVersion: CAMPAIGN_EVENT_VERSION,
@@ -1339,40 +1518,32 @@ function createEventEnvelope(run, type, payload) {
   return type === 'clashSettled'
     ? {
         ...common,
-        winner: payload.winner,
-        reveals: payload.reveals,
-        transfers: payload.transfers,
-        burned: payload.burned,
+        ...payload,
         stateFingerprint: null,
         pendingPresentation: 'settlement-v1',
       }
     : {
         ...common,
         reason: 'mutualInability',
-        reveals: payload.reveals,
+        ...payload,
         stateFingerprint: null,
         pendingPresentation: 'draw-v1',
       }
 }
 
-function commitSettled(run, rng, winner, settlement, terminal) {
-  run.rng = rng.snapshot()
-  run.holdChoice = null
-  if (terminal) {
-    applyTerminalTransition(run, encounterWinningOutcome(winner))
-  } else {
-    run.machineState = 'ready'
-    run.encounter.outcome = null
-  }
-  const payload = { winner, ...settlement }
-  run.pendingEvent = createEventEnvelope(run, 'clashSettled', payload)
+function commitEvent(run, type, payload) {
+  const detached = cloneData(payload)
+  run.pendingEvent = createEventEnvelope(run, type, detached)
   refreshFingerprint(run)
-  run.pendingEvent = createCampaignClashSettledEvent({
+  const createEvent = type === 'clashSettled'
+    ? createCampaignClashSettledEvent
+    : createCampaignClashDrawnEvent
+  run.pendingEvent = createEvent({
     runId: run.runId,
     turn: run.turn,
     encounterIndex: run.encounterIndex,
     encounterAttempt: run.encounterAttempt,
-    ...payload,
+    ...detached,
     stateFingerprint: run.stateFingerprint,
   })
   validateCampaignState(run)
@@ -1380,27 +1551,47 @@ function commitSettled(run, rng, winner, settlement, terminal) {
   return Object.freeze({ match: committed, event: committed.pendingEvent })
 }
 
-function commitDraw(run, rng, reveals) {
+function commitSettled(run, rng, payload, encounterOutcome) {
+  run.rng = rng.snapshot()
+  run.holdChoice = null
+  if (encounterOutcome === null) {
+    run.machineState = 'ready'
+    run.encounter.outcome = null
+  } else {
+    applyTerminalTransition(run, encounterOutcome)
+  }
+  return commitEvent(run, 'clashSettled', payload)
+}
+
+function commitDraw(run, rng, payload) {
   run.rng = rng.snapshot()
   run.holdChoice = null
   applyTerminalTransition(run, { result: 'draw', reason: 'mutualInability' })
-  run.pendingEvent = createEventEnvelope(run, 'clashDrawn', { reveals })
-  refreshFingerprint(run)
-  run.pendingEvent = createCampaignClashDrawnEvent({
-    runId: run.runId,
-    turn: run.turn,
-    encounterIndex: run.encounterIndex,
-    encounterAttempt: run.encounterAttempt,
-    reveals: cloneData(reveals),
-    stateFingerprint: run.stateFingerprint,
-  })
-  validateCampaignState(run)
-  const committed = deepFreeze(run)
-  return Object.freeze({ match: committed, event: committed.pendingEvent })
+  return commitEvent(run, 'clashDrawn', payload)
 }
 
+// A side that cannot reveal loses the fight, taking the contest with it; when neither
+// can, the fight is drawn and the contest stays on the table. The rule does not advance.
+function concludeInability(run, rng, playerCard, opponentCard, reveals, stakes) {
+  if (playerCard === null && opponentCard === null) {
+    return commitDraw(run, rng, { reveals, stakes })
+  }
+  const winner = playerCard === null ? 'opponent' : 'player'
+  return commitSettled(
+    run,
+    rng,
+    { winner, reveals, stakes, ...settleContest(run, winner), attrition: [] },
+    encounterWinningOutcome(winner),
+  )
+}
+
+// After the first reveal round, Double or nothing has both sides stake the same count of
+// face-down cards, player first.
+// A decided clash then advances an active rule: a race win may end the fight at its
+// target, and Attrition burns the loser's next cards.
 function resolvePreparedClash(run, rng, preparedPlayer, useHold, peekedOpponent = null) {
   const reveals = []
+  const stakes = []
   run.turn += 1
   const playerCard = useHold
     ? revealHeld(run, reveals)
@@ -1409,11 +1600,14 @@ function resolvePreparedClash(run, rng, preparedPlayer, useHold, peekedOpponent 
   const opponentCard = revealPrepared(run, preparedOpponent, 'opponent', reveals)
 
   if (playerCard === null || opponentCard === null) {
-    if (playerCard === null && opponentCard === null) {
-      return commitDraw(run, rng, reveals)
+    return concludeInability(run, rng, playerCard, opponentCard, reveals, stakes)
+  }
+
+  const stake = getEncounterStake(run.encounter)
+  for (const side of SIDES) {
+    for (let staked = 0; staked < stake; staked += 1) {
+      revealPrepared(run, prepareSupply(run, side, rng), side, stakes)
     }
-    const winner = playerCard === null ? 'opponent' : 'player'
-    return commitSettled(run, rng, winner, settleContest(run, winner, reveals), true)
   }
 
   let comparison = compareCards(playerCard, opponentCard)
@@ -1423,17 +1617,34 @@ function resolvePreparedClash(run, rng, preparedPlayer, useHold, peekedOpponent 
     const nextPlayer = revealPrepared(run, tiedPlayer, 'player', reveals)
     const nextOpponent = revealPrepared(run, tiedOpponent, 'opponent', reveals)
     if (nextPlayer === null || nextOpponent === null) {
-      if (nextPlayer === null && nextOpponent === null) {
-        return commitDraw(run, rng, reveals)
-      }
-      const winner = nextPlayer === null ? 'opponent' : 'player'
-      return commitSettled(run, rng, winner, settleContest(run, winner, reveals), true)
+      return concludeInability(run, rng, nextPlayer, nextOpponent, reveals, stakes)
     }
     comparison = compareCards(nextPlayer, nextOpponent)
   }
 
   const winner = comparison > 0 ? 'player' : 'opponent'
-  return commitSettled(run, rng, winner, settleContest(run, winner, reveals), false)
+  const settlement = settleContest(run, winner)
+  let attrition = []
+  let encounterOutcome = null
+  if (isEncounterRuleActive(run.encounter)) {
+    const rule = getEncounterRule(run.encounter)
+    const state = run.encounter.rule
+    state.activeClashes += 1
+    if (rule.effect === 'race') {
+      state.wins[winner] += 1
+      if (state.wins[winner] >= rule.parameter) {
+        encounterOutcome = { result: 'win', winner, reason: 'raceTargetReached' }
+      }
+    } else if (rule.effect === 'attrition') {
+      attrition = burnAttrition(run, rng, otherSide(winner), rule.parameter)
+    }
+  }
+  return commitSettled(
+    run,
+    rng,
+    { winner, reveals, stakes, ...settlement, attrition },
+    encounterOutcome,
+  )
 }
 
 export function prepareCampaignReveal(input) {
@@ -1677,11 +1888,7 @@ function commitNodeDecision(input, replay, entry, updateLayout = () => {}) {
       }
     : null
   if (replay.phase === 'fight') {
-    setUpEncounter(
-      run,
-      restoreRng(run.rng),
-      getCampaignFight(getCampaignMapNode(replay.activeNodeId).contentId),
-    )
+    setUpEncounter(run, restoreRng(run.rng), replay.activeNodeId)
   } else {
     run.machineState = STATE_BY_PHASE[replay.phase]
     refreshFingerprint(run)

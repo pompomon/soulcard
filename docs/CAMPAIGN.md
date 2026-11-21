@@ -7,9 +7,10 @@ Normative reference for Campaign mode; update it in the same PR as the code. Gen
 
 `src/domain/campaign-machine.js` owns state, validation and transitions.
 
-- **Run.** `createCampaignRun` opens on `awaitingRoute` without drawing RNG; `createNewCampaign`
-  (`src/app/new-campaign.js`) seeds it from Web Crypto. Its ruleset, `mvp-baseline-v2` or
-  `mvp-no-burn-v2`, is fixed for the run.
+- **Run.** `createCampaignRun` opens on `awaitingRoute` without drawing the run RNG;
+  `createNewCampaign` (`src/app/new-campaign.js`) seeds it from Web Crypto. Its ruleset,
+  `mvp-baseline-v2` or `mvp-no-burn-v2`, is fixed for the run, and so is `encounterRules`: one
+  `{nodeId, ruleId}` per fight node in map order (§3).
 - **States:** `ready`, Hold states, `awaitingRetry`, `awaitingReward`,
   `CAMPAIGN_NODE_DECISION_STATES`, `paused`, `ended`.
 - **Cards** are `{instanceId, cardId, campaignOwner}`; the owner never changes. Player IDs are
@@ -20,33 +21,41 @@ Normative reference for Campaign mode; update it in the same PR as the code. Gen
 - **Zones.** Each side has a source pile, `drawPile` and `wonPile`; `contestedPile`, `burnPile`
   and `inPlay` are shared. Each player instance is in exactly one zone or Hold.
 - **Setup** (`setUpEncounter`) shuffles the layout minus its token, then the fight deck, with the
-  run RNG: player first. Draw piles start empty. A retry reshuffles; nothing else in setup draws.
+  run RNG: player first. Draw piles start empty, and `encounter.rule` starts as
+  `{id, activeClashes: 0, wins: {player: 0, opponent: 0}}` with the fight's assigned rule. A retry
+  reshuffles and resets the rule state; nothing else in setup draws.
 - **Supply** (`prepareSupply`), player first: a side reveals source index 0 until its source
-  empties, then turns `personal`, and an empty draw pile refills by shuffling its won pile. Source
-  and draw piles are never both non-empty. Inability draws nothing.
-- **Settlement** (`settleContest`) moves the contest to the winner's won pile, but under burn
-  rules the loser's cards burn (`contestCardBurns`) unless the winner claims them. A player card
-  that no opponent card ties or beats is never lost.
-- **Ties** continue inside the same clash step (`resolvePreparedClash`). A side that can't supply
-  loses the fight; if neither can, it is drawn and keeps its contest. Stable boundaries have an
-  empty `inPlay`.
-- **Outcomes.** A win opens a reward, or at the final node ends in victory without a draft. A
-  loss or draw costs the fight's `damage`: at 0 health the run ends in defeat, otherwise
-  `awaitingRetry` refights it. Teardown (`commitNodeDecision`) recovers every player card,
-  burned ones too, drops opponent cards and keeps Hold.
+  empties, then its `encounter.supplyMode` turns `personal` for good, and an empty draw pile
+  refills by shuffling its won pile. Source and draw piles are never both non-empty. Stakes and
+  attrition burns come through supply too, so they may turn a side personal or recycle.
+  Inability draws nothing.
+- **Settlement** (`settleContest`) moves the contest, stakes included, to the winner's won pile,
+  but under burn rules the loser's cards burn (`contestCardBurns`) unless the winner claims them.
+  A revealed player card that no opponent card ties or beats is never lost; stakes and attrition
+  can still burn it.
+- **Ties** continue inside the same clash step (`resolvePreparedClash`), after any stakes. A side
+  that can't supply loses the fight; if neither can, it is drawn and keeps its contest. Stable
+  boundaries have an empty `inPlay`.
+- **Outcomes.** A fight ends when a side can't supply, or when a race reaches its target (§3). A
+  win opens a reward, or at the final node ends in victory without a draft. A loss or draw costs
+  the fight's `damage`: at 0 health the run ends in defeat, otherwise `awaitingRetry` refights
+  it. Teardown (`commitNodeDecision`) recovers every player card, burned ones too, drops opponent
+  cards and keeps Hold.
 - **Decisions** (`route`, `retry`, `reward`, `purchase`, `leaveShop`, `event`, `rest`) are journal
   entries (`JOURNAL_ENTRY_KEYS`, `campaign-journal.js`). Each passes `{nodeId, step}` with
   `step === journal.length` (`assertNodeDecision`), so stale or repeated decisions are refused.
   `applyNodeDecision` (`src/app/run-controller.js`) applies one only when `saveStatus` is
   `'saved'`: a retry needs a saved loss or draw.
 - **Replay.** `replayCampaignJournal` rebuilds route, coins, cards and modifiers from seed,
-  ruleset and journal; `validateCampaignState` requires the run to match. Hold isn't journaled:
-  replay passes `holdOccupied: null`. `createCampaignStateFingerprint` is the canonical JSON of
-  the whole run; a pending event's `stateFingerprint` must equal it.
+  ruleset and journal; `validateCampaignState` requires the run to match and recomputes
+  `encounterRules` from the seed. Hold isn't journaled: replay passes `holdOccupied: null`.
+  `createCampaignStateFingerprint` is the canonical JSON of the whole run; a pending event's
+  `stateFingerprint` must equal it.
 
 | RNG stream | Index | Draws |
 | --- | --- | --- |
-| run RNG | none | setup shuffles, won-pile recycles |
+| run RNG | none | setup shuffles; won-pile recycles in supply order: first reveal round, player stakes, opponent stakes, tie rounds, then attrition |
+| `campaign-encounter-rules-v1` | map node index | at run creation, one per fight node: its rule's catalogue index. Other nodes draw nothing |
 | `campaign-reward-draft-v1` | `encounterIndex` | one per non-empty slot, in order: new card, deck-edit operation (then its card, if `replace`), modifier. Mend draws nothing |
 | `campaign-shop-stock-v1` | map node index | one per non-empty slot, in shop order; a `replace` service draws its card right after the operation |
 
@@ -72,7 +81,7 @@ One slot that persists across encounters; its token keeps the held card out of t
   (`autoChooseNormal`) and a successful save it picks `hold` for a null candidate, else `normal`.
   `chooseHoldChoice` needs a saved status; `captureHold` doesn't. Campaign skips the AI controller.
 
-## 3. Modifiers, traits and stacking
+## 3. Modifiers, traits, encounter rules and stacking
 
 `CAMPAIGN_MODIFIER_CATALOGUE` (`campaign-modifiers.js`) is sorted by ID; pools keep that order and
 draw nothing. Hooks: `maximumHealth`, `holdDecision`, `holdCaptureEligibility`,
@@ -100,6 +109,35 @@ draw nothing. Hooks: `maximumHealth`, `holdDecision`, `holdCaptureEligibility`,
   evict a held card. A trait on `burnSettlement` suspends the player's effect for that encounter:
   Plunder disables Spoils of War.
 
+**Encounter rules** (`campaign-encounter-rules.js`; catalogue in §7) change how a fight plays once
+supply turns personal. `assignCampaignEncounterRules` gives every fight one rule at run creation
+(RNG table, §1), and a retry keeps it. `encounter.rule` holds `{id, activeClashes, wins}`.
+
+- **Start.** `isEncounterRuleActive` takes the start for the fight's tier (§7): an `either` rule
+  is active once either side's `supplyMode` is `personal`, a `both` rule once both are. Each
+  clash decided while the rule is active adds 1 to `activeClashes`. That check runs at
+  settlement, so a tie across a side's last source card counts; inability endings never advance
+  a rule.
+- **Race to 10.** Each active clash adds 1 to its winner's `wins`. At the target the fight ends
+  with reason `raceTargetReached` and the usual transitions; the loser may still have supply.
+- **Double or nothing.** After the first reveal round of an active clash, the player and then the
+  opponent stake the same count of face-down cards (`getEncounterStake`): the schedule
+  `parameter^activeClashes − 1` (0, 1, 3, 7 and so on), or fewer when the shorter side can't
+  supply that many after its first-round reveal. Supply counts the source, draw and won piles.
+  The clash that activates the rule stakes nothing, so the coming stake is known before the Hold
+  choice, for each choice: a Hold reveal leaves the candidate in its pile, so it may stake one
+  more card than a normal reveal. `describeEncounterRule` reports a normal reveal's stake. Stakes
+  join the contest before any tie round and settle like reveals, burn effects included. A side
+  that has staked its last card can't continue a tie and loses; if both have and they tie, the
+  fight is drawn with the stakes on the table.
+- **Attrition.** After an active clash, the loser burns its next `parameter` cards through
+  supply, under either burn setting. These burns skip `burnSettlement`, so neither Plunder nor
+  Spoils of War claims them, and never touch Hold. A side that runs out loses at its next supply.
+- **Interactions.** Hold applies to a clash's first reveal, before any stake, so Hold previews and
+  the Hold Insight peek stay exact; capture targets are unchanged. Under no-burn rules stakes
+  transfer, and attrition is the only burn. Teardown recovers staked and attrition-burned player
+  cards.
+
 ## 4. Rewards
 
 `generateRewardDraft` (`campaign-rewards.js`) drafts after a won non-final fight from RNG-free
@@ -116,6 +154,9 @@ routes, each alternating fights and stops. Stages: 1 gate; 2 market, shrine; 3 c
 high-court; 4 bazaar, vault, camp; 5 watch, night-watch; 6 sanctum; 7 finale.
 
 - Node states: `locked`, `available`, `active`, `completed`, `bypassed`.
+- Fight nodes get their encounter rules when the run is created (`encounterRules`, §3), and the
+  route map names each fight's rule ("Rule: Race to 10."); routes, entries and retries never
+  change them.
 - Shops generate stock on entry (`generateShopStock`, `campaign-shop.js`). Cards are unowned and
   distinct; each item sells once.
 - Events and rest sites end with an effect-free Walk on. Rest options are free and each heals or
@@ -134,6 +175,16 @@ high-court; 4 bazaar, vault, camp; 5 watch, night-watch; 6 sanctum; 7 finale.
 - Every decision is an overlay inside Game (`createCampaignOverlay`, views in
   `src/ui/campaign-view.js`). Hold choices appear once their save is `saved` or `failed`; retry,
   reward and end overlays wait for event presentation. A failed save offers a retry.
+- Encounter rules (§3) add no HUD rows. Once a rule is active, the Stage metric shows its state
+  instead of the supply modes (`encounterStageText`): "Race 3–5 of 10" (player, then opponent
+  wins), "Stake 3 each" (`describeEncounterRule(...).stake`) or "Attrition 2". Run details names
+  the current fight's rule with its start at the fight's tier and its parameter
+  (`encounterRuleText`).
+- Under Double or nothing the Hold capture and Hold choice overlays show the coming stake once
+  either reveal would stake a card (`holdStakeView`): "Stake 3 each", or "Stake 1 each (2 with
+  Hold)" when a Hold reveal would stake more.
+- When a race decides a fight, the reward, retry and end overlays lead with its score, player
+  first: "Won the race 10–7." or "Lost the race 7–10." (`raceResultText`).
 
 ## 7. Current content
 
@@ -158,22 +209,42 @@ high-court; 4 bazaar, vault, camp; 5 watch, night-watch; 6 sanctum; 7 finale.
 | camp | `roadside-camp` | rest (2 health); train (duplicate) |
 | sanctum | `last-light-sanctum` | rest (2 health); cleanse (remove) |
 
+`CAMPAIGN_ENCOUNTER_RULES` lists the rules in draw order, so its order is part of the rules. An
+entry may override its start or parameter per fight tier (`resolveEncounterRule`). Double or
+nothing waits for both sides at elites and the boss, whose small decks turn personal while the
+player still supplies its starting cards. Changing an entry needs a new ID or a Campaign rules
+bump.
+
+| Rule | Name | Start | Parameter |
+| --- | --- | --- | --- |
+| `race-to-ten-v1` | Race to 10 | `both` | target 10 |
+| `double-or-nothing-v1` | Double or nothing | `either`; `both` at elites and the boss | stake base 2: 0, 1, 3, 7… cards |
+| `attrition-v1` | Attrition | `both` | 2 cards |
+
 ## 8. Versions and compatibility
 
-Save schema 8 (`SAVE_SCHEMA_VERSION`, `src/persistence/run-schema.js`), Campaign rules 7
-(`CAMPAIGN_GAME_RULES_VERSION`), campaign version 4 (`CAMPAIGN_VERSION`) and Campaign events v5
+Save schema 9 (`SAVE_SCHEMA_VERSION`, `src/persistence/run-schema.js`), Campaign rules 8
+(`CAMPAIGN_GAME_RULES_VERSION`), campaign version 5 (`CAMPAIGN_VERSION`) and Campaign events v7
 (`CAMPAIGN_EVENT_VERSION`, `campaign-events.js`). Classic uses rules 2 and events v6; Classic
 versions 2–4 stay readable. Both modes share one event-version space, so a new version of either
 takes the next free number.
 
 - The rules check in `validateRunSaveVersion` runs before structural validation.
-- Schema-7 Campaign saves carry over unchanged as schema 8, then face the rules check.
-- Campaign saves from schemas 4–6 (rules 3–6) are quarantined as `incompatible-game-rules`
-  (`src/persistence/migrations.js`); Classic saves from schemas 4–7 carry over.
+- Campaign saves from schemas 4–8 (rules 3–7) are quarantined as `incompatible-game-rules`
+  (`src/persistence/migrations.js`); Classic saves from schemas 4–8 carry over.
 - The Classic deck setting does not apply: Campaign decks and comparisons use `standard-52`.
-- Version-5 events carry instance identities and must match the run fingerprint. Validation
-  recomputes ties and winners with `compareCards`, so card-value effects need an event-version
-  bump. New stored encounter fields need a schema bump or migration, not an event bump.
+- Campaign events carry instance identities and must match the run fingerprint. Version 7 adds
+  `stakes` to `clashSettled` and `clashDrawn` (reveal records, in contest order) and `attrition`
+  (`{instanceId, cardId, from}`) to `clashSettled`. Both lists are always present, and an instance
+  appears once across reveals, stakes and attrition. Version 5, without the lists, stays readable
+  (`isCampaignEventVersion`), but a pending event must be version 7.
+- `assertPendingEvent` checks the contest order (first reveal round, stakes, tie rounds), the
+  stakes (equal counts, at most the schedule, and fewer only when a side runs out), settlement
+  over that order, and a burn-pile suffix of `burned` then `attrition`. A race win ends on
+  complete reveal rounds; any other win ends in inability.
+- Validation recomputes ties and winners with `compareCards`, so card-value effects need an
+  event-version bump. New stored encounter fields need a schema bump or migration, not an event
+  bump.
 
 ## 9. Constraints for generators (21.5)
 
@@ -186,28 +257,35 @@ must satisfy them or revise them explicitly:
 - Elite twin rule: every elite has a normal fight in its stage that all its predecessors offer.
 - A positive bounty or coin gain needs a shop reachable later on at least one route.
 - Normal fights field exactly their archetype core. Elite and boss decks cover every rank
-  (`uncoveredCampaignRanks`; 2 beats A), or they can't threaten. The boss pays no bounty. Traits
-  are elite-only, sorted, distinct and on distinct hooks.
+  (`uncoveredCampaignRanks`; 2 beats A), or they can't threaten; coverage concerns reveals, since
+  stakes and attrition can burn any card. The boss pays no bounty. Traits are elite-only, sorted,
+  distinct and on distinct hooks.
+- Every fight needs an encounter rule. A generator keeps `campaign-encounter-rules-v1` or
+  replaces it under a new stream ID, and `validateCampaignState` must recompute what it stores.
 - Events and rests end with an effect-free option. No node heals more than 2
   (`CAMPAIGN_NODE_HEAL_LIMIT`): Mend, vows, events and rests.
-- Node order is saved route order and keys `campaign-shop-stock-v1`: reordering changes stock.
+- Node order is saved route order and keys `campaign-shop-stock-v1` and
+  `campaign-encounter-rules-v1`: reordering changes stock and rules.
 - `validateCampaignContent()` takes no arguments and checks the static catalogues at import;
   `validateShops` is private. Generated bundles need a validator that accepts them.
 - An opponent-reveal or veil effect would cancel Hold Insight.
 
 ## 10. Fixtures and tests
 
-- Current saves are `tests/fixtures/campaign-save-*-v8.json`, built by `CAMPAIGN_SAVE_FIXTURES`
+- Current saves are `tests/fixtures/campaign-save-*-v9.json`, built by `CAMPAIGN_SAVE_FIXTURES`
   (`tests/fixtures/campaign-route.js`). Regenerate each with
   `createRunSave(build(), { savedAt: SAVED_AT })` as 2-space JSON with a trailing newline. No
   script exists; `tests/unit/campaign-persistence.test.js` enforces equality.
-- Superseded saves (`campaign-save-v4.json`, `campaign-save-*-v5.json`, `campaign-save-*-v6.json`,
-  `campaign-save-route-v6-rules5.json`, `campaign-save-*-v7.json`) stay as carry and quarantine
-  samples.
+- Rule saves are gate fights: `race` (seed 8) and `stakes` (seed 0) mid-fight, `stakes-draw`
+  (seed 459) drawn with both sides' last cards staked and on the table, and `attrition` and
+  `attrition-no-burn` (seed 5) just after their first attrition burns.
+- Superseded saves (`campaign-save-v4.json`, `campaign-save-*-v5.json` to `campaign-save-*-v8.json`
+  and `campaign-save-route-v6-rules5.json`) stay as quarantine samples.
 - `tests/fixtures/expedition-shell.js` drives expeditions through the app shell, requires every
   saved UI state to equal the domain state, and reloads at each boundary.
-- Seeds: elite ladder 11, sold-out 1, boss defeat 3, ledger 12 and 40. Keep the ledger test in
-  `tests/unit/campaign-expedition.test.js` near 3 s.
+- Seeds, re-picked for Campaign rules 8: market expedition 2, elite ladder 271, sold-out 144, boss
+  defeat 3, ledger 37 and 20. Keep the ledger test in `tests/unit/campaign-expedition.test.js`
+  near 3 s.
 
 ## 11. Balance and tuning inputs
 
@@ -215,9 +293,11 @@ must satisfy them or revise them explicitly:
   the starter deck through the Campaign machine. It reaches a fight by winning the fights before
   it at once (their opponents' undealt cards move to the player's won pile), taking Mend and
   walking on, then deals the fight from the seed's initial RNG state, as if it were the run's
-  first fight. It reports win, loss and draw rates, clashes, and Auto-reveal time
-  (`DEFAULT_TIMING_PROFILE` plus 0.4 s per clash), and it reproduces the 21.4 probe results.
-  Hold policies:
+  first fight. Each encounter rule is seated with the first run seed, from the deal seed upward,
+  that assigns it to the fight, so every rule plays the same deals. It reports win, loss and draw
+  rates, the share of fights ended at the race target, clashes, and Auto-reveal time
+  (`DEFAULT_TIMING_PROFILE`, with a clash's stakes priced as one reveal step and each Attrition
+  card as one burn, plus 0.4 s per clash). Hold policies:
   - never: no captures
   - blind: capture the highest eligible card into an empty Hold; play it when the normal card
     is 7 or lower and the held card outranks it
@@ -226,6 +306,21 @@ must satisfy them or revise them explicitly:
 - Starter-deck target bands (measured results: [HISTORY.md](HISTORY.md)): High Court 60–75% under
   every policy; Night Watch 40–55% without Hold and at least 90% with Hold Insight; Ace Sovereign
   20–35% without Hold and 75–90% with it.
-- The strongest end-of-route deck lifts the Sovereign to 54% without Hold. Spoils of War doesn't
-  help against the High Court. Under no-burn rules, without Hold, elite and boss fights average
-  210–361 clashes (seeds 0–99).
+- Encounter rules keep the Ace Sovereign within these bands under every rule (burn rules, seeds
+  0–999). The elites have per-rule bands, set when the rules landed (#54 reports the measured
+  rates):
+  - High Court: 60–75% under Race to 10 and 30–50% under Double or nothing; under Attrition
+    50–65% without Hold and 60–75% with it.
+  - Night Watch: at least 90% with Hold Insight under every rule. Without Hold, the rules end
+    fights before Plunder's captured cards add up: at least 95% under Race to 10, 60–75% under
+    Double or nothing and 70–85% under Attrition.
+- Under every rule, each fight ends in a draw at most 15% of the time, and no fight's median
+  Auto-reveal time (seeds 0–199) is longer than in the #53 report.
+- Tuning levers, in order: a rule's start or parameter, a per-tier override (§7), then which
+  fights may draw the rule. Double or nothing stakes are matched (§3): with one-sided short
+  stakes, Suit Opposition ended in a draw 18.5% of the time with Hold Insight.
+- Before encounter rules, the strongest end-of-route deck lifted the Sovereign to 54% without
+  Hold, Spoils of War didn't help against the High Court, and under no-burn rules, without Hold,
+  elite and boss fights averaged 210–361 clashes (seeds 0–99). Under no-burn rules every
+  encounter rule now ends those fights in a median of 59–78 s of Auto-reveal without Hold (seeds
+  0–199).
