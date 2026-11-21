@@ -4,6 +4,7 @@ import {
   createClashDrawnEvent,
   createClashSettledEvent,
   EVENT_VERSION,
+  eventDeck,
   validateCommittedEvent,
 } from './events.js'
 import { assertStableBoundary, assertZoneInvariants } from './invariants.js'
@@ -178,6 +179,9 @@ function assertPendingEvent(match) {
   }
 
   validateCommittedEvent(pendingEvent)
+  if (eventDeck(pendingEvent) !== rulesetDeck(match.ruleset)) {
+    throw new Error('The pending event must use the deck of the match ruleset')
+  }
   if (
     pendingEvent.id !== `${match.runId}:clash-${match.turn}` ||
     pendingEvent.turn !== match.turn ||
@@ -554,6 +558,7 @@ function commitSettled(match, rng, winner, settlement, terminal) {
     runId: match.runId,
     turn: match.turn,
     stage: match.stage,
+    deck: rulesetDeck(match.ruleset),
     winner,
     ...settlement,
   }
@@ -582,6 +587,7 @@ function commitDraw(match, rng, revealHistory) {
     runId: match.runId,
     turn: match.turn,
     stage: match.stage,
+    deck: rulesetDeck(match.ruleset),
     reason: DRAW_REASON,
     reveals: committedReveals(match, revealHistory),
   }

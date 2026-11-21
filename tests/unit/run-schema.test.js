@@ -10,6 +10,7 @@ import {
 import {
   BASELINE_RULESET,
   NO_BURN_RULESET,
+  SHORT_DECK_BASELINE_RULESET,
 } from '../../src/domain/ruleset.js'
 import {
   GAME_RULES_VERSION,
@@ -23,6 +24,7 @@ import {
 
 const FIXTURE_ROOT = new URL('../fixtures/', import.meta.url)
 const SAVED_AT = '2026-09-21T08:00:00.000Z'
+const TERMINAL_SAVED_AT = '2026-09-21T08:05:00.000Z'
 
 function fixture(name) {
   return JSON.parse(readFileSync(new URL(name, FIXTURE_ROOT), 'utf8'))
@@ -46,13 +48,26 @@ function activeFixtureMatch() {
   return revealOrContinue(match).match
 }
 
+function playToEnd(match) {
+  let current = match
+  while (current.status === 'active') {
+    current = revealOrContinue(current).match
+  }
+  return current
+}
+
+// Seed 62 opens the short-deck game with a 6 beating an Ace.
+function shortDeckMatch(runId) {
+  return createMatch({ runId, seed: 62, ruleset: SHORT_DECK_BASELINE_RULESET })
+}
+
 test('current saves use the exact versioned shape and complete fixed fixture', () => {
   const match = activeFixtureMatch()
   const save = createRunSave(match, { savedAt: SAVED_AT })
 
-  assert.equal(SAVE_SCHEMA_VERSION, 7)
+  assert.equal(SAVE_SCHEMA_VERSION, 8)
   assert.equal(GAME_RULES_VERSION, 2)
-  assert.deepEqual(save, fixture('run-save-v7.json'))
+  assert.deepEqual(save, fixture('run-save-v8.json'))
   assert.equal(validateRunSave(save), save)
   assert.ok(allObjects(save).every(Object.isFrozen))
   assert.notEqual(save.ruleset, match.ruleset)
@@ -62,7 +77,7 @@ test('current saves use the exact versioned shape and complete fixed fixture', (
 })
 
 test('restore returns a detached immutable equivalent domain snapshot', () => {
-  const source = fixture('run-save-v7.json')
+  const source = fixture('run-save-v8.json')
   const before = clone(source)
   const restored = restoreRunSave(source)
 
@@ -79,8 +94,16 @@ test('restore returns a detached immutable equivalent domain snapshot', () => {
 })
 
 test('terminal outcome and pending presentation event restore exactly', () => {
-  const save = fixture('run-save-terminal-v7.json')
+  const save = fixture('run-save-terminal-v8.json')
   const restored = restoreRunSave(save)
+  const ended = playToEnd(createMatch({
+    runId: 'fixture-terminal',
+    seed: 12345,
+    ruleset: BASELINE_RULESET,
+  }))
+
+  assert.deepEqual(createRunSave(ended, { savedAt: TERMINAL_SAVED_AT }), save)
+  assert.deepEqual(restored, ended)
 
   assert.equal(restored.machineState, 'ended')
   assert.equal(restored.status, 'ended')
@@ -100,16 +123,60 @@ test('paused snapshots preserve the ready-state event fingerprint and restore ex
   const paused = pauseMatch(activeFixtureMatch())
   const save = createRunSave(paused, { savedAt: SAVED_AT })
 
-  assert.deepEqual(save, fixture('run-save-paused-v7.json'))
+  assert.deepEqual(save, fixture('run-save-paused-v8.json'))
   assert.equal(
     save.pendingEvent.stateFingerprint,
-    fixture('run-save-v7.json').pendingEvent.stateFingerprint,
+    fixture('run-save-v8.json').pendingEvent.stateFingerprint,
   )
   const restored = restoreRunSave(JSON.parse(JSON.stringify(save)))
   assert.deepEqual(restored, paused)
   assert.deepEqual(restored.rng, activeFixtureMatch().rng)
   assert.deepEqual(restored.pendingEvent, activeFixtureMatch().pendingEvent)
   assert.equal(validateMatchState(restored), restored)
+})
+
+test('short-deck saves regenerate exactly and restore their 36-card games', () => {
+  const active = revealOrContinue(shortDeckMatch('fixture-short-deck-active')).match
+  const ended = playToEnd(shortDeckMatch('fixture-short-deck-terminal'))
+  const cases = [
+    ['run-save-short-deck-v8.json', active, SAVED_AT],
+    ['run-save-short-deck-paused-v8.json', pauseMatch(active), SAVED_AT],
+    ['run-save-short-deck-terminal-v8.json', ended, TERMINAL_SAVED_AT],
+  ]
+
+  for (const [name, match, savedAt] of cases) {
+    const save = fixture(name)
+    assert.deepEqual(createRunSave(match, { savedAt }), save, name)
+    assert.deepEqual(restoreRunSave(save), match, name)
+    assert.equal(save.ruleset.id, 'short-deck-baseline-v1', name)
+    assert.equal(save.pendingEvent.eventVersion, 6, name)
+    assert.equal(save.pendingEvent.deck, 'short-36', name)
+  }
+
+  const ready = fixture('run-save-short-deck-v8.json')
+  assert.deepEqual(ready.pendingEvent.reveals.map(({ cardId }) => cardId), ['c-6C', 'c-AH'])
+  assert.equal(ready.pendingEvent.winner, 'player')
+  assert.equal(
+    ready.match.sourceDeck.length + ready.match.player.drawPile.length
+      + ready.match.player.wonPile.length + ready.match.opponent.drawPile.length
+      + ready.match.opponent.wonPile.length + ready.match.burnPile.length,
+    36,
+  )
+  const terminal = restoreRunSave(fixture('run-save-short-deck-terminal-v8.json'))
+  assert.equal(terminal.status, 'ended')
+  assert.ok(terminal.turn <= 36)
+
+  const shortEvent = fixture('run-save-v8.json')
+  shortEvent.pendingEvent.deck = 'short-36'
+  assert.throws(() => validateRunSave(shortEvent), /deck of the match ruleset/)
+  // Without the short deck, the Ace wins the saved 6-vs-A round.
+  const standardEvent = fixture('run-save-short-deck-v8.json')
+  standardEvent.pendingEvent.deck = 'standard-52'
+  assert.throws(() => validateRunSave(standardEvent), /decisive reveal round/)
+  const legacyEvent = fixture('run-save-short-deck-v8.json')
+  delete legacyEvent.pendingEvent.deck
+  legacyEvent.pendingEvent.eventVersion = 4
+  assert.throws(() => validateRunSave(legacyEvent), /decisive reveal round/)
 })
 
 test('a fresh turn-zero match round-trips without inventing a pending event', () => {
@@ -134,13 +201,14 @@ test('a fresh turn-zero match round-trips without inventing a pending event', ()
 })
 
 test('schema validation rejects malformed metadata and nonstable records', () => {
-  const current = fixture('run-save-v7.json')
+  const current = fixture('run-save-v8.json')
   const invalid = [
     { ...clone(current), saveSchemaVersion: 1 },
     { ...clone(current), saveSchemaVersion: 2 },
     { ...clone(current), saveSchemaVersion: 5 },
     { ...clone(current), saveSchemaVersion: 6 },
-    { ...clone(current), saveSchemaVersion: 8 },
+    { ...clone(current), saveSchemaVersion: 7 },
+    { ...clone(current), saveSchemaVersion: 9 },
     { ...clone(current), gameRulesVersion: 1 },
     { ...clone(current), savedAt: '2026-09-21T08:00:00Z' },
     { ...clone(current), savedAt: 'not-a-date' },
@@ -174,7 +242,7 @@ test('schema validation rejects malformed metadata and nonstable records', () =>
     assert.throws(() => validateRunSave(save))
     assert.throws(() => restoreRunSave(save))
   }
-  for (const saveSchemaVersion of [4, 5, 6, 8]) {
+  for (const saveSchemaVersion of [4, 5, 6, 7, 9]) {
     assert.throws(
       () => validateRunSave({ ...clone(current), saveSchemaVersion }),
       UnsupportedSaveVersionError,
@@ -186,7 +254,7 @@ test('schema validation rejects malformed metadata and nonstable records', () =>
   )
 
   // A current-schema Campaign save from the five-stage expedition rules.
-  const campaign = fixture('campaign-save-route-v7.json')
+  const campaign = fixture('campaign-save-route-v8.json')
   assert.equal(campaign.gameRulesVersion, 7)
   assert.throws(
     () => validateRunSave({ ...campaign, gameRulesVersion: 6 }),
@@ -195,11 +263,11 @@ test('schema validation rejects malformed metadata and nonstable records', () =>
 })
 
 test('schema validation rejects non-JSON containers and accessors without invoking them', () => {
-  const extraArrayProperty = fixture('run-save-v7.json')
+  const extraArrayProperty = fixture('run-save-v8.json')
   extraArrayProperty.match.sourceDeck.label = 'not-an-index'
   assert.throws(() => validateRunSave(extraArrayProperty), /dense array/)
 
-  const accessor = fixture('run-save-v7.json')
+  const accessor = fixture('run-save-v8.json')
   let invoked = false
   Object.defineProperty(accessor.match.player, 'drawPile', {
     enumerable: true,
@@ -211,7 +279,7 @@ test('schema validation rejects non-JSON containers and accessors without invoki
   assert.throws(() => validateRunSave(accessor), /JSON-compatible data/)
   assert.equal(invoked, false)
 
-  const indexAccessor = fixture('run-save-v7.json')
+  const indexAccessor = fixture('run-save-v8.json')
   const firstCard = indexAccessor.match.sourceDeck[0]
   Object.defineProperty(indexAccessor.match.sourceDeck, '0', {
     enumerable: true,
@@ -223,7 +291,7 @@ test('schema validation rejects non-JSON containers and accessors without invoki
   assert.throws(() => validateRunSave(indexAccessor), /dense array/)
   assert.equal(invoked, false)
 
-  const versionAccessor = fixture('run-save-v7.json')
+  const versionAccessor = fixture('run-save-v8.json')
   Object.defineProperty(versionAccessor, 'saveSchemaVersion', {
     enumerable: true,
     get() {

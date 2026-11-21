@@ -4,6 +4,7 @@ import {
   createClashDrawnEvent,
   createClashSettledEvent,
   EVENT_VERSION,
+  eventDeck,
   validateCommittedEvent,
 } from '../../src/domain/events.js'
 
@@ -18,10 +19,16 @@ function allObjects(value) {
   return [value, ...Object.values(value).flatMap(allObjects)]
 }
 
+function withVersion(event, eventVersion) {
+  const { deck, ...legacy } = clone(event)
+  return { ...legacy, eventVersion }
+}
+
 const SETTLED_INPUT = {
   runId: 'run-42',
   turn: 17,
   stage: 'personal',
+  deck: 'standard-52',
   winner: 'player',
   reveals: [
     { cardId: 'c-10H', suppliedBy: 'player', from: 'player.drawPile' },
@@ -47,6 +54,7 @@ test('settled clash events use the canonical versioned shape and detached immuta
     type: 'clashSettled',
     turn: 17,
     stage: 'personal',
+    deck: 'standard-52',
     winner: 'player',
     reveals: SETTLED_INPUT.reveals,
     transfers: SETTLED_INPUT.transfers,
@@ -73,6 +81,7 @@ test('settled event validation applies the 2-over-Ace comparison exception', () 
     runId: 'two-over-ace',
     turn: 1,
     stage: 'source',
+    deck: 'standard-52',
     winner: 'player',
     reveals: [
       { cardId: 'c-2S', suppliedBy: 'player', from: 'sourceDeck' },
@@ -127,6 +136,7 @@ test('terminal draws use a distinct event without settlement fields', () => {
     runId: 'draw-run',
     turn: 3,
     stage: 'personal',
+    deck: 'standard-52',
     reveals,
     stateFingerprint: 'draw-post-commit-state',
   })
@@ -137,6 +147,7 @@ test('terminal draws use a distinct event without settlement fields', () => {
     type: 'clashDrawn',
     turn: 3,
     stage: 'personal',
+    deck: 'standard-52',
     reason: 'mutualInability',
     reveals,
     stateFingerprint: 'draw-post-commit-state',
@@ -204,6 +215,7 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
     runId: 'draw-run',
     turn: 1,
     stage: 'personal',
+    deck: 'standard-52',
     stateFingerprint: 'draw-state',
     reveals: [
       { cardId: 'c-10S', suppliedBy: 'player', from: 'player.drawPile' },
@@ -214,6 +226,7 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
     runId: 'draw-run',
     turn: 1,
     stage: 'personal',
+    deck: 'standard-52',
     stateFingerprint: 'draw-state',
     reveals: [{ cardId: 'c-10S', suppliedBy: 'player', from: 'player.drawPile' }],
   }), /complete tied reveal round/)
@@ -221,6 +234,7 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
     runId: 'source-singleton',
     turn: 1,
     stage: 'source',
+    deck: 'standard-52',
     winner: 'player',
     reveals: [{ cardId: 'c-AS', suppliedBy: 'player', from: 'sourceDeck' }],
     transfers: [{ cardId: 'c-AS', to: 'player.wonPile' }],
@@ -240,6 +254,7 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
     runId: 'late-draw',
     turn: 1,
     stage: 'personal',
+    deck: 'standard-52',
     stateFingerprint: 'draw-state',
     reveals: [
       { cardId: 'c-AS', suppliedBy: 'player', from: 'player.drawPile' },
@@ -253,12 +268,96 @@ test('event validation rejects malformed metadata, reveal rounds, and draw outco
 test('event validation retains read compatibility with version 2 reveal records', () => {
   const current = createClashSettledEvent(SETTLED_INPUT)
   const legacy = {
-    ...clone(current),
-    eventVersion: 2,
+    ...withVersion(current, 2),
     reveals: current.reveals.map(({ cardId, suppliedBy }) => ({ cardId, suppliedBy })),
   }
 
   assert.equal(validateCommittedEvent(legacy), legacy)
+  assert.equal(eventDeck(legacy), 'standard-52')
+})
+
+test('version 6 events name their deck and compare with its upset rank', () => {
+  const shortUpset = {
+    runId: 'six-over-ace',
+    turn: 1,
+    stage: 'source',
+    deck: 'short-36',
+    winner: 'player',
+    reveals: [
+      { cardId: 'c-6S', suppliedBy: 'player', from: 'sourceDeck' },
+      { cardId: 'c-AH', suppliedBy: 'opponent', from: 'sourceDeck' },
+    ],
+    transfers: [{ cardId: 'c-6S', to: 'player.wonPile' }],
+    burned: ['c-AH'],
+    stateFingerprint: 'six-over-ace-state',
+  }
+  const event = createClashSettledEvent(shortUpset)
+  assert.equal(event.eventVersion, 6)
+  assert.equal(eventDeck(event), 'short-36')
+  assert.throws(
+    () => createClashSettledEvent({ ...clone(shortUpset), deck: 'standard-52' }),
+    /decisive reveal round/,
+  )
+  assert.throws(() => createClashSettledEvent({
+    ...clone(shortUpset),
+    reveals: [
+      { cardId: 'c-2S', suppliedBy: 'player', from: 'sourceDeck' },
+      { cardId: 'c-AH', suppliedBy: 'opponent', from: 'sourceDeck' },
+    ],
+    transfers: [{ cardId: 'c-2S', to: 'player.wonPile' }],
+  }), /outside the short-36 deck/)
+  assert.doesNotThrow(() => createClashDrawnEvent({
+    runId: 'short-draw',
+    turn: 2,
+    stage: 'personal',
+    deck: 'short-36',
+    reveals: [
+      { cardId: 'c-9S', suppliedBy: 'player', from: 'player.drawPile' },
+      { cardId: 'c-9H', suppliedBy: 'opponent', from: 'opponent.drawPile' },
+    ],
+    stateFingerprint: 'short-draw-state',
+  }))
+
+  for (const deck of [undefined, null, '', 'short-32', 'toString']) {
+    assert.throws(() => createClashSettledEvent({ ...clone(shortUpset), deck }), /deck must be/)
+  }
+  const { deck, ...withoutDeck } = clone(event)
+  assert.throws(() => validateCommittedEvent(withoutDeck), /must contain only/)
+  assert.throws(
+    () => validateCommittedEvent({ ...clone(event), eventVersion: 4 }),
+    /must contain only/,
+  )
+})
+
+test('version 4 events stay readable as standard-deck events', () => {
+  const current = createClashSettledEvent(SETTLED_INPUT)
+  const legacy = withVersion(current, 4)
+  assert.equal(validateCommittedEvent(legacy), legacy)
+  assert.equal(eventDeck(legacy), 'standard-52')
+
+  const upset = withVersion(createClashSettledEvent({
+    runId: 'legacy-two-over-ace',
+    turn: 1,
+    stage: 'source',
+    deck: 'standard-52',
+    winner: 'player',
+    reveals: [
+      { cardId: 'c-2S', suppliedBy: 'player', from: 'sourceDeck' },
+      { cardId: 'c-AH', suppliedBy: 'opponent', from: 'sourceDeck' },
+    ],
+    transfers: [{ cardId: 'c-2S', to: 'player.wonPile' }],
+    burned: ['c-AH'],
+    stateFingerprint: 'legacy-two-over-ace-state',
+  }), 4)
+  assert.equal(validateCommittedEvent(upset), upset)
+  assert.throws(() => validateCommittedEvent({
+    ...clone(upset),
+    reveals: [
+      { cardId: 'c-6S', suppliedBy: 'player', from: 'sourceDeck' },
+      { cardId: 'c-AH', suppliedBy: 'opponent', from: 'sourceDeck' },
+    ],
+    transfers: [{ cardId: 'c-6S', to: 'player.wonPile' }],
+  }), /decisive reveal round/)
 })
 
 test('version 3 events reject missing, mismatched, or reversing reveal origins', () => {

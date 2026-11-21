@@ -211,8 +211,9 @@ test('timeline preserves reveal and settlement order for ties and terminal varia
     .filter(({ kind }) => kind === 'reveal')
     .every(({ tied }) => tied))
 
+  const { deck, ...tiedWithoutDeck } = clone(tied)
   const legacy = {
-    ...clone(tied),
+    ...tiedWithoutDeck,
     eventVersion: 2,
     reveals: tied.reveals.map(({ cardId, suppliedBy }) => ({ cardId, suppliedBy })),
   }
@@ -221,27 +222,31 @@ test('timeline preserves reveal and settlement order for ties and terminal varia
     .every(({ from }) => from === null))
 })
 
-test('timeline does not present 2 versus Ace as a tie', () => {
-  const event = createClashSettledEvent({
-    runId: 'timeline-two-over-ace',
-    turn: 1,
-    stage: 'source',
-    winner: 'player',
-    reveals: [
-      { cardId: 'c-2S', suppliedBy: 'player', from: 'sourceDeck' },
-      { cardId: 'c-AH', suppliedBy: 'opponent', from: 'sourceDeck' },
-    ],
-    transfers: [{ cardId: 'c-2S', to: 'player.wonPile' }],
-    burned: ['c-AH'],
-    stateFingerprint: 'two-over-ace',
-  })
+test('timeline does not present an upset over Ace as a tie', () => {
+  for (const [deck, low] of [['standard-52', 'c-2S'], ['short-36', 'c-6S']]) {
+    const event = createClashSettledEvent({
+      runId: `timeline-${deck}-upset`,
+      turn: 1,
+      stage: 'source',
+      deck,
+      winner: 'player',
+      reveals: [
+        { cardId: low, suppliedBy: 'player', from: 'sourceDeck' },
+        { cardId: 'c-AH', suppliedBy: 'opponent', from: 'sourceDeck' },
+      ],
+      transfers: [{ cardId: low, to: 'player.wonPile' }],
+      burned: ['c-AH'],
+      stateFingerprint: `${deck}-upset`,
+    })
 
-  assert.deepEqual(
-    createEventTimeline(event)
-      .filter(({ kind }) => kind === 'reveal')
-      .map(({ tied }) => tied),
-    [false, false],
-  )
+    assert.deepEqual(
+      createEventTimeline(event)
+        .filter(({ kind }) => kind === 'reveal')
+        .map(({ tied }) => tied),
+      [false, false],
+      deck,
+    )
+  }
 })
 
 test('player consumes detached committed data once and queues newer events in order', async () => {

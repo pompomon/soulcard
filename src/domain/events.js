@@ -1,15 +1,30 @@
-import { compareCards, getCard, isCardId } from './cards.js'
+import {
+  compareCards,
+  DECKS,
+  getCard,
+  isCardId,
+  isDeckId,
+  STANDARD_DECK,
+} from './cards.js'
 import {
   CAMPAIGN_EVENT_VERSION,
   validateCampaignEvent,
 } from './campaign-events.js'
 
-export const EVENT_VERSION = 4
+// Classic and Campaign share one version number space: 5 is CAMPAIGN_EVENT_VERSION.
+export const EVENT_VERSION = 6
 
 const SIDES = Object.freeze(['player', 'opponent'])
 const STAGES = Object.freeze(['source', 'personal'])
 const ORIGIN_EVENT_VERSION = 3
-const SUPPORTED_EVENT_VERSIONS = Object.freeze([2, ORIGIN_EVENT_VERSION, EVENT_VERSION])
+const UPSET_EVENT_VERSION = 4
+const DECK_EVENT_VERSION = 6
+const SUPPORTED_EVENT_VERSIONS = Object.freeze([
+  2,
+  ORIGIN_EVENT_VERSION,
+  UPSET_EVENT_VERSION,
+  DECK_EVENT_VERSION,
+])
 const SETTLEMENT_PRESENTATION = 'settlement-v1'
 const DRAW_PRESENTATION = 'draw-v1'
 const DRAW_REASON = 'mutualInability'
@@ -89,8 +104,9 @@ function assertStateFingerprint(stateFingerprint) {
   }
 }
 
-function assertRevealRecords(reveals, eventVersion) {
+function assertRevealRecords(reveals, eventVersion, deck) {
   assertDenseArray(reveals, 'reveals', { nonempty: true })
+  const deckCards = DECKS[deck]
   const seen = new Set()
   let personalOriginReached = false
 
@@ -107,6 +123,9 @@ function assertRevealRecords(reveals, eventVersion) {
     )
     if (!isCardId(record.cardId)) {
       throw new TypeError(`${name} contains an unknown card ID`)
+    }
+    if (!deckCards.includes(record.cardId)) {
+      throw new TypeError(`${name} contains a card outside the ${deck} deck`)
     }
     if (!SIDES.includes(record.suppliedBy)) {
       throw new TypeError(`${name}.suppliedBy must be player or opponent`)
@@ -200,8 +219,8 @@ function assertBurned(burned) {
   return seen
 }
 
-function assertSettlementCoverage(reveals, transfers, burned, winner, eventVersion) {
-  const revealed = assertRevealRecords(reveals, eventVersion)
+function assertSettlementCoverage(reveals, transfers, burned, winner, eventVersion, deck) {
+  const revealed = assertRevealRecords(reveals, eventVersion, deck)
   const transferred = assertTransfers(transfers, winner)
   const burnedSet = assertBurned(burned)
 
@@ -238,19 +257,19 @@ function assertSettlementCoverage(reveals, transfers, burned, winner, eventVersi
   }
 }
 
-function assertTiedRound(reveals, index) {
-  if (compareCards(reveals[index].cardId, reveals[index + 1].cardId) !== 0) {
+function assertTiedRound(reveals, index, deck) {
+  if (compareCards(reveals[index].cardId, reveals[index + 1].cardId, deck) !== 0) {
     throw new Error('Every reveal round before the decisive result must be tied')
   }
 }
 
-function assertSettledRevealHistory(reveals, winner, stage, eventVersion) {
+function assertSettledRevealHistory(reveals, winner, stage, eventVersion, deck) {
   const hasAvailableWinnerCard = reveals.length % 2 === 1
   const completeRounds = Math.floor(reveals.length / 2)
   const tiedRounds = hasAvailableWinnerCard ? completeRounds : completeRounds - 1
 
   for (let round = 0; round < tiedRounds; round += 1) {
-    assertTiedRound(reveals, round * 2)
+    assertTiedRound(reveals, round * 2, deck)
   }
 
   if (hasAvailableWinnerCard) {
@@ -260,8 +279,8 @@ function assertSettledRevealHistory(reveals, winner, stage, eventVersion) {
     return
   }
 
-  const comparison = eventVersion === EVENT_VERSION
-    ? compareCards(reveals.at(-2).cardId, reveals.at(-1).cardId)
+  const comparison = eventVersion >= UPSET_EVENT_VERSION
+    ? compareCards(reveals.at(-2).cardId, reveals.at(-1).cardId, deck)
     : getCard(reveals.at(-2).cardId).value - getCard(reveals.at(-1).cardId).value
   if (comparison === 0) {
     throw new Error('A settled clash must end with a decisive result')
@@ -285,6 +304,26 @@ function assertBaseEvent(event, expectedType) {
     throw new TypeError(`event type must be ${expectedType}`)
   }
   assertStage(event.stage)
+  if (event.eventVersion >= DECK_EVENT_VERSION && !isDeckId(event.deck)) {
+    throw new TypeError(`deck must be ${Object.keys(DECKS).join(' or ')}`)
+  }
+}
+
+// The effective deck of a validated Classic event: its deck from version 6, standard before.
+export function eventDeck(event) {
+  return event.eventVersion >= DECK_EVENT_VERSION ? event.deck : STANDARD_DECK
+}
+
+function eventKeys(eventVersion, payloadKeys) {
+  return [
+    'eventVersion',
+    'id',
+    'type',
+    'turn',
+    'stage',
+    ...(eventVersion >= DECK_EVENT_VERSION ? ['deck'] : []),
+    ...payloadKeys,
+  ]
 }
 
 function cloneData(value) {
@@ -321,20 +360,16 @@ export function validateCommittedEvent(event) {
     throw new TypeError('event.type must be JSON-compatible data')
   }
   if (typeDescriptor.value === 'clashSettled') {
-    assertExactKeys(event, [
-      'eventVersion',
-      'id',
-      'type',
-      'turn',
-      'stage',
+    assertExactKeys(event, eventKeys(versionDescriptor.value, [
       'winner',
       'reveals',
       'transfers',
       'burned',
       'stateFingerprint',
       'pendingPresentation',
-    ], 'event')
+    ]), 'event')
     assertBaseEvent(event, 'clashSettled')
+    const deck = eventDeck(event)
     if (!SIDES.includes(event.winner)) {
       throw new TypeError('winner must be player or opponent')
     }
@@ -348,6 +383,7 @@ export function validateCommittedEvent(event) {
       event.burned,
       event.winner,
       event.eventVersion,
+      deck,
     )
     if (
       event.eventVersion >= ORIGIN_EVENT_VERSION
@@ -356,23 +392,25 @@ export function validateCommittedEvent(event) {
     ) {
       throw new Error('Source-stage events must reveal only from the source deck')
     }
-    assertSettledRevealHistory(event.reveals, event.winner, event.stage, event.eventVersion)
+    assertSettledRevealHistory(
+      event.reveals,
+      event.winner,
+      event.stage,
+      event.eventVersion,
+      deck,
+    )
     return event
   }
 
   if (typeDescriptor.value === 'clashDrawn') {
-    assertExactKeys(event, [
-      'eventVersion',
-      'id',
-      'type',
-      'turn',
-      'stage',
+    assertExactKeys(event, eventKeys(versionDescriptor.value, [
       'reason',
       'reveals',
       'stateFingerprint',
       'pendingPresentation',
-    ], 'event')
+    ]), 'event')
     assertBaseEvent(event, 'clashDrawn')
+    const deck = eventDeck(event)
     if (event.reason !== DRAW_REASON) {
       throw new TypeError(`reason must be ${DRAW_REASON}`)
     }
@@ -380,12 +418,12 @@ export function validateCommittedEvent(event) {
       throw new TypeError(`pendingPresentation must be ${DRAW_PRESENTATION}`)
     }
     assertStateFingerprint(event.stateFingerprint)
-    assertRevealRecords(event.reveals, event.eventVersion)
+    assertRevealRecords(event.reveals, event.eventVersion, deck)
     if (event.stage !== 'personal' || event.reveals.length % 2 !== 0) {
       throw new Error('A drawn clash must end with a complete tied reveal round')
     }
     for (let index = 0; index < event.reveals.length; index += 2) {
-      assertTiedRound(event.reveals, index)
+      assertTiedRound(event.reveals, index, deck)
     }
     return event
   }
@@ -397,7 +435,17 @@ export function createClashSettledEvent(options) {
   assertPlainObject(options, 'options')
   assertExactKeys(
     options,
-    ['runId', 'turn', 'stage', 'winner', 'reveals', 'transfers', 'burned', 'stateFingerprint'],
+    [
+      'runId',
+      'turn',
+      'stage',
+      'deck',
+      'winner',
+      'reveals',
+      'transfers',
+      'burned',
+      'stateFingerprint',
+    ],
     'options',
   )
   assertRunId(options.runId)
@@ -407,6 +455,7 @@ export function createClashSettledEvent(options) {
     type: 'clashSettled',
     turn: options.turn,
     stage: options.stage,
+    deck: options.deck,
     winner: options.winner,
     reveals: options.reveals,
     transfers: options.transfers,
@@ -420,7 +469,7 @@ export function createClashSettledEvent(options) {
 
 export function createClashDrawnEvent(options) {
   assertPlainObject(options, 'options')
-  const keys = ['runId', 'turn', 'stage', 'reveals', 'stateFingerprint']
+  const keys = ['runId', 'turn', 'stage', 'deck', 'reveals', 'stateFingerprint']
   if (Object.hasOwn(options, 'reason')) {
     keys.push('reason')
   }
@@ -432,6 +481,7 @@ export function createClashDrawnEvent(options) {
     type: 'clashDrawn',
     turn: options.turn,
     stage: options.stage,
+    deck: options.deck,
     reason: Object.hasOwn(options, 'reason') ? options.reason : DRAW_REASON,
     reveals: options.reveals,
     stateFingerprint: options.stateFingerprint,

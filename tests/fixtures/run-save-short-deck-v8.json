@@ -1,0 +1,111 @@
+{
+  "saveSchemaVersion": 8,
+  "gameRulesVersion": 2,
+  "runType": "classic",
+  "savedAt": "2026-09-21T08:00:00.000Z",
+  "runId": "fixture-short-deck-active",
+  "rng": {
+    "algorithm": "mulberry32",
+    "seed": 62,
+    "state": 3975261373
+  },
+  "ruleset": {
+    "id": "short-deck-baseline-v1",
+    "burn": {
+      "enabled": true,
+      "eligibleScope": "all-losing-side-cards-in-resolved-contested-pile",
+      "decisiveWinningCard": "winner.wonPile"
+    }
+  },
+  "match": {
+    "stage": "source",
+    "machineState": "ready",
+    "turn": 1,
+    "status": "active",
+    "outcome": null,
+    "sourceDeck": [
+      "c-9D",
+      "c-6D",
+      "c-7H",
+      "c-JC",
+      "c-10D",
+      "c-KS",
+      "c-6S",
+      "c-8D",
+      "c-10C",
+      "c-AC",
+      "c-8S",
+      "c-7D",
+      "c-JH",
+      "c-KH",
+      "c-9S",
+      "c-JS",
+      "c-KD",
+      "c-9H",
+      "c-8H",
+      "c-8C",
+      "c-10S",
+      "c-QC",
+      "c-6H",
+      "c-QH",
+      "c-9C",
+      "c-JD",
+      "c-7C",
+      "c-QD",
+      "c-AS",
+      "c-7S",
+      "c-10H",
+      "c-KC",
+      "c-QS",
+      "c-AD"
+    ],
+    "player": {
+      "drawPile": [],
+      "wonPile": [
+        "c-6C"
+      ]
+    },
+    "opponent": {
+      "drawPile": [],
+      "wonPile": []
+    },
+    "contestedPile": [],
+    "inPlay": [],
+    "burnPile": [
+      "c-AH"
+    ],
+    "futureModifiers": []
+  },
+  "pendingEvent": {
+    "eventVersion": 6,
+    "id": "fixture-short-deck-active:clash-1",
+    "type": "clashSettled",
+    "turn": 1,
+    "stage": "source",
+    "deck": "short-36",
+    "winner": "player",
+    "reveals": [
+      {
+        "cardId": "c-6C",
+        "suppliedBy": "player",
+        "from": "sourceDeck"
+      },
+      {
+        "cardId": "c-AH",
+        "suppliedBy": "opponent",
+        "from": "sourceDeck"
+      }
+    ],
+    "transfers": [
+      {
+        "cardId": "c-6C",
+        "to": "player.wonPile"
+      }
+    ],
+    "burned": [
+      "c-AH"
+    ],
+    "stateFingerprint": "[\"fixture-short-deck-active\",{\"burn\":{\"decisiveWinningCard\":\"winner.wonPile\",\"eligibleScope\":\"all-losing-side-cards-in-resolved-contested-pile\",\"enabled\":true},\"id\":\"short-deck-baseline-v1\"},\"mulberry32\",62,3975261373,\"source\",\"ready\",1,\"active\",null,[\"c-9D\",\"c-6D\",\"c-7H\",\"c-JC\",\"c-10D\",\"c-KS\",\"c-6S\",\"c-8D\",\"c-10C\",\"c-AC\",\"c-8S\",\"c-7D\",\"c-JH\",\"c-KH\",\"c-9S\",\"c-JS\",\"c-KD\",\"c-9H\",\"c-8H\",\"c-8C\",\"c-10S\",\"c-QC\",\"c-6H\",\"c-QH\",\"c-9C\",\"c-JD\",\"c-7C\",\"c-QD\",\"c-AS\",\"c-7S\",\"c-10H\",\"c-KC\",\"c-QS\",\"c-AD\"],[],[\"c-6C\"],[],[],[],[\"c-AH\"],[],[\"clashSettled\",\"player\",[[\"c-6C\",\"player\",\"sourceDeck\"],[\"c-AH\",\"opponent\",\"sourceDeck\"]],[[\"c-6C\",\"player.wonPile\"]],[\"c-AH\"]]]",
+    "pendingPresentation": "settlement-v1"
+  }
+}

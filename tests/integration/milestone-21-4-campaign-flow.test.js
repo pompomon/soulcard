@@ -58,7 +58,7 @@ const CAMP_CHOICES = [
 // The elite ladder's saved Roadside Camp boundary: seed 11, journal step 7, 2/5 health.
 function savedCamp() {
   return restoreRunSave(JSON.parse(readFileSync(
-    new URL('../fixtures/campaign-save-rest-v7.json', import.meta.url),
+    new URL('../fixtures/campaign-save-rest-v8.json', import.meta.url),
     'utf8',
   )))
 }

@@ -431,16 +431,16 @@ export const victoryFixtureRun = buildOnce(() => {
 })
 
 export const CAMPAIGN_SAVE_FIXTURES = Object.freeze([
-  ['campaign-save-reward-v7.json', rewardFixtureRun],
-  ['campaign-save-route-v7.json', routeFixtureRun],
-  ['campaign-save-shop-v7.json', shopFixtureRun],
-  ['campaign-save-shop-exhausted-v7.json', exhaustedShopFixtureRun],
-  ['campaign-save-event-v7.json', eventFixtureRun],
-  ['campaign-save-informed-v7.json', informedFixtureRun],
-  ['campaign-save-modifiers-v7.json', modifiersFixtureRun],
-  ['campaign-save-elite-choice-v7.json', eliteChoiceFixtureRun],
-  ['campaign-save-elite-reward-v7.json', eliteRewardFixtureRun],
-  ['campaign-save-rest-v7.json', restFixtureRun],
-  ['campaign-save-boss-v7.json', bossFixtureRun],
-  ['campaign-save-victory-v7.json', victoryFixtureRun],
+  ['campaign-save-reward-v8.json', rewardFixtureRun],
+  ['campaign-save-route-v8.json', routeFixtureRun],
+  ['campaign-save-shop-v8.json', shopFixtureRun],
+  ['campaign-save-shop-exhausted-v8.json', exhaustedShopFixtureRun],
+  ['campaign-save-event-v8.json', eventFixtureRun],
+  ['campaign-save-informed-v8.json', informedFixtureRun],
+  ['campaign-save-modifiers-v8.json', modifiersFixtureRun],
+  ['campaign-save-elite-choice-v8.json', eliteChoiceFixtureRun],
+  ['campaign-save-elite-reward-v8.json', eliteRewardFixtureRun],
+  ['campaign-save-rest-v8.json', restFixtureRun],
+  ['campaign-save-boss-v8.json', bossFixtureRun],
+  ['campaign-save-victory-v8.json', victoryFixtureRun],
 ])

@@ -411,7 +411,7 @@ test('Resume continues saved Campaign reward drafts and informed Hold choices', 
     return { app, root, saved, saves }
   }
 
-  const draft = await resume('campaign-save-reward-v7.json')
+  const draft = await resume('campaign-save-reward-v8.json')
   const mend = () => descendants(draft.root).find(
     (element) => element.dataset.rewardOffer === 'mend',
   )
@@ -433,9 +433,9 @@ test('Resume continues saved Campaign reward drafts and informed Hold choices', 
   await draft.app.destroy()
 
   for (const [fixtureName, heading, dataKey] of [
-    ['campaign-save-route-v7.json', 'Route map · Stage 2/7', 'routeNode'],
-    ['campaign-save-shop-v7.json', 'Wayside Market', 'shopItem'],
-    ['campaign-save-event-v7.json', 'Crossroads Shrine', 'eventOption'],
+    ['campaign-save-route-v8.json', 'Route map · Stage 2/7', 'routeNode'],
+    ['campaign-save-shop-v8.json', 'Wayside Market', 'shopItem'],
+    ['campaign-save-event-v8.json', 'Crossroads Shrine', 'eventOption'],
   ]) {
     const boundary = await resume(fixtureName)
     const title = () => descendants(boundary.root).find(
@@ -454,7 +454,7 @@ test('Resume continues saved Campaign reward drafts and informed Hold choices', 
     await boundary.app.destroy()
   }
 
-  const exhausted = await resume('campaign-save-shop-exhausted-v7.json')
+  const exhausted = await resume('campaign-save-shop-exhausted-v8.json')
   const leave = byAction(exhausted.root, 'campaign-leave')
   await waitFor(() => leave.hidden === false && leave.disabled === false)
   const shopItems = descendants(exhausted.root).filter(
@@ -472,7 +472,7 @@ test('Resume continues saved Campaign reward drafts and informed Hold choices', 
   assert.equal(exhausted.saves[0].currency, 0)
   await exhausted.app.destroy()
 
-  const informed = await resume('campaign-save-informed-v7.json')
+  const informed = await resume('campaign-save-informed-v8.json')
   const normal = byAction(informed.root, 'campaign-normal')
   await waitFor(() => normal.hidden === false && normal.disabled === false)
   normal.dispatch('click')
