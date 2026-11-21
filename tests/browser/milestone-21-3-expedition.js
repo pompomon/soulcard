@@ -291,9 +291,9 @@ async function openTargets(selector, targetSelector, name) {
 
 async function run() {
   const fixtures = {
-    route: await loadFixture('campaign-save-route-v8.json'),
-    event: await loadFixture('campaign-save-event-v8.json'),
-    exhausted: await loadFixture('campaign-save-shop-exhausted-v8.json'),
+    route: await loadFixture('campaign-save-route-v9.json'),
+    event: await loadFixture('campaign-save-event-v9.json'),
+    exhausted: await loadFixture('campaign-save-shop-exhausted-v9.json'),
   }
 
   // Route map: only available nodes are buttons, and closed nodes say why.

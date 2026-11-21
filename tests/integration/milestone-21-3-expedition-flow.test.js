@@ -21,7 +21,7 @@ import {
 test('a market expedition survives reloads, a lost purchase, and stale decisions', async (t) => {
   const { counters, final, used } = await driveExpedition(t, {
     runId: 'expedition-market',
-    seed: 0,
+    seed: 66,
     plan: EXPEDITION_PLANS.market,
     hooks: {
       '0:awaitingRoute'({ root }) {
@@ -143,7 +143,7 @@ test('a market expedition survives reloads, a lost purchase, and stale decisions
 test('a sold-out bazaar expedition ignores repeated activations and spent stock', async (t) => {
   const { counters, final, used } = await driveExpedition(t, {
     runId: 'expedition-sold-out',
-    seed: 1,
+    seed: 2,
     plan: EXPEDITION_PLANS.soldOut,
     doubleActivate: ['0:awaitingRoute', '3:awaitingEvent', '7:awaitingShop'],
     hooks: {
@@ -196,14 +196,21 @@ test('a sold-out bazaar expedition ignores repeated activations and spent stock'
   assert.equal(counters.retries, 1)
   assert.deepEqual(counters.purchases, ['card-1', 'card-2', 'service-1', 'modifier-1'])
   assert.deepEqual(counters.events, ['bleed-for-fortune'])
-  assert.deepEqual(counters.rests, ['rest'])
-  assert.deepEqual(used, ['capture', 'normal reveal', 'rewardTarget', 'shopTarget'])
+  assert.deepEqual(counters.rests, ['cleanse'])
+  assert.deepEqual(used, [
+    'capture',
+    'hold reveal',
+    'normal reveal',
+    'restTarget',
+    'rewardTarget',
+    'shopTarget',
+  ])
 })
 
 test('a defeated expedition stays resumable as a completed Campaign', async (t) => {
   const { counters, final, used } = await driveExpedition(t, {
     runId: 'expedition-defeat',
-    seed: 3,
+    seed: 26,
     plan: ['gate', 'shrine', 'court', 'vault', 'watch', 'sanctum', 'finale'],
     hooks: {
       async '15:ended'({ app, root }) {

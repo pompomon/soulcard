@@ -1,4 +1,5 @@
 import { compareCards } from '../domain/cards.js'
+import { isCampaignEventVersion } from '../domain/campaign-events.js'
 import { validateCommittedEvent } from '../domain/events.js'
 import { runVisualKey, validateRunState } from '../domain/run-state.js'
 
@@ -196,7 +197,7 @@ export function createEventTimeline(event, timing = EVENT_PRESENTATION_TIMING) {
       kind: 'retain',
       reason: event.reason,
       cardIds: event.reveals.map(({ cardId }) => cardId),
-      ...(event.eventVersion === 5
+      ...(isCampaignEventVersion(event.eventVersion)
         ? { visualKeys: event.reveals.map(runVisualKey) }
         : {}),
       durationMs: 0,

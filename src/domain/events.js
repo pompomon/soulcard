@@ -7,11 +7,11 @@ import {
   STANDARD_DECK,
 } from './cards.js'
 import {
-  CAMPAIGN_EVENT_VERSION,
+  isCampaignEventVersion,
   validateCampaignEvent,
 } from './campaign-events.js'
 
-// Classic and Campaign share one version number space: 5 is CAMPAIGN_EVENT_VERSION.
+// Classic and Campaign share one version number space: Campaign uses 5 and 7.
 export const EVENT_VERSION = 6
 
 const SIDES = Object.freeze(['player', 'opponent'])
@@ -352,7 +352,7 @@ export function validateCommittedEvent(event) {
   if (!versionDescriptor?.enumerable || !Object.hasOwn(versionDescriptor, 'value')) {
     throw new TypeError('event.eventVersion must be JSON-compatible data')
   }
-  if (versionDescriptor.value === CAMPAIGN_EVENT_VERSION) {
+  if (isCampaignEventVersion(versionDescriptor.value)) {
     return validateCampaignEvent(event)
   }
   const typeDescriptor = Object.getOwnPropertyDescriptor(event, 'type')

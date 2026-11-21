@@ -10,7 +10,31 @@ import {
   resolveEncounterRule,
   validateEncounterRuleCatalogue,
 } from '../../src/domain/campaign-encounter-rules.js'
-import { CAMPAIGN_MAP } from '../../src/domain/campaign-map.js'
+import { CAMPAIGN_MAP, uncoveredCampaignRanks } from '../../src/domain/campaign-map.js'
+import {
+  chooseCampaignReveal,
+  createCampaignStateFingerprint,
+  prepareCampaignReveal,
+  validateCampaignState,
+} from '../../src/domain/campaign-machine.js'
+import { restoreRng, shuffle } from '../../src/domain/rng.js'
+import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
+import {
+  attritionFixtureRun,
+  claimReward,
+  holdCard,
+  mutableReady,
+  passThrough,
+  raceFixtureRun,
+  refingerprint,
+  resolvePrepared,
+  retryEncounter,
+  routeFixtureRun,
+  stakesFixtureRun,
+  startCampaign,
+  winEncounter,
+  fingerprint,
+} from '../fixtures/campaign-route.js'
 
 const RACE = 'race-to-ten-v1'
 const DOUBLE = 'double-or-nothing-v1'
@@ -26,6 +50,75 @@ function encounter(id, { player = 'source', opponent = 'source', activeClashes =
     supplyMode: { player, opponent },
     rule: { id, activeClashes, wins: wins ?? { player: 0, opponent: 0 } },
   }
+}
+
+// Seed 8 races at the gate, seed 0 plays Double or nothing, and seed 5 Attrition.
+function gate(seed, ruleset = BASELINE_RULESET) {
+  return startCampaign({ runId: `encounter-rules-${seed}`, seed, ruleset })
+}
+
+// Wins the gate, claims `offerId`, and enters the Royal Court through the shrine.
+function court(seed, offerId = 'mend') {
+  return passThrough(claimReward(winEncounter(gate(seed)), offerId), 'shrine', 'court')
+}
+
+// Mends after the gate and Royal Court, then enters the Night Watch through the vault.
+function nightWatch(seed) {
+  return passThrough(claimReward(winEncounter(court(seed)), 'mend'), 'vault', 'night-watch')
+}
+
+function instanceOf(run, side, cardId) {
+  return run.cards.find((card) => (
+    card.campaignOwner === side && card.cardId === `c-${cardId}`
+  )).instanceId
+}
+
+// Rearranges a ready fight. Each side's piles list short card IDs ('KD' is c-KD); a side
+// with a `source` list supplies from source and any other side is personal. Every other
+// card except Hold is parked in the burn pile, and the rule state is set directly.
+function arrange(input, { player = {}, opponent = {}, activeClashes = 0, wins } = {}) {
+  const run = mutableReady(input)
+  const free = run.cards.filter(({ instanceId }) => instanceId !== run.hold)
+  const take = (side) => (cardId) => {
+    const index = free.findIndex((card) => (
+      card.campaignOwner === side && card.cardId === `c-${cardId}`
+    ))
+    assert.ok(index >= 0, `the ${side} has a free ${cardId}`)
+    return free.splice(index, 1)[0].instanceId
+  }
+  const zones = {}
+  for (const [side, piles] of [['player', player], ['opponent', opponent]]) {
+    zones[`${side}SourcePile`] = (piles.source ?? []).map(take(side))
+    zones[side] = {
+      drawPile: (piles.draw ?? []).map(take(side)),
+      wonPile: (piles.won ?? []).map(take(side)),
+    }
+    run.encounter.supplyMode[side] = piles.source === undefined ? 'personal' : 'source'
+  }
+  run.encounter.zones = {
+    ...zones,
+    contestedPile: [],
+    burnPile: free.map(({ instanceId }) => instanceId),
+    inPlay: [],
+  }
+  run.encounter.rule.activeClashes = activeClashes
+  run.encounter.rule.wins = wins ?? { player: 0, opponent: 0 }
+  run.turn = Math.max(run.turn, activeClashes)
+  return fingerprint(run)
+}
+
+function play(run, choice = 'normal') {
+  return resolvePrepared(run, choice)
+}
+
+// Short card IDs of event records, contest records, or instance IDs.
+function cardsOf(run, entries) {
+  const cards = new Map(run.cards.map(({ instanceId, cardId }) => [instanceId, cardId.slice(2)]))
+  return entries.map((entry) => cards.get(typeof entry === 'string' ? entry : entry.instanceId))
+}
+
+function origins(records) {
+  return records.map(({ cardId, from }) => [cardId.slice(2), from])
 }
 
 test('encounter rule catalogue validation names the offending entry and field', () => {
@@ -175,4 +268,438 @@ test('the rule display state gives each rule its own counts', () => {
     [attrition.name, attrition.active, attrition.target, attrition.stake, attrition.attritionCards],
     ['Attrition', false, null, null, 3],
   )
+})
+
+test('a race ends the fight at its target for either side, and a retry resets it', () => {
+  const nearTarget = { activeClashes: 18, wins: { player: 9, opponent: 9 } }
+  const won = play(arrange(gate(8), {
+    player: { draw: ['KD', '9D'] },
+    opponent: { draw: ['5S', '6S', '7S'] },
+    ...nearTarget,
+  }))
+  assert.deepEqual(won.match.encounter.outcome, {
+    result: 'win',
+    winner: 'player',
+    reason: 'raceTargetReached',
+  })
+  assert.equal(won.match.machineState, 'awaitingReward')
+  assert.deepEqual(won.match.encounter.rule, {
+    id: RACE,
+    activeClashes: 19,
+    wins: { player: 10, opponent: 9 },
+  })
+  // The target ends the fight while the loser still has cards.
+  assert.deepEqual(cardsOf(won.match, won.match.encounter.zones.opponent.drawPile), ['6S', '7S'])
+
+  const lost = play(arrange(gate(8), {
+    player: { draw: ['5D', '6D'] },
+    opponent: { draw: ['KS'] },
+    ...nearTarget,
+  }))
+  assert.deepEqual(lost.match.encounter.outcome, {
+    result: 'win',
+    winner: 'opponent',
+    reason: 'raceTargetReached',
+  })
+  assert.equal(lost.match.machineState, 'awaitingRetry')
+  const retried = retryEncounter(lost.match)
+  assert.equal(retried.encounterAttempt, 2)
+  assert.deepEqual(retried.encounter.rule, {
+    id: RACE,
+    activeClashes: 0,
+    wins: { player: 0, opponent: 0 },
+  })
+  assert.deepEqual(retried.encounter.supplyMode, { player: 'source', opponent: 'source' })
+})
+
+test('a tie across the last source cards starts a race on the clash it settles', () => {
+  const lastSourceCards = {
+    player: { source: ['7D'], won: ['KD'] },
+    opponent: { source: ['7S'], won: ['5S'] },
+  }
+  const raced = play(arrange(gate(8), lastSourceCards))
+  assert.deepEqual(origins(raced.event.reveals), [
+    ['7D', 'player.sourcePile'],
+    ['7S', 'opponent.sourcePile'],
+    ['KD', 'player.drawPile'],
+    ['5S', 'opponent.drawPile'],
+  ])
+  assert.deepEqual(raced.match.encounter.supplyMode, { player: 'personal', opponent: 'personal' })
+  assert.deepEqual(raced.match.encounter.rule, {
+    id: RACE,
+    activeClashes: 1,
+    wins: { player: 1, opponent: 0 },
+  })
+
+  // Double or nothing sets its stake after the first-round reveals, while both sides
+  // still supply from source, and then counts the clash.
+  const staked = play(arrange(gate(0), lastSourceCards))
+  assert.deepEqual(staked.event.stakes, [])
+  assert.equal(staked.match.encounter.rule.activeClashes, 1)
+
+  // A race waits for both supplies to turn personal.
+  const waiting = play(arrange(gate(8), {
+    player: { draw: ['KD', '9D'] },
+    opponent: { source: ['5S', '6S'] },
+  }))
+  assert.equal(waiting.event.winner, 'player')
+  assert.equal(waiting.match.encounter.rule.activeClashes, 0)
+})
+
+test('stakes follow the schedule player first, and a short side stakes all it has', () => {
+  const { event, match } = play(arrange(gate(0), {
+    player: { draw: ['KD', '2D', '3D', '4D', '9D'] },
+    opponent: { draw: ['5S', '2S', '3S', '4S', '9S'] },
+    activeClashes: 2,
+  }))
+  assert.deepEqual(origins(event.stakes), [
+    ['2D', 'player.drawPile'],
+    ['3D', 'player.drawPile'],
+    ['4D', 'player.drawPile'],
+    ['2S', 'opponent.drawPile'],
+    ['3S', 'opponent.drawPile'],
+    ['4S', 'opponent.drawPile'],
+  ])
+  assert.deepEqual(cardsOf(match, event.transfers), ['KD', '2D', '3D', '4D'])
+  assert.deepEqual(cardsOf(match, event.burned), ['5S', '2S', '3S', '4S'])
+  assert.deepEqual(cardsOf(match, match.encounter.zones.burnPile.slice(-4)), event.burned.map(
+    (instanceId) => cardsOf(match, [instanceId])[0],
+  ))
+  assert.equal(match.encounter.rule.activeClashes, 3)
+  assert.equal(getEncounterStake(match.encounter), 7)
+
+  const short = play(arrange(gate(0), {
+    player: { draw: ['5D', '2D'] },
+    opponent: { draw: ['KS', '2S', '3S', '4S', '9S'] },
+    activeClashes: 2,
+  }))
+  assert.deepEqual(cardsOf(short.match, short.event.stakes), ['2D', '2S', '3S', '4S'])
+  assert.equal(short.match.machineState, 'ready')
+  const ended = play(short.match)
+  assert.equal(ended.match.encounter.outcome.reason, 'playerUnableToReveal')
+  assert.deepEqual(cardsOf(ended.match, ended.event.reveals), ['9S'])
+})
+
+test('an all-in tie ends in inability, or in a draw that keeps the stakes on the table', () => {
+  const unable = play(arrange(gate(0), {
+    player: { draw: ['7D', '2D'] },
+    opponent: { draw: ['7S', '2S', '9S'] },
+    activeClashes: 1,
+  }))
+  assert.deepEqual(cardsOf(unable.match, unable.event.reveals), ['7D', '7S', '9S'])
+  assert.deepEqual(cardsOf(unable.match, unable.event.stakes), ['2D', '2S'])
+  assert.deepEqual(cardsOf(unable.match, unable.event.transfers), ['7S', '2S', '9S'])
+  assert.deepEqual(cardsOf(unable.match, unable.event.burned), ['7D', '2D'])
+  assert.equal(unable.match.encounter.outcome.reason, 'playerUnableToReveal')
+  // Inability does not advance the rule.
+  assert.equal(unable.match.encounter.rule.activeClashes, 1)
+
+  const drawn = play(arrange(gate(0), {
+    player: { draw: ['7D', '2D', '8D'] },
+    opponent: { draw: ['7S', '2S', '8S'] },
+    activeClashes: 1,
+  }))
+  assert.equal(drawn.event.type, 'clashDrawn')
+  assert.deepEqual(cardsOf(drawn.match, drawn.event.reveals), ['7D', '7S', '8D', '8S'])
+  assert.deepEqual(cardsOf(drawn.match, drawn.event.stakes), ['2D', '2S'])
+  assert.deepEqual(
+    cardsOf(drawn.match, drawn.match.encounter.zones.contestedPile),
+    ['7D', '7S', '2D', '2S', '8D', '8S'],
+  )
+  assert.equal(drawn.match.machineState, 'awaitingRetry')
+})
+
+test('stakes and tie reveals recycle won piles with the run RNG in supply order', () => {
+  const ready = arrange(gate(0), {
+    player: { draw: ['7D'], won: ['2D', '3D', '4D', '5D', '6D'] },
+    opponent: { draw: ['7S'], won: ['8S', '9S', '10S', 'JS', 'QS'] },
+    activeClashes: 2,
+  })
+  const rng = restoreRng(ready.rng)
+  const player = shuffle(ready.encounter.zones.player.wonPile, rng)
+  const opponent = shuffle(ready.encounter.zones.opponent.wonPile, rng)
+  const { event, match } = play(ready)
+  assert.deepEqual(
+    event.stakes.map(({ instanceId }) => instanceId),
+    [...player.slice(0, 3), ...opponent.slice(0, 3)],
+  )
+  assert.deepEqual(
+    event.reveals.slice(2).map(({ instanceId }) => instanceId),
+    [player[3], opponent[3]],
+  )
+  assert.equal(event.winner, 'opponent')
+  assert.deepEqual(match.rng, rng.snapshot())
+  assert.deepEqual(match.encounter.zones.player.drawPile, player.slice(4))
+  assert.deepEqual(match.encounter.zones.opponent.drawPile, opponent.slice(4))
+})
+
+test('Plunder and Spoils of War claim stakes that would burn', () => {
+  const plundered = play(arrange(nightWatch(0), {
+    player: { draw: ['5D', '2D', '3D'] },
+    opponent: { draw: ['9S', '8S', '10S'] },
+    activeClashes: 1,
+  }))
+  assert.equal(plundered.match.encounter.rule.id, DOUBLE)
+  assert.deepEqual(plundered.match.encounter.traitIds, ['plunder-v1'])
+  assert.deepEqual(cardsOf(plundered.match, plundered.event.transfers), ['5D', '9S', '2D', '8S'])
+  assert.deepEqual(plundered.event.burned, [])
+
+  const spoils = play(arrange(court(25, 'modifier'), {
+    player: { draw: ['AD', '2D', '3D'] },
+    opponent: { draw: ['JS', 'QS', 'KS'] },
+    activeClashes: 1,
+  }))
+  assert.equal(spoils.match.encounter.rule.id, DOUBLE)
+  assert.ok(spoils.match.activeModifiers.some(({ id }) => id === 'spoils-of-war-v1'))
+  assert.deepEqual(cardsOf(spoils.match, spoils.event.transfers), ['AD', 'JS', '2D', 'QS'])
+  assert.deepEqual(spoils.event.burned, [])
+})
+
+test('Hold previews and Hold Insight peeks stay exact when stakes follow', () => {
+  const insight = passThrough(routeFixtureRun('encounter-rules-insight'), 'shrine', 'court')
+  const held = holdCard(insight, instanceOf(insight, 'player', 'AH'))
+  const ready = arrange(held, {
+    player: { won: ['9D', '3D', '4D', '5D', '6D'] },
+    opponent: { won: ['JS', 'QS', 'KS', 'JC', 'QC'] },
+    activeClashes: 2,
+  })
+  assert.equal(ready.encounter.rule.id, DOUBLE)
+  for (const choice of ['normal', 'hold']) {
+    const prepared = prepareCampaignReveal(ready).match
+    assert.equal(prepared.machineState, 'awaitingInformedHoldChoice')
+    const { candidate, opponentCandidate } = prepared.holdChoice
+    const { event } = chooseCampaignReveal(prepared, choice)
+    assert.deepEqual(
+      event.reveals.slice(0, 2).map(({ instanceId }) => instanceId),
+      [choice === 'hold' ? held.hold : candidate, opponentCandidate],
+      choice,
+    )
+    assert.equal(event.stakes.length, 6, choice)
+    assert.ok(event.stakes.every(({ from }) => from !== 'player.hold'), choice)
+    // A Hold reveal leaves the previewed card on top, so it becomes the first stake.
+    if (choice === 'hold') assert.equal(event.stakes[0].instanceId, candidate)
+  }
+})
+
+test('attrition burns the loser\'s next cards under both burn settings', () => {
+  for (const ruleset of [BASELINE_RULESET, NO_BURN_RULESET]) {
+    const { event, match } = play(arrange(gate(5, ruleset), {
+      player: { draw: ['KD', '9D'] },
+      opponent: { draw: ['5S', '2S', '3S', '4S', '9S'] },
+    }))
+    const burns = ruleset.burn.enabled
+    assert.equal(match.encounter.rule.id, ATTRITION)
+    assert.deepEqual(origins(event.attrition), [
+      ['2S', 'opponent.drawPile'],
+      ['3S', 'opponent.drawPile'],
+      ['4S', 'opponent.drawPile'],
+    ], ruleset.id)
+    assert.deepEqual(cardsOf(match, event.transfers), burns ? ['KD'] : ['KD', '5S'], ruleset.id)
+    assert.deepEqual(cardsOf(match, event.burned), burns ? ['5S'] : [], ruleset.id)
+    const removed = [...event.burned, ...event.attrition.map(({ instanceId }) => instanceId)]
+    assert.deepEqual(match.encounter.zones.burnPile.slice(-removed.length), removed, ruleset.id)
+    assert.deepEqual(cardsOf(match, match.encounter.zones.opponent.drawPile), ['9S'], ruleset.id)
+  }
+})
+
+test('attrition recycles, stops when the loser runs out, and never touches Hold', () => {
+  const ready = arrange(gate(5), {
+    player: { draw: ['KD', '9D'] },
+    opponent: { draw: ['5S', '2S'], won: ['3S', '4S', '9S'] },
+  })
+  const rng = restoreRng(ready.rng)
+  const recycled = shuffle(ready.encounter.zones.opponent.wonPile, rng)
+  const { event, match } = play(ready)
+  assert.deepEqual(
+    event.attrition.map(({ instanceId }) => instanceId),
+    [instanceOf(ready, 'opponent', '2S'), ...recycled.slice(0, 2)],
+  )
+  assert.deepEqual(match.rng, rng.snapshot())
+
+  const short = play(arrange(gate(5), {
+    player: { draw: ['KD', '9D'] },
+    opponent: { draw: ['5S', '2S'] },
+  }))
+  assert.deepEqual(cardsOf(short.match, short.event.attrition), ['2S'])
+  assert.equal(short.match.machineState, 'ready')
+  assert.equal(play(short.match).match.encounter.outcome.reason, 'opponentUnableToReveal')
+
+  const fresh = gate(5)
+  const held = holdCard(fresh, instanceOf(fresh, 'player', 'AD'))
+  const guarded = play(arrange(held, {
+    player: { draw: ['5D', '2D'] },
+    opponent: { draw: ['KS', '9S'] },
+  }))
+  assert.deepEqual(cardsOf(guarded.match, guarded.event.attrition), ['2D'])
+  assert.equal(guarded.match.hold, held.hold)
+  assert.equal(guarded.match.machineState, 'ready')
+})
+
+test('Plunder cannot claim attrition burns', () => {
+  const { event, match } = play(arrange(nightWatch(5), {
+    player: { draw: ['5D', '2D', '3D', '4D', '9D'] },
+    opponent: { draw: ['9S', '10S'] },
+  }))
+  assert.equal(match.encounter.rule.id, ATTRITION)
+  assert.deepEqual(match.encounter.traitIds, ['plunder-v1'])
+  assert.deepEqual(cardsOf(match, event.transfers), ['5D', '9S'])
+  assert.deepEqual(event.burned, [])
+  assert.deepEqual(cardsOf(match, event.attrition), ['2D', '3D', '4D'])
+  assert.deepEqual(
+    match.encounter.zones.burnPile.slice(-3),
+    event.attrition.map(({ instanceId }) => instanceId),
+  )
+})
+
+test('a retry returns burned stakes and attrition cards, protected ranks included', () => {
+  for (const [input, layout] of [
+    [court(3), {
+      player: { draw: ['5D', 'AD', 'AH'] },
+      opponent: { draw: ['JS', 'QS', 'KS', 'JC', 'QC'] },
+      activeClashes: 2,
+    }],
+    [court(1), {
+      player: { draw: ['5D', 'AD', 'AH'] },
+      opponent: { draw: ['JS', 'QS'] },
+    }],
+  ]) {
+    const ruleId = input.encounter.rule.id
+    // No Royal Court card ties or beats an Ace, so a revealed Ace never burns there.
+    assert.deepEqual(uncoveredCampaignRanks(input.cards
+      .filter(({ campaignOwner }) => campaignOwner === 'opponent')
+      .map(({ cardId }) => cardId)), ['A'], ruleId)
+    const { match } = play(arrange(input, layout))
+    assert.deepEqual(cardsOf(match, match.encounter.zones.burnPile.slice(-3)), ['5D', 'AD', 'AH'])
+    const lost = play(match).match
+    assert.equal(lost.machineState, 'awaitingRetry', ruleId)
+    const retried = retryEncounter(lost)
+    assert.deepEqual(
+      [...retried.encounter.zones.playerSourcePile].sort(),
+      [...retried.deckLayout].sort(),
+      ruleId,
+    )
+    assert.deepEqual(retried.encounter.zones.burnPile, [], ruleId)
+    assert.deepEqual(retried.encounter.rule, {
+      id: ruleId,
+      activeClashes: 0,
+      wins: { player: 0, opponent: 0 },
+    })
+  }
+})
+
+test('validation rejects tampered rule assignments and rule state', () => {
+  const tampered = (input, edit) => {
+    const run = clone(input)
+    edit(run)
+    return refingerprint(run)
+  }
+  const nearTarget = arrange(gate(8), {
+    player: { draw: ['KD'] },
+    opponent: { draw: ['5S'] },
+    activeClashes: 18,
+    wins: { player: 9, opponent: 9 },
+  })
+  const cases = [
+    [gate(0), (run) => { run.encounterRules[1].ruleId = DOUBLE },
+      /campaign\.encounterRules\[1\]\.ruleId must match the rules its seed assigns/],
+    [gate(0), (run) => { run.encounterRules.pop() },
+      /campaign\.encounterRules must match the rules its seed assigns/],
+    [gate(0), (run) => { run.encounter.rule.id = RACE },
+      /rule\.id must match the rule assigned to its fight/],
+    [gate(0), (run) => { run.encounter.rule.target = 10 },
+      /campaign\.encounter\.rule must contain only id, activeClashes, wins/],
+    [gate(0), (run) => { run.encounter.rule.activeClashes = 1 },
+      /cannot count more clashes than were played/],
+    [gate(0), (run) => {
+      run.turn = 1
+      run.encounter.rule.activeClashes = 1
+    }, /counts clashes only once it is active/],
+    [raceFixtureRun(), (run) => { run.encounter.rule.wins.player += 1 },
+      /Only a race counts clash wins, one for each active clash/],
+    [stakesFixtureRun(), (run) => { run.encounter.rule.wins.player = 1 },
+      /Only a race counts clash wins, one for each active clash/],
+    [nearTarget, (run) => {
+      run.turn = 19
+      run.encounter.rule.activeClashes = 19
+      run.encounter.rule.wins.player = 10
+    }, /Only the winner of a finished race can reach the race target/],
+  ]
+  for (const [input, edit, expected] of cases) {
+    assert.throws(() => validateCampaignState(tampered(input, edit)), expected)
+  }
+})
+
+test('pending events bind stakes and attrition to the state they describe', () => {
+  const first = play(gate(8))
+  assert.deepEqual([first.event.stakes, first.event.attrition], [[], []])
+  for (const run of [first.match, stakesFixtureRun(), attritionFixtureRun()]) {
+    assert.equal(run.pendingEvent.stateFingerprint, createCampaignStateFingerprint(run))
+    for (const key of ['stakes', 'attrition']) {
+      const dropped = clone(run)
+      delete dropped.pendingEvent[key]
+      assert.notEqual(createCampaignStateFingerprint(dropped), run.stateFingerprint, key)
+    }
+  }
+
+  const tampered = (input, edit) => {
+    const run = clone(input)
+    edit(run)
+    return refingerprint(run)
+  }
+  const stakes = stakesFixtureRun()
+  assert.ok(stakes.pendingEvent.stakes.length > 0)
+  assert.throws(() => validateCampaignState(tampered(stakes, (run) => {
+    run.encounter.rule.activeClashes -= 1
+  })), /Campaign stakes must follow the Double or nothing schedule/)
+  assert.throws(() => validateCampaignState(tampered(stakes, (run) => {
+    run.encounter.rule.activeClashes += 1
+  })), /Only a side that ran out may stake less than the Double or nothing schedule/)
+
+  // Either side, winner or loser, may stake short only once it has run out.
+  const staked = play(arrange(gate(0), {
+    player: { draw: ['KD', '2D', '3D', '4D', '9D'] },
+    opponent: { draw: ['5S', '2S', '3S', '4S', '9S'] },
+    activeClashes: 2,
+  })).match
+  for (const side of ['player', 'opponent']) {
+    assert.throws(() => validateCampaignState(tampered(staked, (run) => {
+      const event = run.pendingEvent
+      const { instanceId } = event.stakes.findLast(({ suppliedBy }) => suppliedBy === side)
+      const zones = run.encounter.zones
+      event.stakes = event.stakes.filter((record) => record.instanceId !== instanceId)
+      event.transfers = event.transfers.filter((record) => record.instanceId !== instanceId)
+      event.burned = event.burned.filter((burned) => burned !== instanceId)
+      zones.player.wonPile = zones.player.wonPile.filter((entry) => entry !== instanceId)
+      zones.burnPile = zones.burnPile.filter((entry) => entry !== instanceId)
+      zones[side].drawPile.unshift(instanceId)
+    })), /Only a side that ran out may stake less than the Double or nothing schedule/, side)
+  }
+
+  const attrition = attritionFixtureRun()
+  assert.equal(attrition.pendingEvent.attrition.length, 3)
+  assert.throws(() => validateCampaignState(tampered(attrition, (run) => {
+    const { instanceId } = run.pendingEvent.attrition.pop()
+    const loser = run.pendingEvent.winner === 'player' ? 'opponent' : 'player'
+    assert.equal(run.encounter.zones.burnPile.pop(), instanceId)
+    run.encounter.zones[loser].drawPile.unshift(instanceId)
+  })), /Attrition must burn its full count unless the loser runs out/)
+  assert.throws(() => validateCampaignState(tampered(attrition, (run) => {
+    const burnPile = run.encounter.zones.burnPile
+    burnPile.push(...burnPile.splice(-2).reverse())
+  })), /Campaign event burns must be the burn-pile suffix/)
+
+  // A race won by inability cannot be relabelled as reaching the target.
+  const inability = play(arrange(gate(8), {
+    player: { draw: ['KD'] },
+    opponent: {},
+    activeClashes: 18,
+    wins: { player: 9, opponent: 9 },
+  })).match
+  assert.equal(inability.encounter.outcome.reason, 'opponentUnableToReveal')
+  assert.deepEqual(inability.encounter.rule.wins, { player: 9, opponent: 9 })
+  assert.throws(() => validateCampaignState(tampered(inability, (run) => {
+    run.encounter.outcome.reason = 'raceTargetReached'
+    run.encounter.rule.activeClashes = 19
+    run.encounter.rule.wins.player = 10
+  })), /A race win requires a matching settled event with complete reveal rounds/)
 })

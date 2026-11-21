@@ -46,6 +46,7 @@ import {
   routeFixtureRun,
   routeStates,
   shopFixtureRun,
+  stakesDrawFixtureRun,
   startCampaign,
   stepExpedition,
   victoryFixtureRun,
@@ -89,16 +90,16 @@ function refingerprintSave(save) {
   return save
 }
 
-test('campaign saves use schema v8 and campaign rules v7 and restore exactly', () => {
+test('campaign saves use schema v9 and campaign rules v8 and restore exactly', () => {
   const map = createCampaignRun({
     runId: 'campaign-persistence-map',
     seed: 27,
     ruleset: BASELINE_RULESET,
   })
   const mapSave = createRunSave(map, { savedAt: SAVED_AT })
-  assert.equal(SAVE_SCHEMA_VERSION, 8)
-  assert.equal(CAMPAIGN_GAME_RULES_VERSION, 7)
-  assert.equal(CAMPAIGN_VERSION, 4)
+  assert.equal(SAVE_SCHEMA_VERSION, 9)
+  assert.equal(CAMPAIGN_GAME_RULES_VERSION, 8)
+  assert.equal(CAMPAIGN_VERSION, 5)
   assert.equal(mapSave.saveSchemaVersion, SAVE_SCHEMA_VERSION)
   assert.equal(mapSave.runType, 'campaign')
   assert.equal(mapSave.gameRulesVersion, CAMPAIGN_GAME_RULES_VERSION)
@@ -132,8 +133,8 @@ test('campaign saves use schema v8 and campaign rules v7 and restore exactly', (
   assert.deepEqual(restoreRunSave(clone(save)), run)
 })
 
-test('campaign v8 fixtures regenerate exactly and restore their stable states', () => {
-  assert.equal(CAMPAIGN_SAVE_FIXTURES.length, 12)
+test('campaign v9 fixtures regenerate exactly and restore their stable states', () => {
+  assert.equal(CAMPAIGN_SAVE_FIXTURES.length, 17)
   for (const [name, build] of CAMPAIGN_SAVE_FIXTURES) {
     const run = build()
     const save = createRunSave(run, { savedAt: SAVED_AT })
@@ -141,7 +142,7 @@ test('campaign v8 fixtures regenerate exactly and restore their stable states', 
     assert.deepEqual(restoreRunSave(fixture(name)), run, name)
   }
 
-  const reward = fixture('campaign-save-reward-v8.json')
+  const reward = fixture('campaign-save-reward-v9.json')
   assert.equal(reward.match.machineState, 'awaitingReward')
   assert.deepEqual(reward.match.pendingReward.offers.map(({ offerId }) => offerId), [
     'new-card',
@@ -151,7 +152,7 @@ test('campaign v8 fixtures regenerate exactly and restore their stable states', 
   ])
   assert.equal(reward.match.pendingReward.offers[2].modifierId, 'hold-insight-v1')
 
-  const route = fixture('campaign-save-route-v8.json')
+  const route = fixture('campaign-save-route-v9.json')
   assert.equal(route.match.machineState, 'awaitingRoute')
   assert.equal(route.match.encounter, null)
   assert.equal(route.match.currency, 3)
@@ -172,7 +173,7 @@ test('campaign v8 fixtures regenerate exactly and restore their stable states', 
     finale: 'locked',
   })
 
-  const shop = fixture('campaign-save-shop-v8.json')
+  const shop = fixture('campaign-save-shop-v9.json')
   assert.equal(shop.match.machineState, 'awaitingShop')
   assert.equal(shop.match.shop.nodeId, 'market')
   assert.deepEqual(shop.match.shop.items.map(({ itemId, kind, price, sold }) => (
@@ -183,7 +184,7 @@ test('campaign v8 fixtures regenerate exactly and restore their stable states', 
     ['modifier-1', 'modifier', 4, false],
   ])
 
-  const exhausted = fixture('campaign-save-shop-exhausted-v8.json')
+  const exhausted = fixture('campaign-save-shop-exhausted-v9.json')
   assert.equal(exhausted.match.machineState, 'awaitingShop')
   assert.equal(exhausted.match.shop.nodeId, 'bazaar')
   assert.equal(exhausted.match.currency, 0)
@@ -225,11 +226,11 @@ test('campaign v8 fixtures regenerate exactly and restore their stable states', 
     finale: 'locked',
   })
 
-  const event = fixture('campaign-save-event-v8.json')
+  const event = fixture('campaign-save-event-v9.json')
   assert.equal(event.match.machineState, 'awaitingEvent')
   assert.deepEqual(event.match.nodeEvent, { nodeId: 'shrine', eventId: 'crossroads-shrine' })
 
-  const informed = fixture('campaign-save-informed-v8.json')
+  const informed = fixture('campaign-save-informed-v9.json')
   assert.equal(informed.match.machineState, 'awaitingInformedHoldChoice')
   assert.deepEqual(Object.keys(informed.match.holdChoice), [
     'from',
@@ -245,14 +246,14 @@ test('campaign v8 fixtures regenerate exactly and restore their stable states', 
     'route:court',
   ])
 
-  const modifiers = fixture('campaign-save-modifiers-v8.json')
+  const modifiers = fixture('campaign-save-modifiers-v9.json')
   assert.deepEqual(modifiers.match.activeModifiers, [
     { id: 'vitality-cap-v1', lifetime: 'campaign', grantedAtNodeId: null },
     { id: 'spoils-of-war-v1', lifetime: 'encounter', grantedAtNodeId: 'gate' },
   ])
   assert.notEqual(modifiers.match.hold, null)
 
-  const eliteChoice = fixture('campaign-save-elite-choice-v8.json')
+  const eliteChoice = fixture('campaign-save-elite-choice-v9.json')
   assert.equal(eliteChoice.match.machineState, 'awaitingRoute')
   const eliteChoiceStates = routeStates(restoreRunSave(eliteChoice))
   assert.equal(eliteChoiceStates.court, 'available')
@@ -265,7 +266,7 @@ test('campaign v8 fixtures regenerate exactly and restore their stable states', 
     createdInstanceId: null,
   })
 
-  const eliteReward = fixture('campaign-save-elite-reward-v8.json')
+  const eliteReward = fixture('campaign-save-elite-reward-v9.json')
   assert.equal(eliteReward.match.machineState, 'awaitingReward')
   assert.equal(eliteReward.match.encounter.id, 'high-court')
   assert.equal(eliteReward.match.encounter.tier, 'elite')
@@ -278,13 +279,13 @@ test('campaign v8 fixtures regenerate exactly and restore their stable states', 
   ])
   assert.match(eliteReward.match.pendingReward.offers[0].cardId, /^c-[JQKA][SHDC]$/)
 
-  const rest = fixture('campaign-save-rest-v8.json')
+  const rest = fixture('campaign-save-rest-v9.json')
   assert.equal(rest.match.machineState, 'awaitingRest')
   assert.deepEqual(rest.match.restSite, { nodeId: 'camp', siteId: 'roadside-camp' })
   assert.ok(rest.match.health < rest.match.maxHealth)
   assert.equal(rest.match.encounter, null)
 
-  const boss = fixture('campaign-save-boss-v8.json')
+  const boss = fixture('campaign-save-boss-v9.json')
   assert.equal(boss.match.machineState, 'ready')
   assert.equal(boss.match.encounter.id, 'ace-sovereign')
   assert.equal(boss.match.encounter.tier, 'boss')
@@ -307,58 +308,77 @@ test('campaign v8 fixtures regenerate exactly and restore their stable states', 
     'route:finale',
   ])
 
-  const victory = fixture('campaign-save-victory-v8.json')
+  const victory = fixture('campaign-save-victory-v9.json')
   assert.equal(victory.match.machineState, 'ended')
   assert.deepEqual(victory.match.outcome, { result: 'victory', reason: 'campaignCompleted' })
   assert.deepEqual(victory.match.journal, boss.match.journal)
   assert.equal(routeStates(restoreRunSave(victory)).finale, 'completed')
+
+  const race = fixture('campaign-save-race-v9.json')
+  assert.equal(race.match.encounter.rule.id, 'race-to-ten-v1')
+  assert.ok(Math.min(...Object.values(race.match.encounter.rule.wins)) >= 2)
+
+  const stakes = fixture('campaign-save-stakes-v9.json')
+  assert.equal(stakes.match.encounter.rule.id, 'double-or-nothing-v1')
+  assert.ok(stakes.pendingEvent.stakes.length > 0)
+
+  const stakesDraw = fixture('campaign-save-stakes-draw-v9.json')
+  assert.equal(stakesDraw.match.machineState, 'awaitingRetry')
+  assert.equal(stakesDraw.pendingEvent.type, 'clashDrawn')
+  const contested = stakesDraw.match.encounter.zones.contestedPile
+    .map(({ instanceId }) => instanceId)
+  assert.ok(stakesDraw.pendingEvent.stakes.length > 0)
+  assert.ok(stakesDraw.pendingEvent.stakes.every(({ instanceId }) => (
+    contested.includes(instanceId)
+  )))
+
+  for (const name of [
+    'campaign-save-attrition-v9.json',
+    'campaign-save-attrition-no-burn-v9.json',
+  ]) {
+    const save = fixture(name)
+    assert.equal(save.match.encounter.rule.id, 'attrition-v1', name)
+    const burned = save.pendingEvent.attrition.map(({ instanceId }) => instanceId)
+    assert.ok(burned.length > 0, name)
+    assert.deepEqual(save.match.encounter.zones.burnPile.slice(-burned.length), burned, name)
+    if (save.ruleset.id === 'mvp-no-burn-v2') {
+      assert.deepEqual(save.match.encounter.zones.burnPile, burned, name)
+    }
+  }
 })
 
-test('the first fight and the court fight match their 21.2 saves exactly', () => {
-  for (const kind of ['reward', 'informed', 'modifiers']) {
-    const legacy = fixture(`campaign-save-${kind}-v5.json`)
-    const current = fixture(`campaign-save-${kind}-v8.json`)
-    for (const key of ['rng', 'runId', 'ruleset']) {
-      assert.deepEqual(current[key], legacy[key], `${kind} ${key}`)
-    }
-    for (const key of [
-      'machineState',
-      'turn',
-      'health',
-      'encounterIndex',
-      'encounterAttempt',
-      'cards',
-      'deckLayout',
-      'hold',
-      'holdChoice',
-      'pendingReward',
-    ]) {
-      assert.deepEqual(current.match[key], legacy.match[key], `${kind} ${key}`)
-    }
-    // 21.4 records the fight tier and its traits; the rest of the encounter is unchanged.
-    const { tier, traitIds, ...encounter } = current.match.encounter
-    assert.equal(tier, 'normal', `${kind} tier`)
-    assert.deepEqual(traitIds, [], `${kind} traitIds`)
-    assert.deepEqual(encounter, legacy.match.encounter, `${kind} encounter`)
-  }
+test('a restored draw with stakes on the table retries like the uninterrupted run', () => {
+  const restored = restoreRunSave(fixture('campaign-save-stakes-draw-v9.json'))
+  const retried = retryEncounter(restored)
+  assert.deepEqual(retried, retryEncounter(stakesDrawFixtureRun()))
+  assert.deepEqual(roundTrip(retried), retried)
+  assert.equal(retried.machineState, 'ready')
+  assert.equal(retried.encounterAttempt, 2)
+  assert.deepEqual(retried.encounter.rule, {
+    id: 'double-or-nothing-v1',
+    activeClashes: 0,
+    wins: { player: 0, opponent: 0 },
+  })
+  assert.deepEqual(retried.encounter.zones.contestedPile, [])
+  assert.deepEqual(retried.encounter.zones.burnPile, [])
 })
 
 test('restored boundaries continue exactly without RNG replay', () => {
   const reward = rewardFixtureRun()
-  const restoredReward = restoreRunSave(fixture('campaign-save-reward-v8.json'))
+  const restoredReward = restoreRunSave(fixture('campaign-save-reward-v9.json'))
   for (const offerId of ['new-card', 'modifier', 'mend']) {
     assert.deepEqual(claimReward(restoredReward, offerId), claimReward(reward, offerId))
   }
 
   const route = routeFixtureRun()
-  const restoredRoute = restoreRunSave(fixture('campaign-save-route-v8.json'))
+  const restoredRoute = restoreRunSave(fixture('campaign-save-route-v9.json'))
   for (const nodeId of ['market', 'shrine']) {
     assert.deepEqual(chooseRoute(restoredRoute, nodeId), chooseRoute(route, nodeId))
   }
   assert.deepEqual(chooseRoute(restoredRoute, 'market').rng, route.rng)
 
   const shop = shopFixtureRun()
-  const restoredShop = restoreRunSave(fixture('campaign-save-shop-v8.json'))
+  const restoredShop = restoreRunSave(fixture('campaign-save-shop-v9.json'))
   const target = getCampaignShopTargets(restoredShop, 'service-1')[0].instanceId
   assert.deepEqual(
     buyShopItem(restoredShop, 'service-1', target),
@@ -366,14 +386,14 @@ test('restored boundaries continue exactly without RNG replay', () => {
   )
   assert.deepEqual(leaveShop(restoredShop), leaveShop(shop))
 
-  const restoredEvent = restoreRunSave(fixture('campaign-save-event-v8.json'))
+  const restoredEvent = restoreRunSave(fixture('campaign-save-event-v9.json'))
   const bled = chooseEventOption(restoredEvent, 'bleed-for-fortune')
   assert.equal(bled.health, restoredEvent.health - 1)
   assert.equal(bled.currency, restoredEvent.currency + 5)
   assert.deepEqual(bled.rng, restoredEvent.rng)
 
   const informed = informedFixtureRun()
-  const restoredInformed = restoreRunSave(fixture('campaign-save-informed-v8.json'))
+  const restoredInformed = restoreRunSave(fixture('campaign-save-informed-v9.json'))
   assert.deepEqual(restoredInformed.rng, informed.rng)
   const resumed = chooseCampaignReveal(restoredInformed, 'normal')
   assert.deepEqual(resumed, chooseCampaignReveal(informed, 'normal'))
@@ -384,7 +404,7 @@ test('restored boundaries continue exactly without RNG replay', () => {
   assert.deepEqual(resumed.match.rng, restoredInformed.rng)
 
   const rest = restFixtureRun()
-  const restoredRest = restoreRunSave(fixture('campaign-save-rest-v8.json'))
+  const restoredRest = restoreRunSave(fixture('campaign-save-rest-v9.json'))
   const trainTarget = getCampaignRestTargets(restoredRest, 'train')[0].instanceId
   for (const [optionId, target] of [['rest', null], ['train', trainTarget], ['walk-on', null]]) {
     const chosen = chooseRestOption(restoredRest, optionId, target)
@@ -395,14 +415,14 @@ test('restored boundaries continue exactly without RNG replay', () => {
   assert.equal(chooseRestOption(restoredRest, 'rest').health, restoredRest.health + 2)
 
   const eliteReward = eliteRewardFixtureRun()
-  const restoredEliteReward = restoreRunSave(fixture('campaign-save-elite-reward-v8.json'))
+  const restoredEliteReward = restoreRunSave(fixture('campaign-save-elite-reward-v9.json'))
   const mended = claimReward(restoredEliteReward, 'mend')
   assert.deepEqual(mended, claimReward(eliteReward, 'mend'))
   assert.equal(mended.health, restoredEliteReward.health + CAMPAIGN_MEND_HEALTH_BY_TIER.elite)
 
   // The boss fight continues to a victory, or, once the held card is revealed, to a defeat
   // after two retries.
-  const boss = restoreRunSave(fixture('campaign-save-boss-v8.json'))
+  const boss = restoreRunSave(fixture('campaign-save-boss-v9.json'))
   assert.deepEqual(boss, bossFixtureRun())
   const won = winEncounter(boss)
   assert.deepEqual(won.outcome, { result: 'victory', reason: 'campaignCompleted' })
@@ -418,7 +438,7 @@ test('restored boundaries continue exactly without RNG replay', () => {
   assert.equal(defeated.encounterAttempt, 3)
   assert.equal(defeated.health, 0)
 
-  const victory = restoreRunSave(fixture('campaign-save-victory-v8.json'))
+  const victory = restoreRunSave(fixture('campaign-save-victory-v9.json'))
   assert.deepEqual(victory, victoryFixtureRun())
   assert.deepEqual(roundTrip(victory), victory)
   assert.throws(() => prepareCampaignReveal(victory), /Only a ready campaign can prepare a reveal/)
@@ -426,7 +446,7 @@ test('restored boundaries continue exactly without RNG replay', () => {
 })
 
 test('a restored sold-out shop refuses every purchase and leaves toward the boss', () => {
-  const exhausted = restoreRunSave(fixture('campaign-save-shop-exhausted-v8.json'))
+  const exhausted = restoreRunSave(fixture('campaign-save-shop-exhausted-v9.json'))
   const offers = getCampaignShopOffers(exhausted)
   assert.deepEqual(offers.map(({ itemId, blocker }) => [itemId, blocker]), [
     ['card-1', 'sold'],
@@ -481,14 +501,14 @@ function activeFightTier(run) {
 }
 
 test('every expedition boundary round-trips and continues like an uninterrupted run', () => {
-  // Seed 17 climbs the elite ladder, retries once, and rests at the camp and the sanctum
-  // before defeating the Ace Sovereign; seed 12 bleeds at the shrine, sells out the bazaar,
-  // retries twice, and falls to the boss; seed 1 takes the market path without a retry.
+  // Seed 46 climbs the elite ladder, retries once, and rests at the camp and the sanctum
+  // before defeating the Ace Sovereign; seed 10 bleeds at the shrine, sells out the bazaar,
+  // retries twice, and falls to the boss; seed 15 takes the market path without a retry.
   const covered = new Set()
   for (const [seed, plan, outcome, retries] of [
-    [17, EXPEDITION_PLANS.shrine, 'victory', 1],
-    [12, EXPEDITION_PLANS.soldOut, 'defeat', 2],
-    [1, EXPEDITION_PLANS.market, 'victory', 0],
+    [46, EXPEDITION_PLANS.shrine, 'victory', 1],
+    [10, EXPEDITION_PLANS.soldOut, 'defeat', 2],
+    [15, EXPEDITION_PLANS.market, 'victory', 0],
   ]) {
     const options = { runId: `expedition-boundaries-${seed}`, seed, ruleset: BASELINE_RULESET }
     let uninterrupted = createCampaignRun(options)
@@ -553,77 +573,77 @@ test('tampered drafts, journal, route, coins, shops, events, modifiers, and peek
   const draft = /must match the regenerated reward draft/
   const modifiers = /must match the modifiers implied by the journal/
   const cases = [
-    ['campaign-save-reward-v8.json', draft, (save) => {
+    ['campaign-save-reward-v9.json', draft, (save) => {
       save.match.pendingReward.offers[0].cardId = 'c-AS'
     }],
-    ['campaign-save-reward-v8.json', draft, (save) => {
+    ['campaign-save-reward-v9.json', draft, (save) => {
       save.match.pendingReward.offers.splice(1, 1)
     }],
-    ['campaign-save-reward-v8.json', draft, (save) => {
+    ['campaign-save-reward-v9.json', draft, (save) => {
       save.match.pendingReward.offers[2].modifierId = 'vow-of-patience-v1'
     }],
-    ['campaign-save-informed-v8.json', /entry 1 must match its regenerated reward draft/, (save) => {
+    ['campaign-save-informed-v9.json', /entry 1 must match its regenerated reward draft/, (save) => {
       save.match.journal[1].offerId = 'mend'
     }],
-    ['campaign-save-informed-v8.json', /route position implied by the journal/, (save) => {
+    ['campaign-save-informed-v9.json', /route position implied by the journal/, (save) => {
       save.match.journal = []
     }],
-    ['campaign-save-informed-v8.json', /opponent candidate must remain at index zero/, (save) => {
+    ['campaign-save-informed-v9.json', /opponent candidate must remain at index zero/, (save) => {
       save.match.holdChoice.opponentCandidate = save.match.encounter.zones.opponentSourcePile[1]
     }],
-    ['campaign-save-informed-v8.json', modifiers, (save) => {
+    ['campaign-save-informed-v9.json', modifiers, (save) => {
       save.match.activeModifiers.pop()
     }],
-    ['campaign-save-modifiers-v8.json', modifiers, (save) => {
+    ['campaign-save-modifiers-v9.json', modifiers, (save) => {
       save.match.activeModifiers[1].lifetime = 'campaign'
     }],
-    ['campaign-save-modifiers-v8.json', modifiers, (save) => {
+    ['campaign-save-modifiers-v9.json', modifiers, (save) => {
       save.match.activeModifiers.push({
         id: 'hold-insight-v1',
         lifetime: 'campaign',
         grantedAtNodeId: 'gate',
       })
     }],
-    ['campaign-save-modifiers-v8.json', /must match the modifiers implied by the journal/, (save) => {
+    ['campaign-save-modifiers-v9.json', /must match the modifiers implied by the journal/, (save) => {
       save.match.activeModifiers[1].grantedAtNodeId = 'shrine'
     }],
-    ['campaign-save-route-v8.json', /coins must match the journal/, (save) => {
+    ['campaign-save-route-v9.json', /coins must match the journal/, (save) => {
       save.match.currency = 4
     }],
-    ['campaign-save-route-v8.json', /route/, (save) => {
+    ['campaign-save-route-v9.json', /route/, (save) => {
       save.match.route.nodes[2].state = 'bypassed'
     }],
-    ['campaign-save-route-v8.json', /route/, (save) => {
+    ['campaign-save-route-v9.json', /route/, (save) => {
       save.match.route.nodes[3].state = 'available'
     }],
-    ['campaign-save-shop-v8.json', /regenerated shop stock/, (save) => {
+    ['campaign-save-shop-v9.json', /regenerated shop stock/, (save) => {
       save.match.shop.items[0].cardId = 'c-9S'
     }],
-    ['campaign-save-shop-v8.json', /regenerated shop stock/, (save) => {
+    ['campaign-save-shop-v9.json', /regenerated shop stock/, (save) => {
       save.match.shop.items[1].price = 1
     }],
-    ['campaign-save-shop-v8.json', /regenerated shop stock/, (save) => {
+    ['campaign-save-shop-v9.json', /regenerated shop stock/, (save) => {
       save.match.shop.items[0].sold = true
     }],
-    ['campaign-save-shop-v8.json', /shop/, (save) => {
+    ['campaign-save-shop-v9.json', /shop/, (save) => {
       save.match.shop.nodeId = 'bazaar'
     }],
-    ['campaign-save-event-v8.json', /event/, (save) => {
+    ['campaign-save-event-v9.json', /event/, (save) => {
       save.match.nodeEvent.eventId = 'oathkeepers-vault'
     }],
-    ['campaign-save-event-v8.json', /health must match/, (save) => {
+    ['campaign-save-event-v9.json', /health must match/, (save) => {
       save.match.health = 2
     }],
-    ['campaign-save-rest-v8.json', /restSite\.siteId must match the active route node/, (save) => {
+    ['campaign-save-rest-v9.json', /restSite\.siteId must match the active route node/, (save) => {
       save.match.restSite.siteId = 'last-light-sanctum'
     }],
-    ['campaign-save-rest-v8.json', /restSite must be a plain object/, (save) => {
+    ['campaign-save-rest-v9.json', /restSite must be a plain object/, (save) => {
       save.match.restSite = null
     }],
-    ['campaign-save-route-v8.json', /rest site is allowed only while a rest site is open/, (save) => {
+    ['campaign-save-route-v9.json', /rest site is allowed only while a rest site is open/, (save) => {
       save.match.restSite = { nodeId: 'camp', siteId: 'roadside-camp' }
     }],
-    ['campaign-save-boss-v8.json', /health must match/, (save) => {
+    ['campaign-save-boss-v9.json', /health must match/, (save) => {
       save.match.health = 4
     }],
   ]
@@ -635,11 +655,11 @@ test('tampered drafts, journal, route, coins, shops, events, modifiers, and peek
   }
 
   for (const key of ['journal', 'route', 'currency', 'shop', 'nodeEvent', 'restSite']) {
-    const missing = fixture('campaign-save-modifiers-v8.json')
+    const missing = fixture('campaign-save-modifiers-v9.json')
     delete missing.match[key]
     assert.throws(() => restoreRunSave(missing), /save\.match must contain only/)
   }
-  const legacyShape = fixture('campaign-save-modifiers-v8.json')
+  const legacyShape = fixture('campaign-save-modifiers-v9.json')
   legacyShape.match.rewardHistory = []
   assert.throws(() => restoreRunSave(legacyShape), /save\.match must contain only/)
 })
@@ -1014,14 +1034,14 @@ test('automatic reveal leaves restored route, shop, event, rest, and retry bound
   const lost = loseEncounter(campaign(27, 'campaign-auto-retry'))
   const notReady = /Only a ready campaign can prepare a reveal/
   const boundaries = [
-    ['route', fixture('campaign-save-route-v8.json'), notReady],
-    ['shop', fixture('campaign-save-shop-v8.json'), notReady],
-    ['sold-out shop', fixture('campaign-save-shop-exhausted-v8.json'), notReady],
-    ['event', fixture('campaign-save-event-v8.json'), notReady],
-    ['elite choice', fixture('campaign-save-elite-choice-v8.json'), notReady],
-    ['elite reward', fixture('campaign-save-elite-reward-v8.json'), notReady],
-    ['rest', fixture('campaign-save-rest-v8.json'), notReady],
-    ['victory', fixture('campaign-save-victory-v8.json'), /An ended match cannot reveal/],
+    ['route', fixture('campaign-save-route-v9.json'), notReady],
+    ['shop', fixture('campaign-save-shop-v9.json'), notReady],
+    ['sold-out shop', fixture('campaign-save-shop-exhausted-v9.json'), notReady],
+    ['event', fixture('campaign-save-event-v9.json'), notReady],
+    ['elite choice', fixture('campaign-save-elite-choice-v9.json'), notReady],
+    ['elite reward', fixture('campaign-save-elite-reward-v9.json'), notReady],
+    ['rest', fixture('campaign-save-rest-v9.json'), notReady],
+    ['victory', fixture('campaign-save-victory-v9.json'), /An ended match cannot reveal/],
     ['retry', clone(createRunSave(lost, { savedAt: SAVED_AT })), notReady],
   ]
   for (const [name, save, refusal] of boundaries) {

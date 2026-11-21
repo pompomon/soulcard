@@ -392,10 +392,10 @@ async function playFight(app, name, { clashes = Infinity, until = () => false } 
 
 async function run() {
   const fixtures = {
-    eliteChoice: await loadFixture('campaign-save-elite-choice-v8.json'),
-    eliteReward: await loadFixture('campaign-save-elite-reward-v8.json'),
-    rest: await loadFixture('campaign-save-rest-v8.json'),
-    victory: await loadFixture('campaign-save-victory-v8.json'),
+    eliteChoice: await loadFixture('campaign-save-elite-choice-v9.json'),
+    eliteReward: await loadFixture('campaign-save-elite-reward-v9.json'),
+    rest: await loadFixture('campaign-save-rest-v9.json'),
+    victory: await loadFixture('campaign-save-victory-v9.json'),
   }
 
   // Route map: elite, rest, and boss nodes state their kind, archetype, traits, and reward.

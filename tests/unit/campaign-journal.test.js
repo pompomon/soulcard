@@ -233,10 +233,10 @@ test('replay rebuilds the live run after every decision of scripted expeditions'
     outcomes.push([seed, plan, run.outcome.result, decisions === run.journal.length])
   }
   assert.deepEqual(outcomes, [
-    [0, 'market', 'defeat', true],
-    [7, 'shrine', 'victory', true],
-    [1, 'soldOut', 'victory', true],
-    [2, 'market', 'defeat', true],
+    [0, 'market', 'victory', true],
+    [7, 'shrine', 'defeat', true],
+    [1, 'soldOut', 'defeat', true],
+    [2, 'market', 'victory', true],
   ])
   assert.deepEqual([...recorded].sort(), [...JOURNAL_ENTRY_TYPES].sort())
 })

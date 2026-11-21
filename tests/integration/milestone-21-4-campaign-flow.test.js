@@ -55,10 +55,10 @@ const CAMP_CHOICES = [
   ['walk-on', 'Walk on', 'Leave without changing anything.', true],
 ]
 
-// The elite ladder's saved Roadside Camp boundary: seed 11, journal step 7, 2/5 health.
+// The elite ladder's saved Roadside Camp boundary: seed 123, journal step 7, 2/5 health.
 function savedCamp() {
   return restoreRunSave(JSON.parse(readFileSync(
-    new URL('../fixtures/campaign-save-rest-v8.json', import.meta.url),
+    new URL('../fixtures/campaign-save-rest-v9.json', import.meta.url),
     'utf8',
   )))
 }
@@ -75,7 +75,7 @@ function restAtCamp(step, optionId = 'rest') {
 test('an elite ladder expedition rests twice and defeats the Ace Sovereign across reloads', async (t) => {
   const { counters, final, used } = await driveExpedition(t, {
     runId: 'elite-ladder',
-    seed: 11,
+    seed: 123,
     plan: EXPEDITION_PLANS.shrine,
     hooks: {
       '4:awaitingRoute'({ root }) {
@@ -89,8 +89,8 @@ test('an elite ladder expedition rests twice and defeats the Ace Sovereign acros
         ])
       },
       '5:ready'({ app, root }) {
-        // Hold keeps the 8D from the first fight; only a 2–10 could replace it here.
-        assert.equal(app.runSnapshot.match.hold, 'player-007')
+        // Hold keeps the QH from the first fight; only a 2–10 could replace it here.
+        assert.equal(app.runSnapshot.match.hold, 'player-024')
         click(byAction(root, 'hold'))
         assert.equal(overlayTitle(root), 'Replace held card')
         assert.equal(
@@ -117,9 +117,9 @@ test('an elite ladder expedition rests twice and defeats the Ace Sovereign acros
             textContent,
           ]),
           [
-            ['new-card', 'New card: AS'],
-            ['deck-edit', 'Duplicate a card'],
-            ['modifier', 'Modifier: Vow of Constancy'],
+            ['new-card', 'New card: KS'],
+            ['deck-edit', 'Replace a card with 5S'],
+            ['modifier', 'Modifier: Vow of the Court'],
             ['mend', 'Greater Mend'],
           ],
         )
@@ -179,13 +179,13 @@ test('an elite ladder expedition rests twice and defeats the Ace Sovereign acros
         ]])
         click(byAction(root, 'campaign-inspect'))
         assert.deepEqual(overlayDetails(root).slice(-7), [
-          'High Court: added AS and collected 6 coins',
+          'High Court: added KS and collected 6 coins',
           'Stage 4: entered Roadside Camp',
           'Roadside Camp: rested and restored 2 health',
           'Stage 5: entered Night Watch',
           'Night Watch: gained Vow of Constancy',
           'Stage 6: entered Last Light Sanctum',
-          'Last Light Sanctum: removed AS',
+          'Last Light Sanctum: removed KS',
         ])
         click(byAction(root, 'campaign-close'))
         assert.match(overlayTitle(root), /^Route map/)
@@ -198,7 +198,7 @@ test('an elite ladder expedition rests twice and defeats the Ace Sovereign acros
         )
         assert.deepEqual(overlayDetails(root), [
           'Expedition',
-          'Route: Suit Opposition → Crossroads Shrine → High Court → Roadside Camp → Night Watch → Last Light Sanctum → Ace Sovereign. Coins 14 · Deck 27 cards.',
+          'Route: Suit Opposition → Crossroads Shrine → High Court → Roadside Camp → Night Watch → Last Light Sanctum → Ace Sovereign. Coins 14 · Deck 25 cards.',
         ])
         assert.equal(usable(root, byAction(root, 'campaign-restart')), true)
       },
@@ -211,10 +211,10 @@ test('an elite ladder expedition rests twice and defeats the Ace Sovereign acros
   assert.deepEqual(used, ['capture', 'normal reveal', 'restTarget', 'rewardTarget'])
 })
 
-// The elite ladder on seed 3 loses its first two Ace Sovereign attempts; the third starts
+// The elite ladder on seed 26 loses its first two Ace Sovereign attempts; the third starts
 // with 1 health left.
 function lastBossAttempt() {
-  let run = createCampaignRun({ runId: 'boss-defeat', seed: 3, ruleset: BASELINE_RULESET })
+  let run = createCampaignRun({ runId: 'boss-defeat', seed: 26, ruleset: BASELINE_RULESET })
   const counters = createExpeditionCounters()
   while (run.journal.length < 15 || run.machineState !== 'ready') {
     run = stepExpedition(run, EXPEDITION_PLANS.shrine, counters)
@@ -228,7 +228,7 @@ test('a Campaign that reaches the boss with 1 health ends in defeat and can rest
   let confirmations = 0
   const { final } = await driveExpedition(t, {
     runId: 'boss-defeat',
-    seed: 3,
+    seed: 26,
     plan: EXPEDITION_PLANS.shrine,
     start,
     hooks: {
@@ -268,7 +268,7 @@ test('a Campaign that reaches the boss with 1 health ends in defeat and can rest
       assert.equal(confirmations, 1)
       assert.deepEqual(
         harness.app.runSnapshot.match,
-        createCampaignRun({ runId: 'boss-defeat', seed: 3, ruleset: BASELINE_RULESET }),
+        createCampaignRun({ runId: 'boss-defeat', seed: 26, ruleset: BASELINE_RULESET }),
       )
       assert.equal(overlayTitle(harness.root), 'Route map · Stage 1/7')
     },
@@ -278,7 +278,7 @@ test('a Campaign that reaches the boss with 1 health ends in defeat and can rest
 
 test('stale, repeated, and replayed rest decisions are refused', async (t) => {
   const camp = savedCamp()
-  const harness = await resumeSavedCampaign(t, { runId: camp.runId, seed: 11, start: camp })
+  const harness = await resumeSavedCampaign(t, { runId: camp.runId, seed: 123, start: camp })
   assert.equal(overlayTitle(harness.root), 'Roadside Camp')
   assert.deepEqual(restChoices(harness.root), CAMP_CHOICES)
 
@@ -326,7 +326,7 @@ test('stale, repeated, and replayed rest decisions are refused', async (t) => {
 
 test('a failed rest save is lost to a reload, which offers the saved rest site again', async (t) => {
   const camp = savedCamp()
-  const harness = await resumeSavedCampaign(t, { runId: camp.runId, seed: 11, start: camp })
+  const harness = await resumeSavedCampaign(t, { runId: camp.runId, seed: 123, start: camp })
   const deckSize = camp.deckLayout.length
 
   harness.repository.failNextSave()

@@ -25,7 +25,7 @@ import {
 } from '../../src/domain/campaign-machine.js'
 import { deckEditRequiresTarget } from '../../src/domain/campaign-deck.js'
 import { getCampaignMapNode } from '../../src/domain/campaign-map.js'
-import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
+import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
 
 // Shared Campaign route helpers for domain, persistence, and UI tests.
 
@@ -157,6 +157,9 @@ export function arrangeInability(input, unableSide) {
     .map(({ instanceId }) => instanceId)
   run.encounter.zones = emptyZones()
   run.encounter.supplyMode = { player: 'source', opponent: 'source' }
+  // No rule is active while both sides supply from source.
+  run.encounter.rule.activeClashes = 0
+  run.encounter.rule.wins = { player: 0, opponent: 0 }
   if (unableSide === 'player') {
     run.encounter.zones.opponentSourcePile.push(opponentIds.shift())
     run.encounter.zones.opponent.wonPile.push(...playerIds, ...opponentIds)
@@ -329,14 +332,14 @@ function buildOnce(build) {
   }
 }
 
-// Stable states behind the JSON Campaign save fixtures. Seed 48 wins its first fight
-// without a retry and drafts Hold Insight; seed 6 does the same and drafts Spoils of War.
-function fixtureCampaign(seed, runId) {
-  return startCampaign({ runId, seed, ruleset: BASELINE_RULESET })
+// Stable states behind the JSON Campaign save fixtures. Seed 53 wins its first fight
+// without a retry and drafts Hold Insight; seed 23 does the same and drafts Spoils of War.
+function fixtureCampaign(seed, runId, ruleset = BASELINE_RULESET) {
+  return startCampaign({ runId, seed, ruleset })
 }
 
 export const rewardFixtureRun = buildOnce((runId = 'fixture-campaign-reward') => {
-  return playUntilTransition(fixtureCampaign(48, runId))
+  return playUntilTransition(fixtureCampaign(53, runId))
 })
 
 // The route map after Hold Insight is claimed: the market and shrine are available.
@@ -359,7 +362,7 @@ export const informedFixtureRun = buildOnce(() => {
 
 export const modifiersFixtureRun = buildOnce(() => {
   let run = claimReward(
-    playUntilTransition(fixtureCampaign(6, 'fixture-campaign-modifiers')),
+    playUntilTransition(fixtureCampaign(23, 'fixture-campaign-modifiers')),
     'modifier',
   )
   run = passThrough(run, 'shrine', 'court')
@@ -367,10 +370,10 @@ export const modifiersFixtureRun = buildOnce(() => {
   return captureCampaignHold(run, getEligibleHoldTargets(run)[0].instanceId)
 })
 
-// Ember Bazaar after its last item is bought. Seed 1 bleeds at the shrine, so the gate
+// Ember Bazaar after its last item is bought. Seed 2 bleeds at the shrine, so the gate
 // bounty, the shrine coins, and the court bounty pay exactly the bazaar's 12-coin stock.
 export const exhaustedShopFixtureRun = buildOnce((runId = 'fixture-campaign-shop-exhausted') => {
-  let run = fixtureCampaign(1, runId)
+  let run = fixtureCampaign(2, runId)
   const counters = createExpeditionCounters()
   for (let step = 0; step < 5000 && run.machineState !== 'ended'; step += 1) {
     if (
@@ -390,11 +393,11 @@ export const eliteChoiceFixtureRun = buildOnce(() => {
   return passThrough(routeFixtureRun('fixture-campaign-elite-choice'), 'shrine')
 })
 
-// Seed 11 climbs the elite ladder of the shrine plan without a retry: it wins the High
+// Seed 123 climbs the elite ladder of the shrine plan without a retry: it wins the High
 // Court, rests at the Roadside Camp, wins the Night Watch, cleanses at the Last Light
 // Sanctum, and defeats the Ace Sovereign.
 function eliteLadderRun(runId, reached) {
-  let run = fixtureCampaign(11, runId)
+  let run = fixtureCampaign(123, runId)
   const counters = createExpeditionCounters()
   for (let step = 0; step < 5000; step += 1) {
     if (reached(run)) return run
@@ -430,17 +433,66 @@ export const victoryFixtureRun = buildOnce(() => {
   ))
 })
 
+// Gate fights stopped once their encounter rule has shown its effect.
+function gateFightUntil(seed, runId, reached, ruleset = BASELINE_RULESET) {
+  let run = fixtureCampaign(seed, runId, ruleset)
+  while (run.machineState === 'ready') {
+    run = advanceClash(run)
+    if (reached(run)) return run
+  }
+  throw new Error(`The gate fight did not reach the ${runId} state`)
+}
+
+// Seed 8 races at the gate; both sides have won two active clashes.
+export const raceFixtureRun = buildOnce(() => {
+  return gateFightUntil(8, 'fixture-campaign-race', (run) => (
+    run.machineState === 'ready'
+    && Math.min(run.encounter.rule.wins.player, run.encounter.rule.wins.opponent) >= 2
+  ))
+})
+
+// Seed 0 plays Double or nothing at the gate, just after its first clash with stakes.
+export const stakesFixtureRun = buildOnce(() => {
+  return gateFightUntil(0, 'fixture-campaign-stakes', (run) => (
+    run.machineState === 'ready' && run.pendingEvent.stakes.length > 0
+  ))
+})
+
+// Seed 54 draws its Double-or-nothing gate fight with the stakes still on the table.
+export const stakesDrawFixtureRun = buildOnce(() => {
+  return playUntilTransition(fixtureCampaign(54, 'fixture-campaign-stakes-draw'))
+})
+
+// Seed 5 plays Attrition at the gate, just after its first attrition burns, under burn and
+// no-burn rules.
+export const attritionFixtureRun = buildOnce(() => {
+  return gateFightUntil(5, 'fixture-campaign-attrition', (run) => (
+    run.machineState === 'ready' && run.pendingEvent.attrition.length > 0
+  ))
+})
+
+export const noBurnAttritionFixtureRun = buildOnce(() => {
+  return gateFightUntil(5, 'fixture-campaign-attrition-no-burn', (run) => (
+    run.machineState === 'ready' && run.pendingEvent.attrition.length > 0
+  ), NO_BURN_RULESET)
+})
+
 export const CAMPAIGN_SAVE_FIXTURES = Object.freeze([
-  ['campaign-save-reward-v8.json', rewardFixtureRun],
-  ['campaign-save-route-v8.json', routeFixtureRun],
-  ['campaign-save-shop-v8.json', shopFixtureRun],
-  ['campaign-save-shop-exhausted-v8.json', exhaustedShopFixtureRun],
-  ['campaign-save-event-v8.json', eventFixtureRun],
-  ['campaign-save-informed-v8.json', informedFixtureRun],
-  ['campaign-save-modifiers-v8.json', modifiersFixtureRun],
-  ['campaign-save-elite-choice-v8.json', eliteChoiceFixtureRun],
-  ['campaign-save-elite-reward-v8.json', eliteRewardFixtureRun],
-  ['campaign-save-rest-v8.json', restFixtureRun],
-  ['campaign-save-boss-v8.json', bossFixtureRun],
-  ['campaign-save-victory-v8.json', victoryFixtureRun],
+  ['campaign-save-reward-v9.json', rewardFixtureRun],
+  ['campaign-save-route-v9.json', routeFixtureRun],
+  ['campaign-save-shop-v9.json', shopFixtureRun],
+  ['campaign-save-shop-exhausted-v9.json', exhaustedShopFixtureRun],
+  ['campaign-save-event-v9.json', eventFixtureRun],
+  ['campaign-save-informed-v9.json', informedFixtureRun],
+  ['campaign-save-modifiers-v9.json', modifiersFixtureRun],
+  ['campaign-save-elite-choice-v9.json', eliteChoiceFixtureRun],
+  ['campaign-save-elite-reward-v9.json', eliteRewardFixtureRun],
+  ['campaign-save-rest-v9.json', restFixtureRun],
+  ['campaign-save-boss-v9.json', bossFixtureRun],
+  ['campaign-save-victory-v9.json', victoryFixtureRun],
+  ['campaign-save-race-v9.json', raceFixtureRun],
+  ['campaign-save-stakes-v9.json', stakesFixtureRun],
+  ['campaign-save-stakes-draw-v9.json', stakesDrawFixtureRun],
+  ['campaign-save-attrition-v9.json', attritionFixtureRun],
+  ['campaign-save-attrition-no-burn-v9.json', noBurnAttritionFixtureRun],
 ])

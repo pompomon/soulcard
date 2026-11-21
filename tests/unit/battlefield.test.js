@@ -18,9 +18,12 @@ import { createEventTimeline } from '../../src/presentation/event-player.js'
 import { createTextureCache } from '../../src/presentation/texture-cache.js'
 import { createThemeRegistry } from '../../src/presentation/themes/registry.js'
 import {
+  attritionFixtureRun,
   claimReward,
   modifiersFixtureRun,
   passThrough,
+  stakesDrawFixtureRun,
+  stakesFixtureRun,
   winEncounter,
 } from '../fixtures/campaign-route.js'
 import {
@@ -1475,7 +1478,7 @@ test('campaign informed Hold choices render both peeked top cards face-up', () =
   windowObject.flushFrames()
 
   const map = restoreRunSave(JSON.parse(readFileSync(
-    new URL('../fixtures/campaign-save-route-v8.json', import.meta.url),
+    new URL('../fixtures/campaign-save-route-v9.json', import.meta.url),
     'utf8',
   )))
   const ready = passThrough(map, 'shrine', 'court')
@@ -1512,6 +1515,45 @@ test('campaign informed Hold choices render both peeked top cards face-up', () =
     [...faces('playerSourcePile'), ...faces('opponentSourcePile')]
       .every((name) => name.endsWith(':back')),
   )
+
+  handle.teardown()
+})
+
+test('campaign stakes and attrition render in their committed zones beside the reveals', () => {
+  const host = createHost(768, 1024)
+  const windowObject = createWindow({ width: 768, height: 1024 })
+  const observer = createObserverHarness()
+  const renderer = new FakeRenderer(host, {})
+  const handle = mountBattlefield(host, {
+    windowObject,
+    ResizeObserverClass: observer.FakeResizeObserver,
+    rendererFactory: () => renderer,
+    textureCacheFactory: () => createTextureCacheHarness().cache,
+  })
+  windowObject.flushFrames()
+
+  for (const run of [stakesFixtureRun(), attritionFixtureRun(), stakesDrawFixtureRun()]) {
+    const event = run.pendingEvent
+    const timeline = createEventTimeline(event)
+    handle.beginEvent(event, run)
+    for (const [index, step] of timeline.entries()) {
+      handle.applyStep(step, {
+        event,
+        match: run,
+        stepIndex: index,
+        stepCount: timeline.length,
+        durationMs: 0,
+      })
+      renderer.animationLoop(index * 20)
+    }
+    const active = handle.getPresentationState()
+    assert.equal(active.eventId, event.id)
+    assert.ok(active.transientCards > 0, event.id)
+    assert.ok(active.transientCards <= event.reveals.length, event.id)
+
+    handle.syncSnapshot(run, { reason: 'completed' })
+    assert.equal(handle.getPresentationState().transientCards, 0, event.id)
+  }
 
   handle.teardown()
 })

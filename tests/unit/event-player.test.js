@@ -17,7 +17,12 @@ import {
   createEventPlayer,
   createEventTimeline,
 } from '../../src/presentation/event-player.js'
-import { startCampaign } from '../fixtures/campaign-route.js'
+import {
+  attritionFixtureRun,
+  stakesDrawFixtureRun,
+  stakesFixtureRun,
+  startCampaign,
+} from '../fixtures/campaign-route.js'
 
 function transitionAt(seed, turn) {
   let match = createMatch({
@@ -499,6 +504,37 @@ test('same-turn Campaign Hold replacements synchronize distinct fingerprints', a
     2,
   )
   assert.equal((await player.present(second)).status, 'duplicate')
+})
+
+test('stakes and attrition settle without steps of their own', async () => {
+  for (const run of [stakesFixtureRun(), attritionFixtureRun(), stakesDrawFixtureRun()]) {
+    const event = run.pendingEvent
+    assert.ok(event.stakes.length + (event.attrition ?? []).length > 0, event.id)
+    const timeline = createEventTimeline(event)
+    const revealed = new Set(event.reveals.map(({ instanceId }) => instanceId))
+    assert.equal(
+      timeline.filter(({ kind }) => kind === 'reveal').length,
+      event.reveals.length,
+    )
+    for (const step of timeline) {
+      const keys = step.visualKeys ?? [step.visualKey]
+      assert.ok(keys.every((key) => revealed.has(key)), `${event.id} ${step.kind}`)
+    }
+    assert.ok(
+      timeline.reduce((total, step) => total + step.durationMs, 0)
+        <= event.reveals.length * EVENT_PRESENTATION_TIMING.revealMs
+          + EVENT_PRESENTATION_TIMING.settlementMs
+          + (event.burned ?? []).length * EVENT_PRESENTATION_TIMING.burnMs,
+    )
+
+    const adapter = createAdapter()
+    const player = createEventPlayer({ adapter, timing: ZERO_TIMING })
+    assert.equal((await player.present(run)).status, 'completed')
+    assert.deepEqual(
+      adapter.calls.filter(([kind]) => kind === 'sync').map(([, id]) => id),
+      [event.id],
+    )
+  }
 })
 
 test('player validates adapters, settings, timing, and committed snapshots', async () => {
