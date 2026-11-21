@@ -146,8 +146,10 @@ AI (`src/domain/ai-controller.js` `createAiController`): `chooseEncounterAction(
 - `EVENT_VERSION = 6`, for standard and short-deck games; versions 2–4 stay readable. Version 3
   added reveal `from` (`sourceDeck`, `player.drawPile`, `opponent.drawPile`); version 4 uses
   `compareCards`; version 6 adds `deck`.
-- Classic and Campaign share one number space: `CAMPAIGN_EVENT_VERSION` (5) events go to
-  Campaign validation, and a new version of either mode takes the next free number.
+- Classic and Campaign share one number space: Campaign versions 5 and 7
+  (`isCampaignEventVersion`; `CAMPAIGN_EVENT_VERSION` is 7) go to Campaign validation, and a new
+  version of either mode takes the next free number. Campaign version 7 adds encounter-rule
+  `stakes` and `attrition` lists: see [CAMPAIGN.md](CAMPAIGN.md) §8.
 - The effective deck (`eventDeck`) is `event.deck` from version 6 and `standard-52` before it.
   Versions 4 and 6 compare the decisive round with `compareCards(…, deck)`; 2 and 3 compare plain
   values. Revealed cards must belong to the deck.
@@ -237,7 +239,7 @@ AI (`src/domain/ai-controller.js` `createAiController`): `chooseEncounterAction(
 
 ## 5. Persistence and versioning
 
-- `src/persistence/run-schema.js`: `SAVE_SCHEMA_VERSION = 8`, Classic `GAME_RULES_VERSION = 2`.
+- `src/persistence/run-schema.js`: `SAVE_SCHEMA_VERSION = 9`, Classic `GAME_RULES_VERSION = 2`.
   Keys are exactly `saveSchemaVersion`, `gameRulesVersion`, `runType` (`classic` or `campaign`),
   `savedAt`, `runId`, `rng`, `ruleset`, `match` and `pendingEvent`. Classic `match` reserves an
   empty `futureModifiers`.
@@ -245,22 +247,21 @@ AI (`src/domain/ai-controller.js` `createAiController`): `chooseEncounterAction(
 
   | Stored record | Result |
   |---|---|
-  | Schema 8 with its `runType`'s current rules | Loaded |
-  | Schema 4–7 Classic | Carried unchanged, rewritten as 8 |
-  | Schema 7 Campaign with current rules | Carried unchanged, rewritten as 8 |
-  | Schema 4–6 Campaign, or a wrong rules version | Quarantined: `incompatible-game-rules` |
+  | Schema 9 with its `runType`'s current rules | Loaded |
+  | Schema 4–8 Classic | Carried unchanged, rewritten as 9 |
+  | Schema 4–8 Campaign, or a wrong rules version | Quarantined: `incompatible-game-rules` |
   | Schema 1–3, unknown or future | Quarantined: `unsupported-save-version` |
   | Malformed | Quarantined: `invalid-save` |
 
-- Carried Classic saves keep their `pendingEvent` (version 4 or older), read as `standard-52`;
-  later clashes commit version-6 events.
-- Current Classic fixtures: `run-save-v8.json`, `run-save-paused-v8.json` and
-  `run-save-terminal-v8.json`, plus the short-deck `run-save-short-deck-v8.json`,
-  `run-save-short-deck-paused-v8.json` and `run-save-short-deck-terminal-v8.json`.
+- Carried Classic saves keep their `pendingEvent`: version 6 from schema 8, else version 4 or
+  older, read as `standard-52`. Later clashes commit version-6 events.
+- Current Classic fixtures: `run-save-v9.json`, `run-save-paused-v9.json` and
+  `run-save-terminal-v9.json`, plus the short-deck `run-save-short-deck-v9.json`,
+  `run-save-short-deck-paused-v9.json` and `run-save-short-deck-terminal-v9.json`.
   `tests/unit/run-schema.test.js` regenerates them. Older schemas stay as carry and quarantine
   samples.
-- Rollback: builds before schema 8 quarantine schema-8 saves as `unsupported-save-version`, so
-  once schema 8 ships only forward fixes are safe.
+- Rollback: builds before schema 9 quarantine schema-9 saves as `unsupported-save-version`, so
+  once schema 9 ships only forward fixes are safe.
 - `src/persistence/run-repository.js`: IndexedDB `soulcard-runs` v1, store `active-runs`, keys
   `active` and `quarantine`. `load()` returns `empty`, `resumable`, `recovery-required` or
   `storage-unavailable`. Quarantined records need an explicit discard; without storage, play is
