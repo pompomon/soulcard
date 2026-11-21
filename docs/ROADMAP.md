@@ -14,7 +14,7 @@ Status, open work and delivery rules. Contracts live in [ARCHITECTURE.md](ARCHIT
 | 21.3 Branching Expedition | Done (#40, #41; signed off in #49) |
 | 21.4 Encounter Archetypes and Elite Ladder | Done (#42; signed off in #49, keeping Plunder suspends Spoils of War) |
 | Faster matches: Classic short-deck setting | Done (#52) |
-| Faster matches: Campaign encounter rules ([plan](plans/campaign-encounter-rules.md)) | Next |
+| Faster matches: Campaign encounter rules ([plan](plans/campaign-encounter-rules.md)) | In progress (fight probe: #53) |
 | 21.5 Seeded Procedural Campaign | After the Campaign encounter rules |
 | 21.6 First-class Keyboard Support | After 21.5 |
 

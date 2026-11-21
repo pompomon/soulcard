@@ -1,6 +1,7 @@
 # Campaign encounter rules (plan)
 
-**Status:** next; the [short-deck setting](../HISTORY.md#classic-short-deck-plan-52) is done.
+**Status:** in progress; the fight probe is #53, and the
+[short-deck setting](../HISTORY.md#classic-short-deck-plan-52) is done.
 Brings options C, E and G of [faster-matches.md](faster-matches.md) to Campaign as encounter rules:
 a new run assigns one at random to each fight. Campaign decks keep their sizes. Measured evidence,
 including the scratch probe behind the numbers below, goes in the pull request.
@@ -239,8 +240,8 @@ is set up or retried. `activeClashes` counts clashes that settled while the rule
 
 ## Delivery
 
-1. **Probe pull request:** the probe for today's rules, with no rule change. It resolves §11's note
-   that the harness was never committed.
+1. **Probe pull request** (#53): the probe for today's rules, with no rule change. It resolves
+   §11's note that the harness was never committed.
 2. **Rules pull request:** everything that changes rules, tuned to the gate, with text UI and
    simple stake and attrition steps. Every Campaign rules change bumps the version and quarantines
    saves, so it lands once.
