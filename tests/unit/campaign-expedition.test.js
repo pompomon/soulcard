@@ -682,7 +682,7 @@ test('every route alternates fights with other stops, climbs at most two elites,
 })
 
 // One seed per policy plays every edge-covering route.
-const FULL_PLAY_SEEDS = Object.freeze({ scripted: 31, contrasting: 91 })
+const FULL_PLAY_SEEDS = Object.freeze({ scripted: 37, contrasting: 20 })
 
 test('every map link balances coins, health, cards, modifiers, and RNG draws with a content ledger', () => {
   const outcomes = []
@@ -704,17 +704,17 @@ test('every map link balances coins, health, cards, modifiers, and RNG draws wit
   // the sanctum leaves its later links to the other policy.
   assert.deepEqual([...traversed].sort(), MAP_LINKS)
   assert.deepEqual(outcomes, [
-    'scripted market/court/bazaar/watch: victory, 2 retries',
-    'scripted shrine/court/vault/night-watch: defeat at finale, 3 retries',
-    'scripted market/court/camp/watch: victory, 1 retries',
-    'scripted shrine/high-court/bazaar/night-watch: victory, 1 retries',
+    'scripted market/court/bazaar/watch: victory, 0 retries',
+    'scripted shrine/court/vault/night-watch: defeat at finale, 1 retries',
+    'scripted market/court/camp/watch: defeat at finale, 2 retries',
+    'scripted shrine/high-court/bazaar/night-watch: defeat at night-watch, 1 retries',
     'scripted market/high-court/vault/watch: defeat at high-court, 1 retries',
-    'scripted shrine/high-court/camp/night-watch: victory, 1 retries',
-    'contrasting market/court/bazaar/watch: defeat at finale, 2 retries',
-    'contrasting shrine/court/vault/night-watch: victory, 2 retries',
-    'contrasting market/court/camp/watch: victory, 1 retries',
+    'scripted shrine/high-court/camp/night-watch: victory, 0 retries',
+    'contrasting market/court/bazaar/watch: victory, 0 retries',
+    'contrasting shrine/court/vault/night-watch: defeat at finale, 2 retries',
+    'contrasting market/court/camp/watch: victory, 0 retries',
     'contrasting shrine/high-court/bazaar/night-watch: victory, 2 retries',
-    'contrasting market/high-court/vault/watch: defeat at finale, 2 retries',
+    'contrasting market/high-court/vault/watch: victory, 0 retries',
     'contrasting shrine/high-court/camp/night-watch: defeat at finale, 3 retries',
   ])
   assert.deepEqual([...coverage].sort(), [
@@ -800,7 +800,7 @@ test('the same seed, route, and policy replay to an identical expedition', () =>
   // falls at the Ace Sovereign after two retries.
   for (const [policy, seed, route, highlight] of [
     ['scripted', FULL_PLAY_SEEDS.scripted, EDGE_COVERING_ROUTES[4], 'elite'],
-    ['contrasting', FULL_PLAY_SEEDS.contrasting, EDGE_COVERING_ROUTES[0], 'boss defeat'],
+    ['contrasting', FULL_PLAY_SEEDS.contrasting, EDGE_COVERING_ROUTES[1], 'boss defeat'],
   ]) {
     const first = firstPlay(policy, seed, route)
     const second = playExpedition(policy, seed, route)

@@ -21,7 +21,7 @@ import {
 test('a market expedition survives reloads, a lost purchase, and stale decisions', async (t) => {
   const { counters, final, used } = await driveExpedition(t, {
     runId: 'expedition-market',
-    seed: 66,
+    seed: 2,
     plan: EXPEDITION_PLANS.market,
     hooks: {
       '0:awaitingRoute'({ root }) {
@@ -143,7 +143,7 @@ test('a market expedition survives reloads, a lost purchase, and stale decisions
 test('a sold-out bazaar expedition ignores repeated activations and spent stock', async (t) => {
   const { counters, final, used } = await driveExpedition(t, {
     runId: 'expedition-sold-out',
-    seed: 2,
+    seed: 144,
     plan: EXPEDITION_PLANS.soldOut,
     doubleActivate: ['0:awaitingRoute', '3:awaitingEvent', '7:awaitingShop'],
     hooks: {
@@ -210,7 +210,7 @@ test('a sold-out bazaar expedition ignores repeated activations and spent stock'
 test('a defeated expedition stays resumable as a completed Campaign', async (t) => {
   const { counters, final, used } = await driveExpedition(t, {
     runId: 'expedition-defeat',
-    seed: 26,
+    seed: 3,
     plan: ['gate', 'shrine', 'court', 'vault', 'watch', 'sanctum', 'finale'],
     hooks: {
       async '15:ended'({ app, root }) {

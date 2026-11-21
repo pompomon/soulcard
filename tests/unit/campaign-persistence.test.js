@@ -194,7 +194,7 @@ test('campaign v9 fixtures regenerate exactly and restore their stable states', 
   )), [
     ['card-1', 'add', 3, true],
     ['card-2', 'add', 3, true],
-    ['service-1', 'remove', 2, true],
+    ['service-1', 'duplicate', 2, true],
     ['modifier-1', 'modifier', 4, true],
   ])
   assert.deepEqual(exhausted.match.journal.map(({ type, nodeId }) => `${type}:${nodeId}`), [
@@ -502,13 +502,13 @@ function activeFightTier(run) {
 
 test('every expedition boundary round-trips and continues like an uninterrupted run', () => {
   // Seed 46 climbs the elite ladder, retries once, and rests at the camp and the sanctum
-  // before defeating the Ace Sovereign; seed 10 bleeds at the shrine, sells out the bazaar,
-  // retries twice, and falls to the boss; seed 15 takes the market path without a retry.
+  // before defeating the Ace Sovereign; seed 8 bleeds at the shrine, sells out the bazaar,
+  // retries twice, and falls to the boss; seed 10 takes the market path without a retry.
   const covered = new Set()
   for (const [seed, plan, outcome, retries] of [
     [46, EXPEDITION_PLANS.shrine, 'victory', 1],
-    [10, EXPEDITION_PLANS.soldOut, 'defeat', 2],
-    [15, EXPEDITION_PLANS.market, 'victory', 0],
+    [8, EXPEDITION_PLANS.soldOut, 'defeat', 2],
+    [10, EXPEDITION_PLANS.market, 'victory', 0],
   ]) {
     const options = { runId: `expedition-boundaries-${seed}`, seed, ruleset: BASELINE_RULESET }
     let uninterrupted = createCampaignRun(options)

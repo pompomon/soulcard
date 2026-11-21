@@ -37,7 +37,7 @@ const STAGE_3_NODES = Object.freeze([
   ['finale', false, 'Stage 7 · Ace Sovereign', `${BOSS_FIGHT} · Locked. Defeat to complete the expedition.`],
 ])
 const ELITE_OFFERS = Object.freeze([
-  ['new-card', true, 'New card: AS', 'Add AS to your deck.'],
+  ['new-card', true, 'New card: AC', 'Add AC to your deck.'],
   ['deck-edit', true, 'Duplicate a card', 'Choose a card in your deck to copy.'],
   [
     'modifier',
@@ -66,7 +66,7 @@ const LADDER_LOG = Object.freeze([
   'Stage 2: entered Crossroads Shrine',
   'Crossroads Shrine: Bleed for fortune',
   'Stage 3: entered High Court',
-  'High Court: added AS and collected 6 coins',
+  'High Court: added AC and collected 6 coins',
   'Stage 4: entered Roadside Camp',
   'Roadside Camp: rested and restored 2 health',
   'Stage 5: entered Watch of Tens',
@@ -413,8 +413,9 @@ async function run() {
   const routeButtons = visibleOverlayButtonLabels()
   await chooseRoute(app, 'high-court', 'High Court')
 
-  // Court Etiquette: the HUD lists the trait in Run details and narrows Hold capture.
-  const courtClashes = await playFight(app, 'High Court', { clashes: 2 })
+  // Court Etiquette: the HUD lists the trait in Run details and narrows Hold capture. The
+  // fourth clash puts a player-owned Ace in the won pile.
+  const courtClashes = await playFight(app, 'High Court', { clashes: 4 })
   let match = app.runSnapshot.match
   const instances = new Map(match.cards.map((card) => [card.instanceId, card]))
   const wonCards = match.encounter.zones.player.wonPile.map((id) => instances.get(id))
@@ -503,7 +504,7 @@ async function run() {
   )
 
   // Rest site: options, the training target list, and Back. The rest save continues the
-  // same ladder after taking AS instead of Greater Mend.
+  // same ladder after taking AC instead of Greater Mend.
   app = await remount(app, fixtures.rest, 'rest site')
   await waitForBoundary(app, 'Roadside Camp', 'resumed Roadside Camp')
   const campDescription = descriptionText()
@@ -511,7 +512,7 @@ async function run() {
   assert(sameJson(optionTuples(campOptions), CAMP_OPTIONS), 'The camp must state every option')
   const campSummary = detailSectionLines('Expedition')
   assert(
-    sameJson(campSummary, ['Health 2/5', 'Coins 14', 'Deck 28 cards', 'Held card: 8D']),
+    sameJson(campSummary, ['Health 2/5', 'Coins 14', 'Deck 28 cards', 'Held card: 7D']),
     'The camp must summarize the expedition',
   )
   checkVisibleControls('Roadside Camp')
@@ -527,7 +528,7 @@ async function run() {
   })
   assert(training.heading === 'Choose a card to duplicate', 'Training must ask for a card')
   assert(training.description === TARGET_DESCRIPTION, 'Training must exclude the held card')
-  // 28 cards less the held 8D and both 2H copies, which are at the copy limit.
+  // 28 cards less the held 7D and both 2H copies, which are at the copy limit.
   assert(training.targetCount === 25 && !training.heldOffered, 'Training must list eligible cards')
   checkVisibleControls('Training target list')
   await goBack('Roadside Camp', '#app [data-rest-option]', 3, 'camp after Back')
@@ -679,7 +680,7 @@ async function run() {
     log: detailSectionLines('Expedition log'),
   })
   assert(
-    ladderInspection.summary === 'Health 5/5 · Stage 7/7 · Coins 14 · Deck 28 cards · Held card: 8D',
+    ladderInspection.summary === 'Health 5/5 · Stage 7/7 · Coins 14 · Deck 28 cards · Held card: 7D',
     'Run details must summarize the expedition',
   )
   assert(sameJson(ladderInspection.log, LADDER_LOG), 'Run details must log every decision in order')

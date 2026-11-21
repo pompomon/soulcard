@@ -333,7 +333,7 @@ function buildOnce(build) {
 }
 
 // Stable states behind the JSON Campaign save fixtures. Seed 53 wins its first fight
-// without a retry and drafts Hold Insight; seed 23 does the same and drafts Spoils of War.
+// without a retry and drafts Hold Insight; seed 25 does the same and drafts Spoils of War.
 function fixtureCampaign(seed, runId, ruleset = BASELINE_RULESET) {
   return startCampaign({ runId, seed, ruleset })
 }
@@ -362,7 +362,7 @@ export const informedFixtureRun = buildOnce(() => {
 
 export const modifiersFixtureRun = buildOnce(() => {
   let run = claimReward(
-    playUntilTransition(fixtureCampaign(23, 'fixture-campaign-modifiers')),
+    playUntilTransition(fixtureCampaign(25, 'fixture-campaign-modifiers')),
     'modifier',
   )
   run = passThrough(run, 'shrine', 'court')
@@ -370,10 +370,10 @@ export const modifiersFixtureRun = buildOnce(() => {
   return captureCampaignHold(run, getEligibleHoldTargets(run)[0].instanceId)
 })
 
-// Ember Bazaar after its last item is bought. Seed 2 bleeds at the shrine, so the gate
+// Ember Bazaar after its last item is bought. Seed 144 bleeds at the shrine, so the gate
 // bounty, the shrine coins, and the court bounty pay exactly the bazaar's 12-coin stock.
 export const exhaustedShopFixtureRun = buildOnce((runId = 'fixture-campaign-shop-exhausted') => {
-  let run = fixtureCampaign(2, runId)
+  let run = fixtureCampaign(144, runId)
   const counters = createExpeditionCounters()
   for (let step = 0; step < 5000 && run.machineState !== 'ended'; step += 1) {
     if (
@@ -393,11 +393,11 @@ export const eliteChoiceFixtureRun = buildOnce(() => {
   return passThrough(routeFixtureRun('fixture-campaign-elite-choice'), 'shrine')
 })
 
-// Seed 123 climbs the elite ladder of the shrine plan without a retry: it wins the High
+// Seed 271 climbs the elite ladder of the shrine plan without a retry: it wins the High
 // Court, rests at the Roadside Camp, wins the Night Watch, cleanses at the Last Light
 // Sanctum, and defeats the Ace Sovereign.
 function eliteLadderRun(runId, reached) {
-  let run = fixtureCampaign(123, runId)
+  let run = fixtureCampaign(271, runId)
   const counters = createExpeditionCounters()
   for (let step = 0; step < 5000; step += 1) {
     if (reached(run)) return run
@@ -458,9 +458,10 @@ export const stakesFixtureRun = buildOnce(() => {
   ))
 })
 
-// Seed 54 draws its Double-or-nothing gate fight with the stakes still on the table.
+// Seed 459 draws its Double-or-nothing gate fight: both sides stake their last cards and
+// tie, so the stakes stay on the table.
 export const stakesDrawFixtureRun = buildOnce(() => {
-  return playUntilTransition(fixtureCampaign(54, 'fixture-campaign-stakes-draw'))
+  return playUntilTransition(fixtureCampaign(459, 'fixture-campaign-stakes-draw'))
 })
 
 // Seed 5 plays Attrition at the gate, just after its first attrition burns, under burn and

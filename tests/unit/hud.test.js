@@ -1417,8 +1417,8 @@ test('Campaign rest sites list cost-free options, pick training targets, and res
     'Expedition',
     'Health 2/5',
     'Coins 14',
-    'Deck 26 cards',
-    'Held card: QH',
+    'Deck 28 cards',
+    'Held card: 7D',
   ])
   assert.equal(status.textContent, 'Choose a rest option to continue.')
   assert.equal(byAction(screen, 'campaign-leave').hidden, true)
@@ -1771,9 +1771,9 @@ test('Elite reward drafts offer Greater Mend and log it with the elite bounty', 
   assert.deepEqual(
     parts.offers().map((button) => [button.dataset.rewardOffer, button.textContent]),
     [
-      ['new-card', 'New card: KS'],
-      ['deck-edit', 'Replace a card with 5S'],
-      ['modifier', 'Modifier: Vow of the Court'],
+      ['new-card', 'New card: AC'],
+      ['deck-edit', 'Duplicate a card'],
+      ['modifier', 'Modifier: Vow of Constancy'],
       ['mend', 'Greater Mend'],
     ],
   )
@@ -1877,7 +1877,7 @@ test('Campaign victory names the defeated Ace Sovereign', async (t) => {
   )
   assert.deepEqual(parts.details(), [
     'Expedition',
-    'Route: Suit Opposition → Crossroads Shrine → High Court → Roadside Camp → Night Watch → Last Light Sanctum → Ace Sovereign. Coins 14 · Deck 25 cards.',
+    'Route: Suit Opposition → Crossroads Shrine → High Court → Roadside Camp → Night Watch → Last Light Sanctum → Ace Sovereign. Coins 14 · Deck 27 cards.',
   ])
   assert.equal(status.textContent, 'Campaign complete. The final encounter is won.')
   assert.equal(byAction(screen, 'campaign-main').hidden, false)
@@ -2016,9 +2016,9 @@ test('A restored sold-out Campaign shop explains every sold item and leaves to t
   assert.deepEqual(
     items().map((button) => [button.dataset.shopItem, button.textContent, button.disabled]),
     [
-      ['card-1', 'New card: 8C · 3 coins', true],
-      ['card-2', 'New card: 6C · 3 coins', true],
-      ['service-1', 'Remove a card · 2 coins', true],
+      ['card-1', 'New card: JS · 3 coins', true],
+      ['card-2', 'New card: QC · 3 coins', true],
+      ['service-1', 'Duplicate a card · 2 coins', true],
       ['modifier-1', 'Modifier: Vow of Constancy · 4 coins', true],
     ],
   )

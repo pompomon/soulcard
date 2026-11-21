@@ -44,11 +44,28 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value))
 }
 
-function encounter(id, { player = 'source', opponent = 'source', activeClashes = 0, wins } = {}) {
+// A bare encounter for the rule helpers. `piles` sizes each side's [source, draw, won]
+// piles with placeholder cards; only their lengths count.
+function encounter(id, {
+  tier = 'normal',
+  player = 'source',
+  opponent = 'source',
+  activeClashes = 0,
+  wins,
+  piles = {},
+} = {}) {
+  const cards = (count, name) => Array.from({ length: count }, (_, index) => `${name}-${index}`)
+  const zones = {}
+  for (const side of ['player', 'opponent']) {
+    const [source, draw, won] = piles[side] ?? [0, 40, 0]
+    zones[`${side}SourcePile`] = cards(source, `${side}-source`)
+    zones[side] = { drawPile: cards(draw, `${side}-draw`), wonPile: cards(won, `${side}-won`) }
+  }
   return {
-    tier: 'normal',
+    tier,
     supplyMode: { player, opponent },
     rule: { id, activeClashes, wins: wins ?? { player: 0, opponent: 0 } },
+    zones,
   }
 }
 
@@ -205,18 +222,22 @@ test('each fight node draws its rule from its own seeded stream', () => {
 })
 
 test('a rule starts once either or both supplies turn personal', () => {
-  for (const [id, either, both] of [
-    [RACE, false, true],
-    [DOUBLE, true, true],
-    [ATTRITION, false, true],
+  // Double or nothing waits for both supplies at elites and the boss.
+  for (const [id, tier, either, both] of [
+    [RACE, 'normal', false, true],
+    [DOUBLE, 'normal', true, true],
+    [DOUBLE, 'elite', false, true],
+    [DOUBLE, 'boss', false, true],
+    [ATTRITION, 'normal', false, true],
   ]) {
-    assert.equal(isEncounterRuleActive(encounter(id)), false, id)
-    assert.equal(isEncounterRuleActive(encounter(id, { opponent: 'personal' })), either, id)
-    assert.equal(isEncounterRuleActive(encounter(id, { player: 'personal' })), either, id)
+    const where = `${id} at ${tier}`
+    assert.equal(isEncounterRuleActive(encounter(id, { tier })), false, where)
+    assert.equal(isEncounterRuleActive(encounter(id, { tier, opponent: 'personal' })), either, where)
+    assert.equal(isEncounterRuleActive(encounter(id, { tier, player: 'personal' })), either, where)
     assert.equal(
-      isEncounterRuleActive(encounter(id, { player: 'personal', opponent: 'personal' })),
+      isEncounterRuleActive(encounter(id, { tier, player: 'personal', opponent: 'personal' })),
       both,
-      id,
+      where,
     )
   }
 })
@@ -229,6 +250,11 @@ test('the next stake doubles with each active clash and is zero until it starts'
     )),
     [0, 1, 3, 7, 15, 31],
   )
+  assert.equal(getEncounterStake(encounter(DOUBLE, {
+    tier: 'elite',
+    opponent: 'personal',
+    activeClashes: 3,
+  })), 0)
   for (const id of [RACE, ATTRITION]) {
     assert.equal(getEncounterStake(encounter(id, {
       player: 'personal',
@@ -236,6 +262,29 @@ test('the next stake doubles with each active clash and is zero until it starts'
       activeClashes: 3,
     })), 0)
   }
+})
+
+test('both sides stake the schedule, or what the shorter side can still supply', () => {
+  const active = { player: 'personal', opponent: 'personal', activeClashes: 3 }
+  // Source, draw and won piles all supply; the schedule asks for 7 cards a side.
+  const playerShort = encounter(DOUBLE, { ...active, piles: { player: [1, 2, 3] } })
+  assert.equal(getEncounterStake(playerShort), 6)
+  assert.equal(getEncounterStake(playerShort, { player: 1, opponent: 1 }), 5)
+  // A Hold reveal leaves the player's candidate in its pile.
+  assert.equal(getEncounterStake(playerShort, { player: 0, opponent: 1 }), 6)
+  assert.equal(describeEncounterRule(playerShort).stake, 5)
+
+  const opponentShort = encounter(DOUBLE, { ...active, piles: { opponent: [0, 1, 2] } })
+  assert.equal(getEncounterStake(opponentShort), 3)
+  assert.equal(describeEncounterRule(opponentShort).stake, 2)
+
+  // A side with nothing left to reveal never makes the stake negative.
+  const spent = encounter(DOUBLE, { ...active, piles: { player: [0, 0, 0] } })
+  assert.equal(getEncounterStake(spent, { player: 1, opponent: 1 }), 0)
+  assert.equal(describeEncounterRule(spent).stake, 0)
+
+  // The activating clash stakes nothing, however much both sides hold.
+  assert.equal(describeEncounterRule(encounter(DOUBLE, { ...active, activeClashes: 0 })).stake, 0)
 })
 
 test('the rule display state gives each rule its own counts', () => {
@@ -266,7 +315,7 @@ test('the rule display state gives each rule its own counts', () => {
   const attrition = describeEncounterRule(encounter(ATTRITION, { opponent: 'personal' }))
   assert.deepEqual(
     [attrition.name, attrition.active, attrition.target, attrition.stake, attrition.attritionCards],
-    ['Attrition', false, null, null, 3],
+    ['Attrition', false, null, null, 2],
   )
 })
 
@@ -346,7 +395,7 @@ test('a tie across the last source cards starts a race on the clash it settles',
   assert.equal(waiting.match.encounter.rule.activeClashes, 0)
 })
 
-test('stakes follow the schedule player first, and a short side stakes all it has', () => {
+test('both sides stake the schedule player first, or what the shorter side can match', () => {
   const { event, match } = play(arrange(gate(0), {
     player: { draw: ['KD', '2D', '3D', '4D', '9D'] },
     opponent: { draw: ['5S', '2S', '3S', '4S', '9S'] },
@@ -366,25 +415,31 @@ test('stakes follow the schedule player first, and a short side stakes all it ha
     (instanceId) => cardsOf(match, [instanceId])[0],
   ))
   assert.equal(match.encounter.rule.activeClashes, 3)
-  assert.equal(getEncounterStake(match.encounter), 7)
+  // The schedule now asks for 7, but the opponent has only 9S left, which its next reveal
+  // takes.
+  assert.equal(getEncounterStake(match.encounter), 1)
+  assert.equal(describeEncounterRule(match.encounter).stake, 0)
 
-  const short = play(arrange(gate(0), {
-    player: { draw: ['5D', '2D'] },
+  // After its reveal the player can match only 2 of the 7 the schedule asks for.
+  const matched = play(arrange(gate(0), {
+    player: { draw: ['5D', '2D', '3D'] },
     opponent: { draw: ['KS', '2S', '3S', '4S', '9S'] },
-    activeClashes: 2,
+    activeClashes: 3,
   }))
-  assert.deepEqual(cardsOf(short.match, short.event.stakes), ['2D', '2S', '3S', '4S'])
-  assert.equal(short.match.machineState, 'ready')
-  const ended = play(short.match)
+  assert.deepEqual(cardsOf(matched.match, matched.event.stakes), ['2D', '3D', '2S', '3S'])
+  assert.doesNotThrow(() => validateCampaignState(matched.match))
+  assert.equal(matched.match.machineState, 'ready')
+  const ended = play(matched.match)
   assert.equal(ended.match.encounter.outcome.reason, 'playerUnableToReveal')
-  assert.deepEqual(cardsOf(ended.match, ended.event.reveals), ['9S'])
+  assert.deepEqual(cardsOf(ended.match, ended.event.reveals), ['4S'])
 })
 
 test('an all-in tie ends in inability, or in a draw that keeps the stakes on the table', () => {
+  // The schedule asks for 3 a side; the player can match only 1, so it is all-in.
   const unable = play(arrange(gate(0), {
     player: { draw: ['7D', '2D'] },
     opponent: { draw: ['7S', '2S', '9S'] },
-    activeClashes: 1,
+    activeClashes: 2,
   }))
   assert.deepEqual(cardsOf(unable.match, unable.event.reveals), ['7D', '7S', '9S'])
   assert.deepEqual(cardsOf(unable.match, unable.event.stakes), ['2D', '2S'])
@@ -392,21 +447,23 @@ test('an all-in tie ends in inability, or in a draw that keeps the stakes on the
   assert.deepEqual(cardsOf(unable.match, unable.event.burned), ['7D', '2D'])
   assert.equal(unable.match.encounter.outcome.reason, 'playerUnableToReveal')
   // Inability does not advance the rule.
-  assert.equal(unable.match.encounter.rule.activeClashes, 1)
+  assert.equal(unable.match.encounter.rule.activeClashes, 2)
 
+  // Both sides are all-in at 2 cards, so their tie draws the fight.
   const drawn = play(arrange(gate(0), {
-    player: { draw: ['7D', '2D', '8D'] },
-    opponent: { draw: ['7S', '2S', '8S'] },
-    activeClashes: 1,
+    player: { draw: ['7D', '2D', '3D'] },
+    opponent: { draw: ['7S', '2S', '3S'] },
+    activeClashes: 2,
   }))
   assert.equal(drawn.event.type, 'clashDrawn')
-  assert.deepEqual(cardsOf(drawn.match, drawn.event.reveals), ['7D', '7S', '8D', '8S'])
-  assert.deepEqual(cardsOf(drawn.match, drawn.event.stakes), ['2D', '2S'])
+  assert.deepEqual(cardsOf(drawn.match, drawn.event.reveals), ['7D', '7S'])
+  assert.deepEqual(cardsOf(drawn.match, drawn.event.stakes), ['2D', '3D', '2S', '3S'])
   assert.deepEqual(
     cardsOf(drawn.match, drawn.match.encounter.zones.contestedPile),
-    ['7D', '7S', '2D', '2S', '8D', '8S'],
+    ['7D', '7S', '2D', '3D', '2S', '3S'],
   )
   assert.equal(drawn.match.machineState, 'awaitingRetry')
+  assert.equal(drawn.match.encounter.rule.activeClashes, 2)
 })
 
 test('stakes and tie reveals recycle won piles with the run RNG in supply order', () => {
@@ -458,26 +515,38 @@ test('Plunder and Spoils of War claim stakes that would burn', () => {
 test('Hold previews and Hold Insight peeks stay exact when stakes follow', () => {
   const insight = passThrough(routeFixtureRun('encounter-rules-insight'), 'shrine', 'court')
   const held = holdCard(insight, instanceOf(insight, 'player', 'AH'))
-  const ready = arrange(held, {
-    player: { won: ['9D', '3D', '4D', '5D', '6D'] },
-    opponent: { won: ['JS', 'QS', 'KS', 'JC', 'QC'] },
-    activeClashes: 2,
-  })
-  assert.equal(ready.encounter.rule.id, DOUBLE)
-  for (const choice of ['normal', 'hold']) {
-    const prepared = prepareCampaignReveal(ready).match
-    assert.equal(prepared.machineState, 'awaitingInformedHoldChoice')
-    const { candidate, opponentCandidate } = prepared.holdChoice
-    const { event } = chooseCampaignReveal(prepared, choice)
-    assert.deepEqual(
-      event.reveals.slice(0, 2).map(({ instanceId }) => instanceId),
-      [choice === 'hold' ? held.hold : candidate, opponentCandidate],
-      choice,
-    )
-    assert.equal(event.stakes.length, 6, choice)
-    assert.ok(event.stakes.every(({ from }) => from !== 'player.hold'), choice)
-    // A Hold reveal leaves the previewed card on top, so it becomes the first stake.
-    if (choice === 'hold') assert.equal(event.stakes[0].instanceId, candidate)
+  // With 5 cards the player meets the schedule's 3 either way. With 2, a normal reveal
+  // leaves it 1 to stake, while a Hold reveal leaves its candidate in the pile to stake too.
+  for (const [won, counts] of [
+    [['9D', '3D', '4D', '5D', '6D'], { normal: 3, hold: 3 }],
+    [['9D', '3D'], { normal: 1, hold: 2 }],
+  ]) {
+    const ready = arrange(held, {
+      player: { won },
+      opponent: { won: ['JS', 'QS', 'KS', 'JC', 'QC'] },
+      activeClashes: 2,
+    })
+    assert.equal(ready.encounter.rule.id, DOUBLE)
+    assert.equal(describeEncounterRule(ready.encounter).stake, counts.normal)
+    for (const choice of ['normal', 'hold']) {
+      const where = `${won.length} cards, ${choice}`
+      const prepared = prepareCampaignReveal(ready).match
+      assert.equal(prepared.machineState, 'awaitingInformedHoldChoice')
+      const { candidate, opponentCandidate } = prepared.holdChoice
+      // Each choice's stake is known before it is made.
+      const reveals = { player: choice === 'hold' ? 0 : 1, opponent: 1 }
+      assert.equal(getEncounterStake(prepared.encounter, reveals), counts[choice], where)
+      const { event } = chooseCampaignReveal(prepared, choice)
+      assert.deepEqual(
+        event.reveals.slice(0, 2).map(({ instanceId }) => instanceId),
+        [choice === 'hold' ? held.hold : candidate, opponentCandidate],
+        where,
+      )
+      assert.equal(event.stakes.length, 2 * counts[choice], where)
+      assert.ok(event.stakes.every(({ from }) => from !== 'player.hold'), where)
+      // A Hold reveal leaves the previewed card on top, so it becomes the first stake.
+      if (choice === 'hold') assert.equal(event.stakes[0].instanceId, candidate)
+    }
   }
 })
 
@@ -492,13 +561,12 @@ test('attrition burns the loser\'s next cards under both burn settings', () => {
     assert.deepEqual(origins(event.attrition), [
       ['2S', 'opponent.drawPile'],
       ['3S', 'opponent.drawPile'],
-      ['4S', 'opponent.drawPile'],
     ], ruleset.id)
     assert.deepEqual(cardsOf(match, event.transfers), burns ? ['KD'] : ['KD', '5S'], ruleset.id)
     assert.deepEqual(cardsOf(match, event.burned), burns ? ['5S'] : [], ruleset.id)
     const removed = [...event.burned, ...event.attrition.map(({ instanceId }) => instanceId)]
     assert.deepEqual(match.encounter.zones.burnPile.slice(-removed.length), removed, ruleset.id)
-    assert.deepEqual(cardsOf(match, match.encounter.zones.opponent.drawPile), ['9S'], ruleset.id)
+    assert.deepEqual(cardsOf(match, match.encounter.zones.opponent.drawPile), ['4S', '9S'], ruleset.id)
   }
 })
 
@@ -512,7 +580,7 @@ test('attrition recycles, stops when the loser runs out, and never touches Hold'
   const { event, match } = play(ready)
   assert.deepEqual(
     event.attrition.map(({ instanceId }) => instanceId),
-    [instanceOf(ready, 'opponent', '2S'), ...recycled.slice(0, 2)],
+    [instanceOf(ready, 'opponent', '2S'), recycled[0]],
   )
   assert.deepEqual(match.rng, rng.snapshot())
 
@@ -544,9 +612,9 @@ test('Plunder cannot claim attrition burns', () => {
   assert.deepEqual(match.encounter.traitIds, ['plunder-v1'])
   assert.deepEqual(cardsOf(match, event.transfers), ['5D', '9S'])
   assert.deepEqual(event.burned, [])
-  assert.deepEqual(cardsOf(match, event.attrition), ['2D', '3D', '4D'])
+  assert.deepEqual(cardsOf(match, event.attrition), ['2D', '3D'])
   assert.deepEqual(
-    match.encounter.zones.burnPile.slice(-3),
+    match.encounter.zones.burnPile.slice(-2),
     event.attrition.map(({ instanceId }) => instanceId),
   )
 })
@@ -648,35 +716,47 @@ test('pending events bind stakes and attrition to the state they describe', () =
   }
   const stakes = stakesFixtureRun()
   assert.ok(stakes.pendingEvent.stakes.length > 0)
+  // One active clash fewer puts the stakes over the schedule; one more leaves them short
+  // of it while neither side has run out.
   assert.throws(() => validateCampaignState(tampered(stakes, (run) => {
     run.encounter.rule.activeClashes -= 1
-  })), /Campaign stakes must follow the Double or nothing schedule/)
+  })), /Both sides must stake the same count, at most the Double or nothing schedule/)
   assert.throws(() => validateCampaignState(tampered(stakes, (run) => {
     run.encounter.rule.activeClashes += 1
-  })), /Only a side that ran out may stake less than the Double or nothing schedule/)
+  })), /Stakes may fall short of the Double or nothing schedule only when a side runs out/)
 
-  // Either side, winner or loser, may stake short only once it has run out.
+  // Returning one side's last stake to its draw pile leaves the counts unequal; returning
+  // both sides' leaves them short of the schedule while both still have cards.
   const staked = play(arrange(gate(0), {
     player: { draw: ['KD', '2D', '3D', '4D', '9D'] },
     opponent: { draw: ['5S', '2S', '3S', '4S', '9S'] },
     activeClashes: 2,
   })).match
-  for (const side of ['player', 'opponent']) {
-    assert.throws(() => validateCampaignState(tampered(staked, (run) => {
-      const event = run.pendingEvent
-      const { instanceId } = event.stakes.findLast(({ suppliedBy }) => suppliedBy === side)
-      const zones = run.encounter.zones
-      event.stakes = event.stakes.filter((record) => record.instanceId !== instanceId)
-      event.transfers = event.transfers.filter((record) => record.instanceId !== instanceId)
-      event.burned = event.burned.filter((burned) => burned !== instanceId)
-      zones.player.wonPile = zones.player.wonPile.filter((entry) => entry !== instanceId)
-      zones.burnPile = zones.burnPile.filter((entry) => entry !== instanceId)
-      zones[side].drawPile.unshift(instanceId)
-    })), /Only a side that ran out may stake less than the Double or nothing schedule/, side)
+  const unstake = (run, side) => {
+    const event = run.pendingEvent
+    const { instanceId } = event.stakes.findLast(({ suppliedBy }) => suppliedBy === side)
+    const zones = run.encounter.zones
+    event.stakes = event.stakes.filter((record) => record.instanceId !== instanceId)
+    event.transfers = event.transfers.filter((record) => record.instanceId !== instanceId)
+    event.burned = event.burned.filter((burned) => burned !== instanceId)
+    zones.player.wonPile = zones.player.wonPile.filter((entry) => entry !== instanceId)
+    zones.burnPile = zones.burnPile.filter((entry) => entry !== instanceId)
+    zones[side].drawPile.unshift(instanceId)
   }
+  for (const side of ['player', 'opponent']) {
+    assert.throws(
+      () => validateCampaignState(tampered(staked, (run) => unstake(run, side))),
+      /Both sides must stake the same count, at most the Double or nothing schedule/,
+      side,
+    )
+  }
+  assert.throws(() => validateCampaignState(tampered(staked, (run) => {
+    unstake(run, 'player')
+    unstake(run, 'opponent')
+  })), /Stakes may fall short of the Double or nothing schedule only when a side runs out/)
 
   const attrition = attritionFixtureRun()
-  assert.equal(attrition.pendingEvent.attrition.length, 3)
+  assert.equal(attrition.pendingEvent.attrition.length, 2)
   assert.throws(() => validateCampaignState(tampered(attrition, (run) => {
     const { instanceId } = run.pendingEvent.attrition.pop()
     const loser = run.pendingEvent.winner === 'player' ? 'opponent' : 'player'

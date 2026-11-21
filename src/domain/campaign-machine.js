@@ -756,29 +756,28 @@ function assertPendingRule(run, event) {
   if (before < 0) {
     throw new Error('A clash settled under an active encounter rule must be counted')
   }
-  const stake = rule.effect === 'stakes' && event.reveals.length >= 2
+  const schedule = rule.effect === 'stakes' && event.reveals.length >= 2
     ? rule.parameter ** before - 1
     : 0
-  for (const side of SIDES) {
-    const staked = event.stakes.filter(({ suppliedBy }) => suppliedBy === side).length
-    if (staked > stake) {
-      throw new Error('Campaign stakes must follow the Double or nothing schedule')
-    }
-    // A side that ran out while staking can reveal nothing more. It keeps nothing if it
-    // loses, and only the clash's transfers if it wins.
-    if (
-      staked < stake
-      && (
-        event.reveals.slice(2).some(({ suppliedBy }) => suppliedBy === side)
-        || (settled && (
-          event.winner === side
-            ? keepsMoreThanTransfers(zones, side, event.transfers.length)
-            : hasRegularSupply(zones, side)
-        ))
-      )
-    ) {
-      throw new Error('Only a side that ran out may stake less than the Double or nothing schedule')
-    }
+  const [playerStakes, opponentStakes] = SIDES.map((side) => (
+    event.stakes.filter(({ suppliedBy }) => suppliedBy === side).length
+  ))
+  if (playerStakes !== opponentStakes || playerStakes > schedule) {
+    throw new Error('Both sides must stake the same count, at most the Double or nothing schedule')
+  }
+  // Stakes fall short of the schedule only when the shorter side runs out. That side can
+  // reveal nothing more; it keeps nothing if it loses, and only the clash's transfers if it
+  // wins.
+  const ranOut = (side) => !(
+    event.reveals.slice(2).some(({ suppliedBy }) => suppliedBy === side)
+    || (settled && (
+      event.winner === side
+        ? keepsMoreThanTransfers(zones, side, event.transfers.length)
+        : hasRegularSupply(zones, side)
+    ))
+  )
+  if (playerStakes < schedule && !SIDES.some(ranOut)) {
+    throw new Error('Stakes may fall short of the Double or nothing schedule only when a side runs out')
   }
   if (!settled) return
   const attritionDue = counted && rule.effect === 'attrition'
@@ -1586,7 +1585,8 @@ function concludeInability(run, rng, playerCard, opponentCard, reveals, stakes) 
   )
 }
 
-// After the first reveal round, Double or nothing stakes face-down cards, player first.
+// After the first reveal round, Double or nothing has both sides stake the same count of
+// face-down cards, player first.
 // A decided clash then advances an active rule: a race win may end the fight at its
 // target, and Attrition burns the loser's next cards.
 function resolvePreparedClash(run, rng, preparedPlayer, useHold, peekedOpponent = null) {
@@ -1606,7 +1606,7 @@ function resolvePreparedClash(run, rng, preparedPlayer, useHold, peekedOpponent 
   const stake = getEncounterStake(run.encounter)
   for (const side of SIDES) {
     for (let staked = 0; staked < stake; staked += 1) {
-      if (revealPrepared(run, prepareSupply(run, side, rng), side, stakes) === null) break
+      revealPrepared(run, prepareSupply(run, side, rng), side, stakes)
     }
   }
 

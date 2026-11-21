@@ -6,8 +6,8 @@
   "runId": "fixture-campaign-modifiers",
   "rng": {
     "algorithm": "mulberry32",
-    "seed": 23,
-    "state": 3207966970
+    "seed": 25,
+    "state": 3903743839
   },
   "ruleset": {
     "id": "mvp-baseline-v2",
@@ -20,7 +20,7 @@
   "match": {
     "campaignVersion": 5,
     "machineState": "ready",
-    "turn": 32,
+    "turn": 29,
     "status": "active",
     "outcome": null,
     "health": 3,
@@ -84,15 +84,15 @@
     "encounterRules": [
       {
         "nodeId": "gate",
-        "ruleId": "double-or-nothing-v1"
+        "ruleId": "attrition-v1"
       },
       {
         "nodeId": "court",
-        "ruleId": "attrition-v1"
+        "ruleId": "double-or-nothing-v1"
       },
       {
         "nodeId": "high-court",
-        "ruleId": "attrition-v1"
+        "ruleId": "double-or-nothing-v1"
       },
       {
         "nodeId": "watch",
@@ -100,7 +100,7 @@
       },
       {
         "nodeId": "night-watch",
-        "ruleId": "race-to-ten-v1"
+        "ruleId": "attrition-v1"
       },
       {
         "nodeId": "finale",
@@ -310,9 +310,9 @@
       "player-008",
       "player-009",
       "player-010",
-      "player-011",
-      "player-012",
       "holdPosition",
+      "player-012",
+      "player-013",
       "player-014",
       "player-015",
       "player-016",
@@ -327,7 +327,7 @@
       "player-025",
       "player-026"
     ],
-    "hold": "player-013",
+    "hold": "player-011",
     "activeModifiers": [
       {
         "id": "vitality-cap-v1",
@@ -347,7 +347,7 @@
       "damage": 1,
       "traitIds": [],
       "rule": {
-        "id": "attrition-v1",
+        "id": "double-or-nothing-v1",
         "activeClashes": 0,
         "wins": {
           "player": 0,
@@ -360,58 +360,58 @@
       },
       "zones": {
         "playerSourcePile": [
-          "player-009",
-          "player-024",
-          "player-026",
-          "player-017",
           "player-005",
-          "player-025",
-          "player-008",
-          "player-022",
-          "player-019",
-          "player-016",
-          "player-012",
-          "player-021",
-          "player-011",
-          "player-020",
-          "player-018",
-          "player-003",
-          "player-010",
-          "player-015",
-          "player-001",
-          "player-023",
           "player-014",
+          "player-013",
           "player-006",
-          "player-007"
+          "player-001",
+          "player-024",
+          "player-019",
+          "player-021",
+          "player-018",
+          "player-012",
+          "player-015",
+          "player-020",
+          "player-002",
+          "player-010",
+          "player-023",
+          "player-007",
+          "player-026",
+          "player-003",
+          "player-008",
+          "player-009",
+          "player-004",
+          "player-017",
+          "player-016"
         ],
         "opponentSourcePile": [
-          "opponent-2-1-006",
           "opponent-2-1-012",
-          "opponent-2-1-009",
-          "opponent-2-1-007",
-          "opponent-2-1-002",
           "opponent-2-1-001",
-          "opponent-2-1-008",
+          "opponent-2-1-005",
+          "opponent-2-1-010",
           "opponent-2-1-011",
-          "opponent-2-1-003"
+          "opponent-2-1-003",
+          "opponent-2-1-002",
+          "opponent-2-1-009",
+          "opponent-2-1-004"
         ],
         "player": {
           "drawPile": [],
           "wonPile": [
-            "opponent-2-1-004"
+            "opponent-2-1-007",
+            "player-025",
+            "opponent-2-1-008"
           ]
         },
         "opponent": {
           "drawPile": [],
           "wonPile": [
-            "opponent-2-1-010",
-            "opponent-2-1-005"
+            "opponent-2-1-006"
           ]
         },
         "contestedPile": [],
         "burnPile": [
-          "player-004",
-          "player-002"
+          "player-022"
         ],
         "inPlay": []
       },
@@ -453,7 +453,7 @@
         "nodeId": "court"
       }
     ],
-    "stateFingerprint": "{\"activeModifiers\":[{\"grantedAtNodeId\":null,\"id\":\"vitality-cap-v1\",\"lifetime\":\"campaign\"},{\"grantedAtNodeId\":\"gate\",\"id\":\"spoils-of-war-v1\",\"lifetime\":\"encounter\"}],\"campaignVersion\":5,\"cards\":[{\"campaignOwner\":\"player\",\"cardId\":\"c-2D\",\"instanceId\":\"player-001\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3D\",\"instanceId\":\"player-002\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4D\",\"instanceId\":\"player-003\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5D\",\"instanceId\":\"player-004\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6D\",\"instanceId\":\"player-005\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7D\",\"instanceId\":\"player-006\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8D\",\"instanceId\":\"player-007\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9D\",\"instanceId\":\"player-008\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10D\",\"instanceId\":\"player-009\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JD\",\"instanceId\":\"player-010\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QD\",\"instanceId\":\"player-011\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KD\",\"instanceId\":\"player-012\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AD\",\"instanceId\":\"player-013\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-2H\",\"instanceId\":\"player-014\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3H\",\"instanceId\":\"player-015\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4H\",\"instanceId\":\"player-016\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5H\",\"instanceId\":\"player-017\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6H\",\"instanceId\":\"player-018\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7H\",\"instanceId\":\"player-019\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8H\",\"instanceId\":\"player-020\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9H\",\"instanceId\":\"player-021\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10H\",\"instanceId\":\"player-022\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JH\",\"instanceId\":\"player-023\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QH\",\"instanceId\":\"player-024\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KH\",\"instanceId\":\"player-025\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AH\",\"instanceId\":\"player-026\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JS\",\"instanceId\":\"opponent-2-1-001\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QS\",\"instanceId\":\"opponent-2-1-002\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KS\",\"instanceId\":\"opponent-2-1-003\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JH\",\"instanceId\":\"opponent-2-1-004\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QH\",\"instanceId\":\"opponent-2-1-005\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KH\",\"instanceId\":\"opponent-2-1-006\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JD\",\"instanceId\":\"opponent-2-1-007\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QD\",\"instanceId\":\"opponent-2-1-008\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KD\",\"instanceId\":\"opponent-2-1-009\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JC\",\"instanceId\":\"opponent-2-1-010\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QC\",\"instanceId\":\"opponent-2-1-011\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KC\",\"instanceId\":\"opponent-2-1-012\"}],\"currency\":3,\"deckLayout\":[\"player-001\",\"player-002\",\"player-003\",\"player-004\",\"player-005\",\"player-006\",\"player-007\",\"player-008\",\"player-009\",\"player-010\",\"player-011\",\"player-012\",\"holdPosition\",\"player-014\",\"player-015\",\"player-016\",\"player-017\",\"player-018\",\"player-019\",\"player-020\",\"player-021\",\"player-022\",\"player-023\",\"player-024\",\"player-025\",\"player-026\"],\"encounter\":{\"damage\":1,\"id\":\"royal-court\",\"name\":\"Royal Court\",\"outcome\":null,\"rule\":{\"activeClashes\":0,\"id\":\"attrition-v1\",\"wins\":{\"opponent\":0,\"player\":0}},\"supplyMode\":{\"opponent\":\"source\",\"player\":\"source\"},\"tier\":\"normal\",\"traitIds\":[],\"zones\":{\"burnPile\":[\"player-004\",\"player-002\"],\"contestedPile\":[],\"inPlay\":[],\"opponent\":{\"drawPile\":[],\"wonPile\":[\"opponent-2-1-010\",\"opponent-2-1-005\"]},\"opponentSourcePile\":[\"opponent-2-1-006\",\"opponent-2-1-012\",\"opponent-2-1-009\",\"opponent-2-1-007\",\"opponent-2-1-002\",\"opponent-2-1-001\",\"opponent-2-1-008\",\"opponent-2-1-011\",\"opponent-2-1-003\"],\"player\":{\"drawPile\":[],\"wonPile\":[\"opponent-2-1-004\"]},\"playerSourcePile\":[\"player-009\",\"player-024\",\"player-026\",\"player-017\",\"player-005\",\"player-025\",\"player-008\",\"player-022\",\"player-019\",\"player-016\",\"player-012\",\"player-021\",\"player-011\",\"player-020\",\"player-018\",\"player-003\",\"player-010\",\"player-015\",\"player-001\",\"player-023\",\"player-014\",\"player-006\",\"player-007\"]}},\"encounterAttempt\":1,\"encounterIndex\":1,\"encounterRules\":[{\"nodeId\":\"gate\",\"ruleId\":\"double-or-nothing-v1\"},{\"nodeId\":\"court\",\"ruleId\":\"attrition-v1\"},{\"nodeId\":\"high-court\",\"ruleId\":\"attrition-v1\"},{\"nodeId\":\"watch\",\"ruleId\":\"race-to-ten-v1\"},{\"nodeId\":\"night-watch\",\"ruleId\":\"race-to-ten-v1\"},{\"nodeId\":\"finale\",\"ruleId\":\"double-or-nothing-v1\"}],\"health\":3,\"hold\":\"player-013\",\"holdChoice\":null,\"journal\":[{\"nodeId\":\"gate\",\"type\":\"route\"},{\"cardId\":null,\"createdInstanceId\":null,\"kind\":\"modifier\",\"modifierId\":\"spoils-of-war-v1\",\"nodeId\":\"gate\",\"offerId\":\"modifier\",\"targetInstanceId\":null,\"type\":\"reward\"},{\"nodeId\":\"shrine\",\"type\":\"route\"},{\"createdInstanceId\":null,\"nodeId\":\"shrine\",\"optionId\":\"walk-on\",\"targetInstanceId\":null,\"type\":\"event\"},{\"nodeId\":\"court\",\"type\":\"route\"}],\"machineState\":\"ready\",\"maxHealth\":5,\"mode\":\"campaign\",\"nodeEvent\":null,\"outcome\":null,\"pendingEvent\":null,\"pendingReward\":null,\"restSite\":null,\"rng\":{\"algorithm\":\"mulberry32\",\"seed\":23,\"state\":3207966970},\"route\":{\"mapId\":\"expedition-v2\",\"nodes\":[{\"id\":\"gate\",\"state\":\"completed\"},{\"id\":\"market\",\"state\":\"bypassed\"},{\"id\":\"shrine\",\"state\":\"completed\"},{\"id\":\"court\",\"state\":\"active\"},{\"id\":\"high-court\",\"state\":\"bypassed\"},{\"id\":\"bazaar\",\"state\":\"locked\"},{\"id\":\"vault\",\"state\":\"locked\"},{\"id\":\"camp\",\"state\":\"locked\"},{\"id\":\"watch\",\"state\":\"locked\"},{\"id\":\"night-watch\",\"state\":\"locked\"},{\"id\":\"sanctum\",\"state\":\"locked\"},{\"id\":\"finale\",\"state\":\"locked\"}]},\"ruleset\":{\"burn\":{\"decisiveWinningCard\":\"winner.wonPile\",\"eligibleScope\":\"all-losing-side-cards-in-resolved-contested-pile\",\"enabled\":true},\"id\":\"mvp-baseline-v2\"},\"runId\":\"fixture-campaign-modifiers\",\"shop\":null,\"status\":\"active\",\"turn\":32}"
+    "stateFingerprint": "{\"activeModifiers\":[{\"grantedAtNodeId\":null,\"id\":\"vitality-cap-v1\",\"lifetime\":\"campaign\"},{\"grantedAtNodeId\":\"gate\",\"id\":\"spoils-of-war-v1\",\"lifetime\":\"encounter\"}],\"campaignVersion\":5,\"cards\":[{\"campaignOwner\":\"player\",\"cardId\":\"c-2D\",\"instanceId\":\"player-001\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3D\",\"instanceId\":\"player-002\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4D\",\"instanceId\":\"player-003\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5D\",\"instanceId\":\"player-004\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6D\",\"instanceId\":\"player-005\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7D\",\"instanceId\":\"player-006\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8D\",\"instanceId\":\"player-007\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9D\",\"instanceId\":\"player-008\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10D\",\"instanceId\":\"player-009\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JD\",\"instanceId\":\"player-010\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QD\",\"instanceId\":\"player-011\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KD\",\"instanceId\":\"player-012\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AD\",\"instanceId\":\"player-013\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-2H\",\"instanceId\":\"player-014\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-3H\",\"instanceId\":\"player-015\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-4H\",\"instanceId\":\"player-016\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-5H\",\"instanceId\":\"player-017\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-6H\",\"instanceId\":\"player-018\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-7H\",\"instanceId\":\"player-019\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-8H\",\"instanceId\":\"player-020\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-9H\",\"instanceId\":\"player-021\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-10H\",\"instanceId\":\"player-022\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-JH\",\"instanceId\":\"player-023\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-QH\",\"instanceId\":\"player-024\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-KH\",\"instanceId\":\"player-025\"},{\"campaignOwner\":\"player\",\"cardId\":\"c-AH\",\"instanceId\":\"player-026\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JS\",\"instanceId\":\"opponent-2-1-001\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QS\",\"instanceId\":\"opponent-2-1-002\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KS\",\"instanceId\":\"opponent-2-1-003\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JH\",\"instanceId\":\"opponent-2-1-004\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QH\",\"instanceId\":\"opponent-2-1-005\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KH\",\"instanceId\":\"opponent-2-1-006\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JD\",\"instanceId\":\"opponent-2-1-007\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QD\",\"instanceId\":\"opponent-2-1-008\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KD\",\"instanceId\":\"opponent-2-1-009\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-JC\",\"instanceId\":\"opponent-2-1-010\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-QC\",\"instanceId\":\"opponent-2-1-011\"},{\"campaignOwner\":\"opponent\",\"cardId\":\"c-KC\",\"instanceId\":\"opponent-2-1-012\"}],\"currency\":3,\"deckLayout\":[\"player-001\",\"player-002\",\"player-003\",\"player-004\",\"player-005\",\"player-006\",\"player-007\",\"player-008\",\"player-009\",\"player-010\",\"holdPosition\",\"player-012\",\"player-013\",\"player-014\",\"player-015\",\"player-016\",\"player-017\",\"player-018\",\"player-019\",\"player-020\",\"player-021\",\"player-022\",\"player-023\",\"player-024\",\"player-025\",\"player-026\"],\"encounter\":{\"damage\":1,\"id\":\"royal-court\",\"name\":\"Royal Court\",\"outcome\":null,\"rule\":{\"activeClashes\":0,\"id\":\"double-or-nothing-v1\",\"wins\":{\"opponent\":0,\"player\":0}},\"supplyMode\":{\"opponent\":\"source\",\"player\":\"source\"},\"tier\":\"normal\",\"traitIds\":[],\"zones\":{\"burnPile\":[\"player-022\"],\"contestedPile\":[],\"inPlay\":[],\"opponent\":{\"drawPile\":[],\"wonPile\":[\"opponent-2-1-006\"]},\"opponentSourcePile\":[\"opponent-2-1-012\",\"opponent-2-1-001\",\"opponent-2-1-005\",\"opponent-2-1-010\",\"opponent-2-1-011\",\"opponent-2-1-003\",\"opponent-2-1-002\",\"opponent-2-1-009\",\"opponent-2-1-004\"],\"player\":{\"drawPile\":[],\"wonPile\":[\"opponent-2-1-007\",\"player-025\",\"opponent-2-1-008\"]},\"playerSourcePile\":[\"player-005\",\"player-014\",\"player-013\",\"player-006\",\"player-001\",\"player-024\",\"player-019\",\"player-021\",\"player-018\",\"player-012\",\"player-015\",\"player-020\",\"player-002\",\"player-010\",\"player-023\",\"player-007\",\"player-026\",\"player-003\",\"player-008\",\"player-009\",\"player-004\",\"player-017\",\"player-016\"]}},\"encounterAttempt\":1,\"encounterIndex\":1,\"encounterRules\":[{\"nodeId\":\"gate\",\"ruleId\":\"attrition-v1\"},{\"nodeId\":\"court\",\"ruleId\":\"double-or-nothing-v1\"},{\"nodeId\":\"high-court\",\"ruleId\":\"double-or-nothing-v1\"},{\"nodeId\":\"watch\",\"ruleId\":\"race-to-ten-v1\"},{\"nodeId\":\"night-watch\",\"ruleId\":\"attrition-v1\"},{\"nodeId\":\"finale\",\"ruleId\":\"double-or-nothing-v1\"}],\"health\":3,\"hold\":\"player-011\",\"holdChoice\":null,\"journal\":[{\"nodeId\":\"gate\",\"type\":\"route\"},{\"cardId\":null,\"createdInstanceId\":null,\"kind\":\"modifier\",\"modifierId\":\"spoils-of-war-v1\",\"nodeId\":\"gate\",\"offerId\":\"modifier\",\"targetInstanceId\":null,\"type\":\"reward\"},{\"nodeId\":\"shrine\",\"type\":\"route\"},{\"createdInstanceId\":null,\"nodeId\":\"shrine\",\"optionId\":\"walk-on\",\"targetInstanceId\":null,\"type\":\"event\"},{\"nodeId\":\"court\",\"type\":\"route\"}],\"machineState\":\"ready\",\"maxHealth\":5,\"mode\":\"campaign\",\"nodeEvent\":null,\"outcome\":null,\"pendingEvent\":null,\"pendingReward\":null,\"restSite\":null,\"rng\":{\"algorithm\":\"mulberry32\",\"seed\":25,\"state\":3903743839},\"route\":{\"mapId\":\"expedition-v2\",\"nodes\":[{\"id\":\"gate\",\"state\":\"completed\"},{\"id\":\"market\",\"state\":\"bypassed\"},{\"id\":\"shrine\",\"state\":\"completed\"},{\"id\":\"court\",\"state\":\"active\"},{\"id\":\"high-court\",\"state\":\"bypassed\"},{\"id\":\"bazaar\",\"state\":\"locked\"},{\"id\":\"vault\",\"state\":\"locked\"},{\"id\":\"camp\",\"state\":\"locked\"},{\"id\":\"watch\",\"state\":\"locked\"},{\"id\":\"night-watch\",\"state\":\"locked\"},{\"id\":\"sanctum\",\"state\":\"locked\"},{\"id\":\"finale\",\"state\":\"locked\"}]},\"ruleset\":{\"burn\":{\"decisiveWinningCard\":\"winner.wonPile\",\"eligibleScope\":\"all-losing-side-cards-in-resolved-contested-pile\",\"enabled\":true},\"id\":\"mvp-baseline-v2\"},\"runId\":\"fixture-campaign-modifiers\",\"shop\":null,\"status\":\"active\",\"turn\":29}"
   },
   "pendingEvent": null
 }

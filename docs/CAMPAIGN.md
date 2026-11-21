@@ -113,17 +113,23 @@ draw nothing. Hooks: `maximumHealth`, `holdDecision`, `holdCaptureEligibility`,
 supply turns personal. `assignCampaignEncounterRules` gives every fight one rule at run creation
 (RNG table, §1), and a retry keeps it. `encounter.rule` holds `{id, activeClashes, wins}`.
 
-- **Start.** `isEncounterRuleActive`: an `either` rule is active once either side's `supplyMode`
-  is `personal`, a `both` rule once both are. Each clash decided while the rule is active adds 1
-  to `activeClashes`. That check runs at settlement, so a tie across a side's last source card
-  counts; inability endings never advance a rule.
+- **Start.** `isEncounterRuleActive` takes the start for the fight's tier (§7): an `either` rule
+  is active once either side's `supplyMode` is `personal`, a `both` rule once both are. Each
+  clash decided while the rule is active adds 1 to `activeClashes`. That check runs at
+  settlement, so a tie across a side's last source card counts; inability endings never advance
+  a rule.
 - **Race to 10.** Each active clash adds 1 to its winner's `wins`. At the target the fight ends
   with reason `raceTargetReached` and the usual transitions; the loser may still have supply.
 - **Double or nothing.** After the first reveal round of an active clash, the player and then the
-  opponent stake `parameter^activeClashes − 1` face-down cards each (`getEncounterStake`): 0, 1,
-  3, 7 and so on. The clash that activates the rule stakes nothing, so the stake is known before
-  the Hold choice. Stakes join the contest before any tie round and settle like reveals, burn
-  effects included. A side that runs short stakes what it has and can't continue a tie.
+  opponent stake the same count of face-down cards (`getEncounterStake`): the schedule
+  `parameter^activeClashes − 1` (0, 1, 3, 7 and so on), or fewer when the shorter side can't
+  supply that many after its first-round reveal. Supply counts the source, draw and won piles.
+  The clash that activates the rule stakes nothing, so the coming stake is known before the Hold
+  choice, for each choice: a Hold reveal leaves the candidate in its pile, so it may stake one
+  more card than a normal reveal. `describeEncounterRule` reports a normal reveal's stake. Stakes
+  join the contest before any tie round and settle like reveals, burn effects included. A side
+  that has staked its last card can't continue a tie and loses; if both have and they tie, the
+  fight is drawn with the stakes on the table.
 - **Attrition.** After an active clash, the loser burns its next `parameter` cards through
   supply, under either burn setting. These burns skip `burnSettlement`, so neither Plunder nor
   Spoils of War claims them, and never touch Hold. A side that runs out loses at its next supply.
@@ -193,14 +199,16 @@ high-court; 4 bazaar, vault, camp; 5 watch, night-watch; 6 sanctum; 7 finale.
 | sanctum | `last-light-sanctum` | rest (2 health); cleanse (remove) |
 
 `CAMPAIGN_ENCOUNTER_RULES` lists the rules in draw order, so its order is part of the rules. An
-entry may override its start or parameter per fight tier (`resolveEncounterRule`); none does yet.
-Changing an entry needs a new ID or a Campaign rules bump.
+entry may override its start or parameter per fight tier (`resolveEncounterRule`). Double or
+nothing waits for both sides at elites and the boss, whose small decks turn personal while the
+player still supplies its starting cards. Changing an entry needs a new ID or a Campaign rules
+bump.
 
 | Rule | Name | Start | Parameter |
 | --- | --- | --- | --- |
 | `race-to-ten-v1` | Race to 10 | `both` | target 10 |
-| `double-or-nothing-v1` | Double or nothing | `either` | stake base 2: 0, 1, 3, 7… cards |
-| `attrition-v1` | Attrition | `both` | 3 cards |
+| `double-or-nothing-v1` | Double or nothing | `either`; `both` at elites and the boss | stake base 2: 0, 1, 3, 7… cards |
+| `attrition-v1` | Attrition | `both` | 2 cards |
 
 ## 8. Versions and compatibility
 
@@ -220,8 +228,9 @@ takes the next free number.
   appears once across reveals, stakes and attrition. Version 5, without the lists, stays readable
   (`isCampaignEventVersion`), but a pending event must be version 7.
 - `assertPendingEvent` checks the contest order (first reveal round, stakes, tie rounds), the
-  stake schedule, settlement over that order, and a burn-pile suffix of `burned` then
-  `attrition`. A race win ends on complete reveal rounds; any other win ends in inability.
+  stakes (equal counts, at most the schedule, and fewer only when a side runs out), settlement
+  over that order, and a burn-pile suffix of `burned` then `attrition`. A race win ends on
+  complete reveal rounds; any other win ends in inability.
 - Validation recomputes ties and winners with `compareCards`, so card-value effects need an
   event-version bump. New stored encounter fields need a schema bump or migration, not an event
   bump.
@@ -257,14 +266,14 @@ must satisfy them or revise them explicitly:
   `createRunSave(build(), { savedAt: SAVED_AT })` as 2-space JSON with a trailing newline. No
   script exists; `tests/unit/campaign-persistence.test.js` enforces equality.
 - Rule saves are gate fights: `race` (seed 8) and `stakes` (seed 0) mid-fight, `stakes-draw`
-  (seed 54) drawn with its stakes on the table, and `attrition` and `attrition-no-burn` (seed 5)
-  just after their first attrition burns.
+  (seed 459) drawn with both sides' last cards staked and on the table, and `attrition` and
+  `attrition-no-burn` (seed 5) just after their first attrition burns.
 - Superseded saves (`campaign-save-v4.json`, `campaign-save-*-v5.json` to `campaign-save-*-v8.json`
   and `campaign-save-route-v6-rules5.json`) stay as quarantine samples.
 - `tests/fixtures/expedition-shell.js` drives expeditions through the app shell, requires every
   saved UI state to equal the domain state, and reloads at each boundary.
-- Seeds, re-picked for Campaign rules 8: market expedition 66, elite ladder 123, sold-out 2, boss
-  defeat 26, ledger 31 and 91. Keep the ledger test in `tests/unit/campaign-expedition.test.js`
+- Seeds, re-picked for Campaign rules 8: market expedition 2, elite ladder 271, sold-out 144, boss
+  defeat 3, ledger 37 and 20. Keep the ledger test in `tests/unit/campaign-expedition.test.js`
   near 3 s.
 
 ## 11. Balance and tuning inputs

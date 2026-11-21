@@ -20,9 +20,11 @@ const OVERRIDE_KEYS = Object.freeze(['start', 'parameter'])
 
 // A rule starts once either side's supply, or both sides', has turned personal. Its
 // parameter is the race target, the stake base (the k-th active clash stakes
-// base^(k−1) − 1 cards a side), or the number of cards attrition burns. `tiers` may
-// override the start or the parameter for a fight tier. Assignment draws an index into
-// this list, so its order is part of the rules.
+// base^(k−1) − 1 cards a side, or what the shorter side can match), or the number of cards
+// attrition burns. `tiers` may override the start or the parameter for a fight tier.
+// Double or nothing waits for both sides at elites and the boss, whose small decks turn
+// personal while the player still supplies its starting cards. Assignment draws an index
+// into this list, so its order is part of the rules.
 export const CAMPAIGN_ENCOUNTER_RULES = deepFreeze([
   {
     id: 'race-to-ten-v1',
@@ -38,14 +40,14 @@ export const CAMPAIGN_ENCOUNTER_RULES = deepFreeze([
     effect: 'stakes',
     start: 'either',
     parameter: 2,
-    tiers: {},
+    tiers: { elite: { start: 'both' }, boss: { start: 'both' } },
   },
   {
     id: 'attrition-v1',
     name: 'Attrition',
     effect: 'attrition',
     start: 'both',
-    parameter: 3,
+    parameter: 2,
     tiers: {},
   },
 ])
@@ -167,7 +169,7 @@ export function assignCampaignEncounterRules(seed) {
 }
 
 // The rule of a Campaign encounter at its tier. These helpers read the encounter's tier,
-// supply modes, and rule state.
+// supply modes, rule state and pile sizes.
 export function getEncounterRule(encounter) {
   return resolveEncounterRule(getCampaignEncounterRule(encounter.rule.id), encounter.tier)
 }
@@ -179,15 +181,31 @@ export function isEncounterRuleActive(encounter) {
   return start === 'either' ? personal.length > 0 : personal.length === 2
 }
 
-// The cards each side stakes in the next clash. A clash that activates Double or nothing
-// stakes nothing, so the stake is known before the clash's first reveal.
-export function getEncounterStake(encounter) {
-  const rule = getEncounterRule(encounter)
-  if (rule.effect !== 'stakes' || !isEncounterRuleActive(encounter)) return 0
-  return rule.parameter ** encounter.rule.activeClashes - 1
+const NO_PENDING_REVEALS = Object.freeze({ player: 0, opponent: 0 })
+const NORMAL_REVEALS = Object.freeze({ player: 1, opponent: 1 })
+
+// The cards a side can still supply: its source, draw and won piles.
+function supplyCount(zones, side) {
+  return zones[`${side}SourcePile`].length + zones[side].drawPile.length + zones[side].wonPile.length
 }
 
-// What the HUD shows for the encounter's rule. Fields that the rule does not use are null.
+// The cards each side stakes in the next clash: the schedule, or as many as the shorter side
+// can still supply after its first-round reveal, so both sides stake the same count.
+// `pendingReveals` counts the first-round cards each side has yet to take from its supply.
+// A clash that activates Double or nothing stakes nothing, so the stake is known before the
+// clash's first reveal.
+export function getEncounterStake(encounter, pendingReveals = NO_PENDING_REVEALS) {
+  const rule = getEncounterRule(encounter)
+  if (rule.effect !== 'stakes' || !isEncounterRuleActive(encounter)) return 0
+  return Math.max(0, Math.min(
+    rule.parameter ** encounter.rule.activeClashes - 1,
+    supplyCount(encounter.zones, 'player') - pendingReveals.player,
+    supplyCount(encounter.zones, 'opponent') - pendingReveals.opponent,
+  ))
+}
+
+// What the HUD shows for the encounter's rule. Fields that the rule does not use are null,
+// and the stake is the next clash's with a normal reveal.
 export function describeEncounterRule(encounter) {
   const rule = getEncounterRule(encounter)
   return deepFreeze({
@@ -199,7 +217,7 @@ export function describeEncounterRule(encounter) {
     activeClashes: encounter.rule.activeClashes,
     wins: { ...encounter.rule.wins },
     target: rule.effect === 'race' ? rule.parameter : null,
-    stake: rule.effect === 'stakes' ? getEncounterStake(encounter) : null,
+    stake: rule.effect === 'stakes' ? getEncounterStake(encounter, NORMAL_REVEALS) : null,
     attritionCards: rule.effect === 'attrition' ? rule.parameter : null,
   })
 }
