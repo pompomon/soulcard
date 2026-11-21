@@ -14,7 +14,7 @@ Status, open work and delivery rules. Contracts live in [ARCHITECTURE.md](ARCHIT
 | 21.3 Branching Expedition | Done (#40, #41; signed off in #49) |
 | 21.4 Encounter Archetypes and Elite Ladder | Done (#42; signed off in #49, keeping Plunder suspends Spoils of War) |
 | Faster matches: Classic short-deck setting | Done (#52) |
-| Faster matches: Campaign encounter rules ([plan](plans/campaign-encounter-rules.md)) | Next |
+| Faster matches: Campaign encounter rules ([plan](plans/campaign-encounter-rules.md)) | In progress (fight probe: #53) |
 | 21.5 Seeded Procedural Campaign | After the Campaign encounter rules |
 | 21.6 First-class Keyboard Support | After 21.5 |
 
@@ -64,8 +64,7 @@ rules in place.
 - Builds on the [Campaign encounter rules](plans/campaign-encounter-rules.md): the generator assigns
   each generated fight a rule, and the campaign simulation extends that plan's fight probe.
 - Build simulation and report tooling for complete campaigns, including route choices and
-  deterministic partial outcomes, separate from the single-match simulator. No campaign probe
-  harness is committed yet.
+  deterministic partial outcomes, separate from the single-match simulator.
 - Tune balance with that tooling. The inputs are in [CAMPAIGN.md](CAMPAIGN.md).
 
 **Acceptance:**
