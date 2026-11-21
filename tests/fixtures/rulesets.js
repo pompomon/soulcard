@@ -23,6 +23,22 @@ export const NO_BURN_RULESET_FIXTURE = deepFreeze({
   },
 })
 
+export const SHORT_DECK_BASELINE_RULESET_FIXTURE = deepFreeze({
+  id: 'short-deck-baseline-v1',
+  burn: {
+    enabled: true,
+    eligibleScope: 'all-losing-side-cards-in-resolved-contested-pile',
+    decisiveWinningCard: 'winner.wonPile',
+  },
+})
+
+export const SHORT_DECK_NO_BURN_RULESET_FIXTURE = deepFreeze({
+  id: 'short-deck-no-burn-v1',
+  burn: {
+    enabled: false,
+  },
+})
+
 export const PRECEDENCE_RULESET_FIXTURE = deepFreeze({
   id: 'test-ordered-predicates-v1',
   burn: {

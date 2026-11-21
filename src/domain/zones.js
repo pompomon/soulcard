@@ -1,8 +1,8 @@
 import { createSourceDeck } from './deck.js'
 
-export function createInitialZones(rng) {
+export function createInitialZones(rng, cardIds) {
   return {
-    sourceDeck: createSourceDeck(rng),
+    sourceDeck: createSourceDeck(rng, cardIds),
     player: {
       drawPile: [],
       wonPile: [],

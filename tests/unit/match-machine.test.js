@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CARD_IDS } from '../../src/domain/cards.js'
+import { DECKS, SHORT_DECK_CARD_IDS } from '../../src/domain/cards.js'
 import {
   createMatch,
   pauseMatch,
@@ -10,10 +10,13 @@ import {
 } from '../../src/domain/match-machine.js'
 import { assertStableBoundary } from '../../src/domain/invariants.js'
 import { EVENT_VERSION } from '../../src/domain/events.js'
-import { restoreRng, shuffle } from '../../src/domain/rng.js'
+import { createRng, restoreRng, shuffle } from '../../src/domain/rng.js'
 import {
   BASELINE_RULESET,
   NO_BURN_RULESET,
+  SHORT_DECK_BASELINE_RULESET,
+  SHORT_DECK_NO_BURN_RULESET,
+  rulesetDeck,
 } from '../../src/domain/ruleset.js'
 
 function clone(value) {
@@ -65,7 +68,10 @@ function createFixture({
       wonPile: [...opponentWon],
     },
     contestedPile: clone(contestedPile),
-    burnPile: [...burnPile, ...CARD_IDS.filter((cardId) => !suppliedSet.has(cardId))],
+    burnPile: [
+      ...burnPile,
+      ...DECKS[rulesetDeck(ruleset)].filter((cardId) => !suppliedSet.has(cardId)),
+    ],
     inPlay: [],
   }
   validateMatchState(match)
@@ -121,6 +127,28 @@ test('new matches require explicit inputs and produce deterministic immutable re
   for (const input of invalid) {
     assert.throws(() => createMatch(input))
   }
+})
+
+test('short-deck matches deal the 36-card deck with 35 setup draws', () => {
+  for (const ruleset of [SHORT_DECK_BASELINE_RULESET, SHORT_DECK_NO_BURN_RULESET]) {
+    const match = createMatch({ runId: 'short-setup', seed: 12345, ruleset })
+    const control = createRng(12345)
+    for (let draw = 0; draw < 35; draw += 1) {
+      control.next()
+    }
+
+    assert.equal(match.zones.sourceDeck.length, 36)
+    assert.deepEqual([...match.zones.sourceDeck].sort(), [...SHORT_DECK_CARD_IDS].sort())
+    assert.deepEqual(match.rng, control.snapshot())
+    assert.equal(validateMatchState(match), match)
+  }
+
+  const standard = createMatch({ runId: 'deck-swap', seed: 1, ruleset: BASELINE_RULESET })
+  const shortRules = { ...clone(standard), ruleset: clone(SHORT_DECK_BASELINE_RULESET) }
+  assert.throws(() => validateMatchState(shortRules), /outside the 36-card deck/)
+  const short = createMatch({ runId: 'deck-swap', seed: 1, ruleset: SHORT_DECK_NO_BURN_RULESET })
+  const standardRules = { ...clone(short), ruleset: clone(NO_BURN_RULESET) }
+  assert.throws(() => validateMatchState(standardRules), /must contain all 52 cards/)
 })
 
 test('pause and resume preserve a stable match without replaying RNG or committed events', () => {

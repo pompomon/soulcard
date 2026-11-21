@@ -1,4 +1,4 @@
-import { RANKS, SUITS, isCardId } from './cards.js'
+import { RANKS, SHORT_DECK, STANDARD_DECK, SUITS, isCardId } from './cards.js'
 
 const ELIGIBLE_SCOPE = 'all-losing-side-cards-in-resolved-contested-pile'
 const WINNER_DESTINATION = 'winner.wonPile'
@@ -30,6 +30,40 @@ export const NO_BURN_RULESET = deepFreeze({
     enabled: false,
   },
 })
+
+export const SHORT_DECK_BASELINE_RULESET = deepFreeze({
+  id: 'short-deck-baseline-v1',
+  burn: {
+    enabled: true,
+    eligibleScope: ELIGIBLE_SCOPE,
+    decisiveWinningCard: WINNER_DESTINATION,
+  },
+})
+
+export const SHORT_DECK_NO_BURN_RULESET = deepFreeze({
+  id: 'short-deck-no-burn-v1',
+  burn: {
+    enabled: false,
+  },
+})
+
+export const BUILT_IN_RULESETS = Object.freeze([
+  BASELINE_RULESET,
+  NO_BURN_RULESET,
+  SHORT_DECK_BASELINE_RULESET,
+  SHORT_DECK_NO_BURN_RULESET,
+])
+
+const BUILT_IN_BY_ID = new Map(BUILT_IN_RULESETS.map((ruleset) => [ruleset.id, ruleset]))
+const SHORT_DECK_RULESET_IDS = new Set([
+  SHORT_DECK_BASELINE_RULESET.id,
+  SHORT_DECK_NO_BURN_RULESET.id,
+])
+
+// Custom rulesets (tests only) always play the standard deck.
+export function rulesetDeck(ruleset) {
+  return SHORT_DECK_RULESET_IDS.has(ruleset.id) ? SHORT_DECK : STANDARD_DECK
+}
 
 function assertPlainObject(value, name) {
   if (
@@ -190,18 +224,10 @@ export function validateRuleset(ruleset) {
   }
   assertPlainObject(ruleset.burn, 'ruleset.burn')
 
-  if (ruleset.id === BASELINE_RULESET.id) {
-    assertExactKeys(
-      ruleset.burn,
-      ['enabled', 'eligibleScope', 'decisiveWinningCard'],
-      'ruleset.burn',
-    )
-    assertBuiltIn(ruleset, BASELINE_RULESET)
-    return ruleset
-  }
-  if (ruleset.id === NO_BURN_RULESET.id) {
-    assertExactKeys(ruleset.burn, ['enabled'], 'ruleset.burn')
-    assertBuiltIn(ruleset, NO_BURN_RULESET)
+  const builtIn = BUILT_IN_BY_ID.get(ruleset.id)
+  if (builtIn) {
+    assertExactKeys(ruleset.burn, Object.keys(builtIn.burn), 'ruleset.burn')
+    assertBuiltIn(ruleset, builtIn)
     return ruleset
   }
 

@@ -1,5 +1,5 @@
 import { evaluateBurn } from './burn-evaluator.js'
-import { compareCards } from './cards.js'
+import { compareCards, DECKS } from './cards.js'
 import {
   createClashDrawnEvent,
   createClashSettledEvent,
@@ -8,7 +8,7 @@ import {
 } from './events.js'
 import { assertStableBoundary, assertZoneInvariants } from './invariants.js'
 import { createRng, restoreRng, shuffle } from './rng.js'
-import { validateRuleset } from './ruleset.js'
+import { rulesetDeck, validateRuleset } from './ruleset.js'
 import { createInitialZones } from './zones.js'
 
 const SIDES = Object.freeze(['player', 'opponent'])
@@ -298,8 +298,12 @@ function createStateFingerprint(match, event, machineState = match.machineState)
   ])
 }
 
+function matchCardIds(match) {
+  return DECKS[rulesetDeck(match.ruleset)]
+}
+
 function assertStableMatch(match) {
-  assertStableBoundary(match.zones)
+  assertStableBoundary(match.zones, matchCardIds(match))
   assertOutcome(match.outcome, match.machineState, match.status)
   assertStageZones(match)
 }
@@ -389,7 +393,7 @@ export function createMatch(options) {
     turn: 0,
     status: 'active',
     outcome: null,
-    zones: createInitialZones(rng),
+    zones: createInitialZones(rng, DECKS[rulesetDeck(options.ruleset)]),
     pendingEvent: null,
   }
   match.rng = rng.snapshot()
@@ -421,42 +425,44 @@ export function resumeMatch(input) {
   return deepFreeze(match)
 }
 
-function revealFromPile(zones, pile, suppliedBy, from, revealHistory) {
+function revealFromPile(match, pile, suppliedBy, from, revealHistory) {
+  const { zones } = match
   const cardId = pile.shift()
   zones.inPlay.push({ cardId, suppliedBy })
-  assertZoneInvariants(zones)
+  assertZoneInvariants(zones, matchCardIds(match))
   zones.contestedPile.push(zones.inPlay.shift())
-  assertZoneInvariants(zones)
+  assertZoneInvariants(zones, matchCardIds(match))
   revealHistory.push({ cardId, suppliedBy, from })
   return cardId
 }
 
-function recycleWonPile(zones, side, rng) {
+function recycleWonPile(match, side, rng) {
+  const { zones } = match
   if (zones[side].drawPile.length !== 0 || zones[side].wonPile.length === 0) {
     return
   }
   const recycled = shuffle(zones[side].wonPile, rng)
   zones[side].wonPile.length = 0
   zones[side].drawPile.push(...recycled)
-  assertZoneInvariants(zones)
+  assertZoneInvariants(zones, matchCardIds(match))
 }
 
 function enterPersonalStage(match, rng) {
   match.machineState = 'stageTransition'
-  recycleWonPile(match.zones, 'player', rng)
-  recycleWonPile(match.zones, 'opponent', rng)
+  recycleWonPile(match, 'player', rng)
+  recycleWonPile(match, 'opponent', rng)
   match.stage = 'personal'
   match.machineState = 'resolving'
-  assertZoneInvariants(match.zones)
+  assertZoneInvariants(match.zones, matchCardIds(match))
 }
 
 function revealPersonalCard(match, side, rng, revealHistory) {
-  recycleWonPile(match.zones, side, rng)
+  recycleWonPile(match, side, rng)
   if (match.zones[side].drawPile.length === 0) {
     return null
   }
   return revealFromPile(
-    match.zones,
+    match,
     match.zones[side].drawPile,
     side,
     `${side}.drawPile`,
@@ -516,7 +522,7 @@ function settleContest(match, winner, rng, revealHistory) {
     } else if (burned.has(cardId)) {
       match.zones.burnPile.push(cardId)
     }
-    assertZoneInvariants(match.zones)
+    assertZoneInvariants(match.zones, matchCardIds(match))
   }
 
   return {
@@ -595,20 +601,20 @@ function commitDraw(match, rng, revealHistory) {
 
 function resolveSourceRound(match, rng, revealHistory) {
   const playerCard = revealFromPile(
-    match.zones,
+    match,
     match.zones.sourceDeck,
     'player',
     'sourceDeck',
     revealHistory,
   )
   const opponentCard = revealFromPile(
-    match.zones,
+    match,
     match.zones.sourceDeck,
     'opponent',
     'sourceDeck',
     revealHistory,
   )
-  const comparison = compareCards(playerCard, opponentCard)
+  const comparison = compareCards(playerCard, opponentCard, rulesetDeck(match.ruleset))
 
   if (comparison === 0) {
     if (match.zones.sourceDeck.length === 0) {
@@ -645,7 +651,7 @@ function resolvePersonalRound(match, rng, revealHistory) {
     )
   }
 
-  const comparison = compareCards(playerCard, opponentCard)
+  const comparison = compareCards(playerCard, opponentCard, rulesetDeck(match.ruleset))
   if (comparison === 0) {
     return null
   }

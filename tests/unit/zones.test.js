@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CARD_IDS } from '../../src/domain/cards.js'
+import { CARD_IDS, SHORT_DECK_CARD_IDS } from '../../src/domain/cards.js'
 import { assertStableBoundary, assertZoneInvariants } from '../../src/domain/invariants.js'
 import { createRng } from '../../src/domain/rng.js'
 import { createInitialZones } from '../../src/domain/zones.js'
@@ -54,4 +54,13 @@ test('every setup returns fresh structures without aliases', () => {
   assert.equal(second.sourceDeck.length, 52)
   assert.deepEqual(second.player.drawPile, [])
   assert.equal(CARD_IDS.length, 52)
+})
+
+test('short-deck setup deals only the 36 short-deck cards', () => {
+  const zones = createInitialZones(createRng(12345), SHORT_DECK_CARD_IDS)
+
+  assert.equal(zones.sourceDeck.length, 36)
+  assert.deepEqual([...zones.sourceDeck].sort(), [...SHORT_DECK_CARD_IDS].sort())
+  assert.doesNotThrow(() => assertStableBoundary(zones, SHORT_DECK_CARD_IDS))
+  assert.throws(() => assertZoneInvariants(zones), /must contain all 52 cards; missing: c-2S/)
 })
