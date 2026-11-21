@@ -90,7 +90,7 @@ persistence, PWA, test pyramid) now live in ARCHITECTURE.md. Milestones and thei
 - "Plan §10, question 7" in `tools/card-art/hd-compose.mjs` refers to the 8 MB HD pack budget.
 - The plan has the art direction, the alternatives, and the refine-latency and heap measurements.
 
-## Classic short deck ([plan][short-deck-plan])
+## Classic short deck ([plan][short-deck-plan]), #52
 
 - A Classic deck setting: 52 cards (the default) or 36 cards, 6 to Ace. It applies to new and
   restarted Classic games only; Campaign ignores it.

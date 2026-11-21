@@ -13,7 +13,7 @@ Status, open work and delivery rules. Contracts live in [ARCHITECTURE.md](ARCHIT
 | 21.2 Reward Drafts and Hold Upgrades | Done |
 | 21.3 Branching Expedition | Done (#40, #41; signed off in #49) |
 | 21.4 Encounter Archetypes and Elite Ladder | Done (#42; signed off in #49, keeping Plunder suspends Spoils of War) |
-| Faster matches: Classic short-deck setting | Done |
+| Faster matches: Classic short-deck setting | Done (#52) |
 | Faster matches: Campaign encounter rules ([plan](plans/campaign-encounter-rules.md)) | Next |
 | 21.5 Seeded Procedural Campaign | After the Campaign encounter rules |
 | 21.6 First-class Keyboard Support | After 21.5 |
@@ -109,7 +109,7 @@ rules in place.
 - **Build:** the main chunk exceeds Vite's 500 kB advisory. It isn't a release blocker; code-split
   it if load time matters.
 - **Match length:** from the research in [plans/faster-matches.md](plans/faster-matches.md), the
-  [short-deck setting](HISTORY.md#classic-short-deck-plan) is done and the
+  [short-deck setting](HISTORY.md#classic-short-deck-plan-52) is done and the
   [Campaign encounter rules](plans/campaign-encounter-rules.md) are scheduled above. Still open:
   faster pacing, and bounding Classic no-burn games, which stay long on 36 cards.
 

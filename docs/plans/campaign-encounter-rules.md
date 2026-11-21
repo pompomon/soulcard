@@ -1,6 +1,6 @@
 # Campaign encounter rules (plan)
 
-**Status:** next; the [short-deck setting](../HISTORY.md#classic-short-deck-plan) is done.
+**Status:** next; the [short-deck setting](../HISTORY.md#classic-short-deck-plan-52) is done.
 Brings options C, E and G of [faster-matches.md](faster-matches.md) to Campaign as encounter rules:
 a new run assigns one at random to each fight. Campaign decks keep their sizes. Measured evidence,
 including the scratch probe behind the numbers below, goes in the pull request.
@@ -19,7 +19,7 @@ including the scratch probe behind the numbers below, goes in the pull request.
 
 - **In:** a rule catalogue, per-fight assignment at run start, the three rules, state, events,
   versions, UI text and animation steps, a committed fight probe, and tuning.
-- **Out:** Classic (see the [short-deck setting](../HISTORY.md#classic-short-deck-plan)),
+- **Out:** Classic (see the [short-deck setting](../HISTORY.md#classic-short-deck-plan-52)),
   deck and content changes, pacing, and generated content (21.5).
 
 ## Rule catalogue

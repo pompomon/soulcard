@@ -1,7 +1,7 @@
 # Faster matches (proposal)
 
 **Status:** research, kept for reference. Decided: A becomes a Classic-only setting
-([done](../HISTORY.md#classic-short-deck-plan)), and C, E and G become Campaign encounter
+([done](../HISTORY.md#classic-short-deck-plan-52)), and C, E and G become Campaign encounter
 rules, one assigned at random to each fight ([plan](campaign-encounter-rules.md)). Where they
 differ, the plans win, including over "Contract and version impact" and "Campaign" below. Retire
 this file with the second plan. Every option here uses A's 36-card deck; method and full tables are
