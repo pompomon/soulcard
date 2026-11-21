@@ -21,10 +21,13 @@ import {
 import {
   activeNodeId,
   campaignInspectView,
+  encounterStageText,
   eventTargetView,
   eventView,
   holdCaptureNotes,
+  holdStakeView,
   informedChoiceLines,
+  raceResultText,
   restTargetView,
   restView,
   rewardDraftView,
@@ -1106,7 +1109,8 @@ export function createGameScreen({
           }
       : isCampaignState(match)
         ? {
-            stage: `P ${stageText(match.encounter.supplyMode.player)} · O ${stageText(match.encounter.supplyMode.opponent)}`,
+            stage: encounterStageText(match.encounter)
+              ?? `P ${stageText(match.encounter.supplyMode.player)} · O ${stageText(match.encounter.supplyMode.opponent)}`,
             'source-count': (
               match.encounter.zones.playerSourcePile.length
               + match.encounter.zones.opponentSourcePile.length
@@ -1312,7 +1316,14 @@ export function createGameScreen({
           label: `${card.rank}${card.suit} · ${pile} pile ${target.index + 1}`,
         }
       })
-      return { mode: 'hold-capture', targets, view: { notes: holdCaptureNotes(match) } }
+      return {
+        mode: 'hold-capture',
+        targets,
+        view: {
+          notes: holdCaptureNotes(match),
+          stake: holdStakeView(match, { capturing: true }),
+        },
+      }
     }
     if (inspectOpen && CAMPAIGN_INSPECT_STATES.includes(match.machineState)) {
       return { mode: 'inspect', targets: [], view: campaignInspectView(match) }
@@ -1325,9 +1336,9 @@ export function createGameScreen({
         ? {
             mode: 'informed-choice',
             targets: [],
-            view: { lines: informedChoiceLines(match) },
+            view: { lines: informedChoiceLines(match), stake: holdStakeView(match) },
           }
-        : { mode: 'hold-choice', targets: [] }
+        : { mode: 'hold-choice', targets: [], view: { stake: holdStakeView(match) } }
     }
     if (match.machineState === 'awaitingRoute') {
       return { mode: 'route-map', targets: [], view: routeMapView(match) }
@@ -1365,8 +1376,12 @@ export function createGameScreen({
             }
       }
       return match.machineState === 'awaitingRetry'
-        ? { mode: 'retry', targets: [] }
-        : { mode: 'campaign-end', targets: [], view: { route: routeSummaryText(match) } }
+        ? { mode: 'retry', targets: [], view: { race: raceResultText(match) } }
+        : {
+            mode: 'campaign-end',
+            targets: [],
+            view: { race: raceResultText(match), route: routeSummaryText(match) },
+          }
     }
     return { mode: null, targets: [] }
   }

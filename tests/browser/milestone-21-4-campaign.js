@@ -13,28 +13,28 @@ const ELITE_REWARD = 'Elite reward: a high card or Greater Mend.'
 const BOSS_FIGHT = 'Boss fight · Sovereign archetype · 2 damage on a loss'
 // The stage-3 map of the elite-choice save labels every node kind on the expedition.
 const STAGE_3_NODES = Object.freeze([
-  ['gate', false, 'Stage 1 · Suit Opposition', 'Fight · Suit Legion archetype · 1 damage on a loss · 3-coin bounty · Completed'],
+  ['gate', false, 'Stage 1 · Suit Opposition', 'Fight · Suit Legion archetype · 1 damage on a loss · 3-coin bounty · Completed. Rule: Race to 10.'],
   ['market', false, 'Stage 2 · Wayside Market', 'Shop · Bypassed'],
   ['shrine', false, 'Stage 2 · Crossroads Shrine', 'Event · Completed'],
-  ['court', true, 'Stage 3 · Royal Court', 'Fight · Court archetype · 1 damage on a loss · 4-coin bounty · Available'],
+  ['court', true, 'Stage 3 · Royal Court', 'Fight · Court archetype · 1 damage on a loss · 4-coin bounty · Available. Rule: Double or nothing.'],
   [
     'high-court',
     true,
     'Stage 3 · High Court',
-    `Elite fight · Court archetype · 2 damage on a loss · 6-coin bounty · Available. ${ELITE_REWARD} ${COURT_ETIQUETTE}`,
+    `Elite fight · Court archetype · 2 damage on a loss · 6-coin bounty · Available. ${ELITE_REWARD} Rule: Attrition. ${COURT_ETIQUETTE}`,
   ],
   ['bazaar', false, 'Stage 4 · Ember Bazaar', 'Shop · Locked'],
   ['vault', false, "Stage 4 · Oathkeeper's Vault", 'Event · Locked'],
   ['camp', false, 'Stage 4 · Roadside Camp', 'Rest · Locked'],
-  ['watch', false, 'Stage 5 · Watch of Tens', 'Fight · Watch archetype · 1 damage on a loss · Locked'],
+  ['watch', false, 'Stage 5 · Watch of Tens', 'Fight · Watch archetype · 1 damage on a loss · Locked. Rule: Double or nothing.'],
   [
     'night-watch',
     false,
     'Stage 5 · Night Watch',
-    `Elite fight · Watch archetype · 2 damage on a loss · Locked. ${ELITE_REWARD} ${PLUNDER}`,
+    `Elite fight · Watch archetype · 2 damage on a loss · Locked. ${ELITE_REWARD} Rule: Attrition. ${PLUNDER}`,
   ],
   ['sanctum', false, 'Stage 6 · Last Light Sanctum', 'Rest · Locked'],
-  ['finale', false, 'Stage 7 · Ace Sovereign', `${BOSS_FIGHT} · Locked. Defeat to complete the expedition.`],
+  ['finale', false, 'Stage 7 · Ace Sovereign', `${BOSS_FIGHT} · Locked. Defeat to complete the expedition. Rule: Attrition.`],
 ])
 const ELITE_OFFERS = Object.freeze([
   ['new-card', true, 'New card: AC', 'Add AC to your deck.'],
@@ -578,12 +578,12 @@ async function run() {
   assert(metricText('campaign-health') === '4/5', 'Resting must restore 2 health')
   assert(
     sameJson(nodeTuples(stage5Nodes.filter(({ button }) => button)), [
-      ['watch', true, 'Stage 5 · Watch of Tens', 'Fight · Watch archetype · 1 damage on a loss · Available'],
+      ['watch', true, 'Stage 5 · Watch of Tens', 'Fight · Watch archetype · 1 damage on a loss · Available. Rule: Double or nothing.'],
       [
         'night-watch',
         true,
         'Stage 5 · Night Watch',
-        `Elite fight · Watch archetype · 2 damage on a loss · Available. ${ELITE_REWARD} ${PLUNDER}`,
+        `Elite fight · Watch archetype · 2 damage on a loss · Available. ${ELITE_REWARD} Rule: Race to 10. ${PLUNDER}`,
       ],
     ]),
     'The camp must open both stage-5 fights',
@@ -668,7 +668,7 @@ async function run() {
       'finale',
       true,
       'Stage 7 · Ace Sovereign',
-      `${BOSS_FIGHT} · Available. Defeat to complete the expedition.`,
+      `${BOSS_FIGHT} · Available. Defeat to complete the expedition. Rule: Attrition.`,
     ]]),
     'The boss must be the only stage-7 node',
   )

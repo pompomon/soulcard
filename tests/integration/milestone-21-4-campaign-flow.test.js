@@ -81,10 +81,10 @@ test('an elite ladder expedition rests twice and defeats the Ace Sovereign acros
       '4:awaitingRoute'({ root }) {
         assert.equal(overlayTitle(root), 'Route map · Stage 3/7')
         assert.deepEqual(routeChoices(root), [
-          ['court', 'Fight · Court archetype · 1 damage on a loss · 4-coin bounty · Available'],
+          ['court', 'Fight · Court archetype · 1 damage on a loss · 4-coin bounty · Available. Rule: Attrition.'],
           [
             'high-court',
-            `Elite fight · Court archetype · 2 damage on a loss · 6-coin bounty · Available. ${ELITE_REWARD} ${COURT_ETIQUETTE}`,
+            `Elite fight · Court archetype · 2 damage on a loss · 6-coin bounty · Available. ${ELITE_REWARD} Rule: Double or nothing. ${COURT_ETIQUETTE}`,
           ],
         ])
       },
@@ -143,10 +143,10 @@ test('an elite ladder expedition rests twice and defeats the Ace Sovereign acros
         assert.equal(app.runSnapshot.match.health, 4)
         assert.equal(overlayTitle(root), 'Route map · Stage 5/7')
         assert.deepEqual(routeChoices(root), [
-          ['watch', 'Fight · Watch archetype · 1 damage on a loss · Available'],
+          ['watch', 'Fight · Watch archetype · 1 damage on a loss · Available. Rule: Double or nothing.'],
           [
             'night-watch',
-            `Elite fight · Watch archetype · 2 damage on a loss · Available. ${ELITE_REWARD} ${PLUNDER}`,
+            `Elite fight · Watch archetype · 2 damage on a loss · Available. ${ELITE_REWARD} Rule: Race to 10. ${PLUNDER}`,
           ],
         ])
       },
@@ -175,7 +175,7 @@ test('an elite ladder expedition rests twice and defeats the Ace Sovereign acros
         assert.equal(overlayTitle(root), 'Route map · Stage 7/7')
         assert.deepEqual(routeChoices(root), [[
           'finale',
-          'Boss fight · Sovereign archetype · 2 damage on a loss · Available. Defeat to complete the expedition.',
+          'Boss fight · Sovereign archetype · 2 damage on a loss · Available. Defeat to complete the expedition. Rule: Attrition.',
         ]])
         click(byAction(root, 'campaign-inspect'))
         assert.deepEqual(overlayDetails(root).slice(-7), [

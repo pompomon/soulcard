@@ -7,6 +7,12 @@ import {
   getCampaignRestSite,
   getCampaignShop,
 } from '../domain/campaign-content.js'
+import {
+  describeEncounterRule,
+  getCampaignEncounterRule,
+  getEncounterRule,
+  getEncounterStake,
+} from '../domain/campaign-encounter-rules.js'
 import { applyJournalEntry, createJournalReplay } from '../domain/campaign-journal.js'
 import {
   getCampaignEventOptions,
@@ -160,12 +166,25 @@ function offerText(match, offer) {
   }
 }
 
+// Names a fight that a race decided, with the player's wins first.
+export function raceResultText(match) {
+  const outcome = match.encounter?.outcome
+  if (outcome?.reason !== 'raceTargetReached') return null
+  const { player, opponent } = match.encounter.rule.wins
+  return `${outcome.winner === 'player' ? 'Won' : 'Lost'} the race ${player}–${opponent}.`
+}
+
+function withRaceResult(match, text) {
+  const race = raceResultText(match)
+  return race === null ? text : `${race} ${text}`
+}
+
 export function rewardDraftView(match) {
   const { bounty } = getCampaignFight(match.encounter.id)
   return {
-    description: bounty > 0
+    description: withRaceResult(match, bounty > 0
       ? `Choose one reward before returning to the map. The ${match.encounter.name} bounty pays ${coinText(bounty)} when you choose.`
-      : 'Choose one reward before returning to the map.',
+      : 'Choose one reward before returning to the map.'),
     offers: getCampaignRewardOffers(match).map((offer) => {
       const text = offerText(match, offer)
       return {
@@ -387,16 +406,18 @@ const FIGHT_REWARD_TEXT = Object.freeze({
   boss: 'Defeat to complete the expedition.',
 })
 
-// The archetype, damage, and bounty, then the node state, the reward tier, and every
-// trait that applies under this run's rules.
-function fightDetail(fight, match, kind, state) {
+// The archetype, damage, and bounty, then the node state, the reward tier, the fight's
+// encounter rule, and every trait that applies under this run's rules.
+function fightDetail(fight, match, kind, state, nodeId) {
   const bounty = fight.bounty > 0 ? ` · ${fight.bounty}-coin bounty` : ''
   const summary = `${kind} · ${getCampaignArchetype(fight.archetypeId).name} archetype · ${fight.damage} damage on a loss${bounty} · ${state}`
+  const { ruleId } = match.encounterRules.find((entry) => entry.nodeId === nodeId)
   const notes = [
     FIGHT_REWARD_TEXT[fight.tier],
+    `Rule: ${getCampaignEncounterRule(ruleId).name}.`,
     ...encounterTraitIds(fight, match.ruleset).map(traitText),
   ].filter((note) => note !== null)
-  return notes.length === 0 ? summary : `${summary}. ${notes.join(' ')}`
+  return `${summary}. ${notes.join(' ')}`
 }
 
 export function routeMapView(match) {
@@ -412,7 +433,7 @@ export function routeMapView(match) {
         nodeId: id,
         title: `Stage ${node.stage} · ${content.name}`,
         detail: node.kind === 'fight'
-          ? fightDetail(content, match, kind, NODE_STATE_TEXT[state])
+          ? fightDetail(content, match, kind, NODE_STATE_TEXT[state], id)
           : `${kind} · ${NODE_STATE_TEXT[state]}`,
         state,
         available: state === 'available',
@@ -500,6 +521,54 @@ export function encounterTraitLines(match) {
   return (match.encounter?.traitIds ?? []).map(traitText)
 }
 
+const RULE_START_TEXT = Object.freeze({
+  either: 'once either side replays its own cards',
+  both: 'once both sides replay their own cards',
+})
+
+function ruleEffectText({ effect, parameter }) {
+  if (effect === 'race') {
+    return `the first to win ${parameter} ${parameter === 1 ? 'clash' : 'clashes'} wins the fight`
+  }
+  if (effect === 'stakes') {
+    const schedule = [0, 1, 2, 3].map((clashes) => parameter ** clashes - 1)
+    return `each clash stakes ${schedule.join(', ')}… face-down cards a side, matched to the shorter side`
+  }
+  return `the loser of each clash burns its next ${parameter === 1 ? 'card' : `${parameter} cards`}`
+}
+
+// The current fight's rule as it plays at the fight's tier.
+export function encounterRuleText(match) {
+  const rule = getEncounterRule(match.encounter)
+  return `${rule.name}: ${RULE_START_TEXT[rule.start]}, ${ruleEffectText(rule)}.`
+}
+
+// The HUD Stage metric once the encounter's rule is active, or null until then.
+export function encounterStageText(encounter) {
+  const rule = describeEncounterRule(encounter)
+  if (!rule.active) return null
+  if (rule.effect === 'race') {
+    return `Race ${rule.wins.player}–${rule.wins.opponent} of ${rule.target}`
+  }
+  return rule.effect === 'stakes' ? `Stake ${rule.stake} each` : `Attrition ${rule.attritionCards}`
+}
+
+// The coming Double or nothing stake at a Hold decision, once either reveal would stake a
+// card. A normal reveal takes the prepared candidate from the player's supply, and a Hold
+// reveal leaves it there. Capturing into an empty Hold first takes one more card.
+export function holdStakeView(match, { capturing = false } = {}) {
+  const taken = capturing && match.hold === null ? 1 : 0
+  const normal = getEncounterStake(match.encounter, { player: taken + 1, opponent: 1 })
+  const hold = capturing || match.hold !== null
+    ? getEncounterStake(match.encounter, { player: taken, opponent: 1 })
+    : normal
+  if (normal === 0 && hold === 0) return null
+  return {
+    title: getEncounterRule(match.encounter).name,
+    lines: [hold === normal ? `Stake ${normal} each` : `Stake ${normal} each (${hold} with Hold)`],
+  }
+}
+
 export function campaignInspectView(match) {
   return {
     summary: [
@@ -511,6 +580,7 @@ export function campaignInspectView(match) {
     ],
     route: routeLines(match),
     modifiers: activeModifierLines(match),
+    rule: match.encounter === null ? [] : [encounterRuleText(match)],
     traits: encounterTraitLines(match),
     log: expeditionLogLines(match),
   }

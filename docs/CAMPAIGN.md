@@ -154,8 +154,9 @@ routes, each alternating fights and stops. Stages: 1 gate; 2 market, shrine; 3 c
 high-court; 4 bazaar, vault, camp; 5 watch, night-watch; 6 sanctum; 7 finale.
 
 - Node states: `locked`, `available`, `active`, `completed`, `bypassed`.
-- Fight nodes get their encounter rules when the run is created (`encounterRules`, §3); routes,
-  entries and retries never change them.
+- Fight nodes get their encounter rules when the run is created (`encounterRules`, §3), and the
+  route map names each fight's rule ("Rule: Race to 10."); routes, entries and retries never
+  change them.
 - Shops generate stock on entry (`generateShopStock`, `campaign-shop.js`). Cards are unowned and
   distinct; each item sells once.
 - Events and rest sites end with an effect-free Walk on. Rest options are free and each heals or
@@ -174,6 +175,16 @@ high-court; 4 bazaar, vault, camp; 5 watch, night-watch; 6 sanctum; 7 finale.
 - Every decision is an overlay inside Game (`createCampaignOverlay`, views in
   `src/ui/campaign-view.js`). Hold choices appear once their save is `saved` or `failed`; retry,
   reward and end overlays wait for event presentation. A failed save offers a retry.
+- Encounter rules (§3) add no HUD rows. Once a rule is active, the Stage metric shows its state
+  instead of the supply modes (`encounterStageText`): "Race 3–5 of 10" (player, then opponent
+  wins), "Stake 3 each" (`describeEncounterRule(...).stake`) or "Attrition 2". Run details names
+  the current fight's rule with its start at the fight's tier and its parameter
+  (`encounterRuleText`).
+- Under Double or nothing the Hold capture and Hold choice overlays show the coming stake once
+  either reveal would stake a card (`holdStakeView`): "Stake 3 each", or "Stake 1 each (2 with
+  Hold)" when a Hold reveal would stake more.
+- When a race decides a fight, the reward, retry and end overlays lead with its score, player
+  first: "Won the race 10–7." or "Lost the race 7–10." (`raceResultText`).
 
 ## 7. Current content
 

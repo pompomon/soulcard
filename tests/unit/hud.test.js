@@ -9,10 +9,11 @@ import {
   getCampaignShopTargets,
   getEligibleHoldTargets,
 } from '../../src/domain/campaign-machine.js'
+import { describeEncounterRule } from '../../src/domain/campaign-encounter-rules.js'
 import { createMatch, revealOrContinue } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
 import { restoreRunSave } from '../../src/persistence/run-schema.js'
-import { blockerText } from '../../src/ui/campaign-view.js'
+import { blockerText, encounterRuleText } from '../../src/ui/campaign-view.js'
 import { createGameScreen } from '../../src/ui/hud.js'
 import { createCampaignOverlay } from '../../src/ui/overlays.js'
 import { createUpdateNotice } from '../../src/ui/update-notice.js'
@@ -22,8 +23,12 @@ import {
   chooseRestOption,
   chooseRoute,
   claimReward,
+  fingerprint,
   loseEncounter,
+  mutableReady,
   passThrough,
+  playUntilTransition,
+  retryEncounter,
   startCampaign,
   winEncounter,
 } from '../fixtures/campaign-route.js'
@@ -735,9 +740,10 @@ test('Campaign reward drafts unlock after their save and hold the next encounter
   await controller.whenIdle()
   await flushMicrotasks()
 
+  // The fixture's gate fight ended in its race.
   assert.equal(
     parts.description.textContent,
-    'Choose one reward before returning to the map. The Suit Opposition bounty pays 3 coins when you choose.',
+    'Won the race 10–7. Choose one reward before returning to the map. The Suit Opposition bounty pays 3 coins when you choose.',
   )
   assert.ok(parts.offers().every((button) => !button.disabled))
   assert.equal(retrySave.hidden, true)
@@ -1164,18 +1170,18 @@ test('Campaign route maps list every node and hold a route choice until it saves
     ],
   )
   assert.deepEqual(parts.choiceDetails(), [
-    'Fight · Suit Legion archetype · 1 damage on a loss · 3-coin bounty · Completed',
+    'Fight · Suit Legion archetype · 1 damage on a loss · 3-coin bounty · Completed. Rule: Race to 10.',
     'Shop · Available',
     'Event · Available',
-    'Fight · Court archetype · 1 damage on a loss · 4-coin bounty · Locked',
-    'Elite fight · Court archetype · 2 damage on a loss · 6-coin bounty · Locked. Elite reward: a high card or Greater Mend. Court Etiquette: Opponent trait. In this encounter, an empty Hold can capture only a 2–10, and an occupied Hold can be replaced only by a 2–10.',
+    'Fight · Court archetype · 1 damage on a loss · 4-coin bounty · Locked. Rule: Double or nothing.',
+    'Elite fight · Court archetype · 2 damage on a loss · 6-coin bounty · Locked. Elite reward: a high card or Greater Mend. Rule: Attrition. Court Etiquette: Opponent trait. In this encounter, an empty Hold can capture only a 2–10, and an occupied Hold can be replaced only by a 2–10.',
     'Shop · Locked',
     'Event · Locked',
     'Rest · Locked',
-    'Fight · Watch archetype · 1 damage on a loss · Locked',
-    'Elite fight · Watch archetype · 2 damage on a loss · Locked. Elite reward: a high card or Greater Mend. Plunder: Opponent trait. Clashes this opponent wins send your cards to its won pile instead of burning them. They return to your deck after the encounter. Spoils of War has no effect against it.',
+    'Fight · Watch archetype · 1 damage on a loss · Locked. Rule: Double or nothing.',
+    'Elite fight · Watch archetype · 2 damage on a loss · Locked. Elite reward: a high card or Greater Mend. Rule: Attrition. Plunder: Opponent trait. Clashes this opponent wins send your cards to its won pile instead of burning them. They return to your deck after the encounter. Spoils of War has no effect against it.',
     'Rest · Locked',
-    'Boss fight · Sovereign archetype · 2 damage on a loss · Locked. Defeat to complete the expedition.',
+    'Boss fight · Sovereign archetype · 2 damage on a loss · Locked. Defeat to complete the expedition. Rule: Attrition.',
   ])
   assert.ok(parts.routeButtons().every((button) => !button.disabled))
   assert.deepEqual(parts.details().slice(0, 5), [
@@ -1859,6 +1865,134 @@ test('Elite fights explain their Hold restriction in Hold capture and list trait
     screen.teardown()
     await controller.destroy()
   }
+})
+
+test('Campaign fights show their encounter rule in the Stage metric and Run details', async (t) => {
+  installFakeDocument(t)
+  const stakes = 'each clash stakes 0, 1, 3, 7… face-down cards a side, matched to the shorter side.'
+  const attrition = 'Attrition: once both sides replay their own cards, the loser of each clash burns its next 2 cards.'
+  for (const [name, stage, rule] of [
+    [
+      'campaign-save-race-v9.json',
+      'Race 2–2 of 10',
+      'Race to 10: once both sides replay their own cards, the first to win 10 clashes wins the fight.',
+    ],
+    [
+      'campaign-save-stakes-v9.json',
+      'Stake 3 each',
+      `Double or nothing: once either side replays its own cards, ${stakes}`,
+    ],
+    ['campaign-save-attrition-v9.json', 'Attrition 2', attrition],
+    // The boss's rule is not active before its first reveal.
+    ['campaign-save-boss-v9.json', 'P Source · O Source', attrition],
+  ]) {
+    const { controller, screen, parts } = await restoredCampaignScreen(restoredFixture(name))
+    assert.equal(byValue(screen, 'stage').textContent, stage, name)
+
+    byAction(screen, 'inspect').dispatch('click')
+    assert.equal(parts.heading.textContent, 'Run details', name)
+    const details = parts.details()
+    assert.deepEqual(
+      details.slice(details.indexOf('Encounter rule'), details.indexOf('Expedition log')),
+      ['Encounter rule', rule],
+      name,
+    )
+    screen.teardown()
+    await controller.destroy()
+  }
+  // Elite and boss Double or nothing fights wait for both sides.
+  assert.equal(
+    encounterRuleText(restoredFixture('campaign-save-elite-reward-v9.json')),
+    `Double or nothing: once both sides replay their own cards, ${stakes}`,
+  )
+})
+
+test('Hold overlays show the coming Double or nothing stake for a normal and a Hold reveal', async (t) => {
+  installFakeDocument(t)
+  const stakes = restoredFixture('campaign-save-stakes-v9.json')
+  {
+    const { controller, screen, parts } = await restoredCampaignScreen(stakes)
+    byAction(screen, 'hold').dispatch('click')
+    assert.equal(parts.heading.textContent, 'Capture into Hold')
+    assert.deepEqual(parts.details(), ['Double or nothing', 'Stake 3 each'])
+    screen.teardown()
+    await controller.destroy()
+  }
+
+  // With three player cards left, the player's supply caps the stake. Capturing into Hold
+  // takes one, a normal reveal another, and a Hold reveal leaves the prepared card to stake.
+  const short = mutableReady(stakes)
+  const { player, burnPile } = short.encounter.zones
+  const supply = [...player.drawPile, ...player.wonPile]
+  player.drawPile = supply.slice(0, 3)
+  player.wonPile = []
+  burnPile.push(...supply.slice(3))
+  const { controller, screen, parts } = await restoredCampaignScreen(fingerprint(short), {
+    save: async () => ({ status: 'saved', savedAt: CAMPAIGN_SAVED_AT }),
+  })
+  assert.equal(byValue(screen, 'stage').textContent, 'Stake 2 each')
+
+  byAction(screen, 'hold').dispatch('click')
+  assert.deepEqual(parts.details(), ['Double or nothing', 'Stake 1 each (2 with Hold)'])
+  parts.withData('holdTarget')[0].dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.equal(parts.overlay.hidden, true)
+  assert.equal(byValue(screen, 'stage').textContent, 'Stake 1 each')
+
+  byAction(screen, 'reveal').dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.equal(parts.heading.textContent, 'Choose your reveal')
+  assert.deepEqual(parts.details(), ['Double or nothing', 'Stake 1 each (2 with Hold)'])
+
+  byAction(screen, 'campaign-hold').dispatch('click')
+  await controller.whenIdle()
+  await flushMicrotasks()
+  assert.deepEqual(
+    controller.currentMatch.pendingEvent.stakes.map(({ suppliedBy }) => suppliedBy),
+    ['player', 'player', 'opponent', 'opponent'],
+  )
+
+  screen.teardown()
+  await controller.destroy()
+})
+
+test('Race losses name the final score in the retry and defeat overlays', async (t) => {
+  installFakeDocument(t)
+  // Plays the gate fight until its race is on, then sets a score the next clashes settle.
+  const raceAt = (input, wins) => {
+    let run = input
+    while (!describeEncounterRule(run.encounter).active) run = advanceClash(run)
+    run = mutableReady(run)
+    Object.assign(run.encounter.rule, { wins, activeClashes: wins.player + wins.opponent })
+    run.turn = Math.max(run.turn, run.encounter.rule.activeClashes)
+    return fingerprint(run)
+  }
+  const gate = startCampaign({ runId: 'hud-race-loss', seed: 8, ruleset: BASELINE_RULESET })
+  {
+    const lost = playUntilTransition(raceAt(gate, { player: 7, opponent: 9 }))
+    const { controller, screen, parts } = await restoredCampaignScreen(lost)
+    assert.equal(parts.heading.textContent, 'Encounter lost')
+    assert.equal(
+      parts.description.textContent,
+      'Lost the race 7–10. Suit Opposition dealt 1 damage. 2 health remains.',
+    )
+    screen.teardown()
+    await controller.destroy()
+  }
+
+  const lastTry = retryEncounter(loseEncounter(retryEncounter(loseEncounter(gate))))
+  const defeated = playUntilTransition(raceAt(lastTry, { player: 7, opponent: 9 }))
+  const { controller, screen, parts } = await restoredCampaignScreen(defeated)
+  assert.equal(parts.heading.textContent, 'Campaign defeat')
+  assert.equal(
+    parts.description.textContent,
+    'Lost the race 8–10. Your health was depleted. Start a new campaign to try again.',
+  )
+
+  screen.teardown()
+  await controller.destroy()
 })
 
 test('Campaign victory names the defeated Ace Sovereign', async (t) => {
