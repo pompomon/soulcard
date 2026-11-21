@@ -49,14 +49,15 @@ content-planning metric.
 
 ## Campaign fight probe
 
-`npm run probe:campaign` plays first-attempt Campaign fights with the starter deck. For each fight
-and Hold policy it reports win, loss and draw rates, clash counts and estimated Auto-reveal time.
-Without options it covers every fight and policy under burn rules for seeds 0–199, which takes a
-few minutes. Filter by fight, policy, ruleset or seeds:
+`npm run probe:campaign` plays first-attempt Campaign fights with the starter deck. For each fight,
+encounter rule and Hold policy it reports win, loss and draw rates, the share of fights that end at
+the race target, clash counts and estimated Auto-reveal time. Every rule plays the same deals.
+Without options it covers every fight, rule and policy under burn rules for seeds 0–199, which
+takes about ten minutes. Filter by fight, rule, policy, ruleset or seeds:
 
 ```sh
 npm run probe:campaign -- --fight night-watch --policy informed --start 0 --count 1000
-npm run probe:campaign -- --fight high-court --ruleset mvp-no-burn-v2 --seed 7
+npm run probe:campaign -- --fight high-court --rule attrition-v1 --ruleset mvp-no-burn-v2 --seed 7
 ```
 
 [CAMPAIGN.md](docs/CAMPAIGN.md) §11 describes the policies and the target bands.
