@@ -41,7 +41,8 @@ plans) and [../art/README.md](../art/README.md) (art pipeline).
 
 Flow (`src/domain/match-machine.js`):
 
-- Setup shuffles one 52-card `sourceDeck`; both sides reveal from it in the source stage.
+- Setup shuffles the ruleset's deck into one `sourceDeck`; both sides reveal from it in the
+  source stage.
 - When the source empties, each `wonPile` is shuffled into its `drawPile`, player first, and the
   personal stage begins; a tie in progress carries over.
 - Then an empty `drawPile` recycles its side's `wonPile` just before a required reveal. Shuffles
@@ -54,18 +55,31 @@ included, go to the winner's `wonPile`. Loser-supplied cards from all tie rounds
 burning is on, else go to the winner with no RNG use. Any anti-stalemate rule must be separate,
 deterministic, configurable and leave no-burn play unchanged.
 
-Conservation (`src/domain/invariants.js` `assertZoneInvariants`, `assertStableBoundary`): each of
-the 52 IDs is in exactly one zone after every atomic transition.
+Conservation (`src/domain/invariants.js` `assertZoneInvariants`, `assertStableBoundary`): each
+card of the match's deck is in exactly one zone after every atomic transition, and no other card
+appears.
 
 Cards (`src/domain/cards.js`): `SUITS` S, H, D, C; `RANKS` 2–10, J, Q, K, A (values 2–14); IDs
 `c-<rank><suit>` (`c-10H`); `CARD_IDS` is suit-major. ID format and order define seeded
-permutations. `compareCards` orders by value, except that 2 beats Ace (and only Ace).
+permutations.
+
+| Deck (`DECKS`) | Cards | Upset |
+|---|---|---|
+| `standard-52` | `CARD_IDS`: 2 to Ace | 2 beats Ace |
+| `short-36` | `SHORT_DECK_CARD_IDS`: 6 to Ace, in `CARD_IDS` order | 6 beats Ace |
+
+`compareCards(a, b, deck = 'standard-52')` orders by value, except that the deck's lowest rank
+beats Ace, and only Ace. Cards outside the deck throw. Campaign uses the default.
 
 Rulesets (`src/domain/ruleset.js` `validateRuleset`):
 
 - `BASELINE_RULESET` `mvp-baseline-v2` burns all loser cards; `NO_BURN_RULESET`
-  `mvp-no-burn-v2` is `{ burn: { enabled: false } }`. Built-in IDs must match their exact
-  definitions. Saves store the full ruleset; the Turn burning setting picks one.
+  `mvp-no-burn-v2` is `{ burn: { enabled: false } }`. `SHORT_DECK_BASELINE_RULESET`
+  `short-deck-baseline-v1` and `SHORT_DECK_NO_BURN_RULESET` `short-deck-no-burn-v1` are the same
+  two rules on the 36-card deck. Built-in IDs must match their exact definitions. Saves store the
+  full ruleset; the Turn burning and Classic deck settings pick one.
+- The shape is `{ id, burn }`; the ID picks the deck. `rulesetDeck(ruleset)` is `short-36` for the
+  two short-deck IDs and `standard-52` for every other ID, custom rulesets included.
 - Custom rulesets (tests only) add ordered `rules` (`{ match, outcome }`) and `defaultOutcome`
   (`burn` or `transfer`). Selectors are conjunctive `cardIds`, `ranks`, `suits`, or a lone
   `chance` in [0, 1] taking one `next() < chance` draw when reached. First match wins.
@@ -81,7 +95,7 @@ Campaign extends these rules: see [CAMPAIGN.md](CAMPAIGN.md).
 - `snapshot()` is exactly `{ algorithm: 'mulberry32', seed, state }`; `restoreRng` validates it
   and resumes. Reading or restoring consumes nothing.
 - `shuffle(items, rng)` returns a Fisher–Yates copy, walking `length - 1` down to 1 with one
-  draw each: 51 draws per deck.
+  draw each: 51 draws for 52 cards, 35 for 36.
 - `deriveRngSeed`, `createDerivedRng` and `drawIndex` derive named streams for Campaign content.
 - The algorithm, shuffle walk and draw counts are compatibility contracts; never change them
   under the `mulberry32` ID.
@@ -105,6 +119,8 @@ console.log(a.snapshot())"
 - `createMatch({ runId, seed, ruleset })` returns a deeply immutable `ready` snapshot;
   `revealOrContinue(match)` resolves one whole clash into `{ match, event }`; `pauseMatch` and
   `resumeMatch` only toggle `ready`/`paused`; `validateMatchState` checks any snapshot.
+- Setup, comparison and validation use `rulesetDeck(match.ruleset)`. A pending event's effective
+  deck must equal it.
 - Snapshot keys: `runId`, `ruleset`, `rng`, `stage`, `machineState`, `turn` (completed clashes),
   `status` (`active` or `ended`), `outcome`, `zones` and `pendingEvent`.
 - `outcome` is `{ result: 'win', winner, reason }`, with `opponentUnableToReveal` or
@@ -127,16 +143,22 @@ AI (`src/domain/ai-controller.js` `createAiController`): `chooseEncounterAction(
 
 ### Committed events (`src/domain/events.js`)
 
-- `EVENT_VERSION = 4`; versions 2 and 3 stay readable. Version 3 added reveal `from`
-  (`sourceDeck`, `player.drawPile`, `opponent.drawPile`); version 4 uses `compareCards`.
-  `CAMPAIGN_EVENT_VERSION` (5) events go to Campaign validation.
-- `clashSettled` keys: `eventVersion`, `id`, `type`, `turn`, `stage`, `winner`, `reveals`
-  (`{ cardId, suppliedBy, from }`), `transfers` (`{ cardId, to }`), `burned`, `stateFingerprint`
-  and `pendingPresentation` (`settlement-v1`).
+- `EVENT_VERSION = 6`, for standard and short-deck games; versions 2–4 stay readable. Version 3
+  added reveal `from` (`sourceDeck`, `player.drawPile`, `opponent.drawPile`); version 4 uses
+  `compareCards`; version 6 adds `deck`.
+- Classic and Campaign share one number space: `CAMPAIGN_EVENT_VERSION` (5) events go to
+  Campaign validation, and a new version of either mode takes the next free number.
+- The effective deck (`eventDeck`) is `event.deck` from version 6 and `standard-52` before it.
+  Versions 4 and 6 compare the decisive round with `compareCards(…, deck)`; 2 and 3 compare plain
+  values. Revealed cards must belong to the deck.
+- `clashSettled` keys: `eventVersion`, `id`, `type`, `turn`, `stage`, `deck` (from version 6),
+  `winner`, `reveals` (`{ cardId, suppliedBy, from }`), `transfers` (`{ cardId, to }`), `burned`,
+  `stateFingerprint` and `pendingPresentation` (`settlement-v1`).
 - `clashDrawn` drops `winner`, `transfers` and `burned` and adds `reason: 'mutualInability'`;
   its `pendingPresentation` is `draw-v1`.
-- `id` is `<runId>:clash-<turn>`; `stateFingerprint` binds the event to the committed state.
-  Events are deeply immutable and equal the snapshot's `pendingEvent`.
+- `id` is `<runId>:clash-<turn>`; `stateFingerprint` binds the event to the committed state,
+  ruleset included. Events are deeply immutable and equal the snapshot's `pendingEvent`.
+- Presentation validates events without the match, so each event names its own deck.
 
 ### Simulation (`src/domain/simulation.js`)
 
@@ -146,8 +168,12 @@ AI (`src/domain/ai-controller.js` `createAiController`): `chooseEncounterAction(
   (10,000); `CANONICAL_SIMULATION_SEEDS` is 0–999. Report version: `SIMULATION_REPORT_VERSION` 1.
 - `DEFAULT_TIMING_PROFILE` `mvp-presentation-estimate-v1` estimates 400 ms per reveal, 600 per
   settlement, 200 per burn and 1,200 per end; changing it needs a new ID and fixture.
-- `tests/fixtures/simulation-report.json` stays byte-identical unless rules change on purpose.
-  Results are never pass thresholds.
+- `scripts/simulate.js --ruleset ID` takes a built-in Classic ruleset; the default is
+  `mvp-baseline-v2`.
+- Two reports over the canonical seeds stay byte-identical unless rules change on purpose:
+  `tests/fixtures/simulation-report.json` (`mvp-baseline-v2`) and
+  `tests/fixtures/simulation-report-short-deck.json` (`short-deck-baseline-v1`). Results are never
+  pass thresholds.
 
 ## 4. App shell
 
@@ -170,6 +196,7 @@ AI (`src/domain/ai-controller.js` `createAiController`): `chooseEncounterAction(
 | Key `soulcard.settings.v1.<field>` | Values | Default |
 |---|---|---|
 | `burnEnabled` | `true`, `false` | `true` |
+| `classicDeck` | `standard-52`, `short-36` | `standard-52` |
 | `quality` | `low`, `balanced`, `high` | `balanced` |
 | `renderScaleCap` | 1, 1.5, 2 | 2 |
 | `animationSpeed` | 0.5, 1, 1.5, 2 | 1 |
@@ -180,7 +207,12 @@ AI (`src/domain/ai-controller.js` `createAiController`): `chooseEncounterAction(
   stay in memory (`persistent: false`).
 - `createSettingsSnapshot` resolves reduced motion as the override, or else the system
   preference (`src/ui/settings-controller.js` `REDUCED_MOTION_QUERY`).
-- `burnEnabled` applies to new and restarted games only; Resume keeps the saved ruleset.
+- `burnEnabled` and `classicDeck` apply to new and restarted games only; Resume keeps the saved
+  ruleset. `src/app/run-rulesets.js` picks the ruleset: `classicRuleset` reads both settings, and
+  `campaignRuleset` reads only `burnEnabled`.
+- Settings → Gameplay shows Turn burning, then Classic deck ("52 cards", "36 cards (6 to Ace)"),
+  and the note "Applies to newly started or restarted games. Resumed games keep their saved
+  rules. The deck applies to Classic only."
 - `quality` sets texture scale 1, 2 or 3 (`low` also drops antialiasing) and rebuilds the
   renderer. Pixel ratio is `min(devicePixelRatio, renderScaleCap)`.
 
@@ -205,7 +237,7 @@ AI (`src/domain/ai-controller.js` `createAiController`): `chooseEncounterAction(
 
 ## 5. Persistence and versioning
 
-- `src/persistence/run-schema.js`: `SAVE_SCHEMA_VERSION = 7`, Classic `GAME_RULES_VERSION = 2`.
+- `src/persistence/run-schema.js`: `SAVE_SCHEMA_VERSION = 8`, Classic `GAME_RULES_VERSION = 2`.
   Keys are exactly `saveSchemaVersion`, `gameRulesVersion`, `runType` (`classic` or `campaign`),
   `savedAt`, `runId`, `rng`, `ruleset`, `match` and `pendingEvent`. Classic `match` reserves an
   empty `futureModifiers`.
@@ -213,12 +245,22 @@ AI (`src/domain/ai-controller.js` `createAiController`): `chooseEncounterAction(
 
   | Stored record | Result |
   |---|---|
-  | Schema 7 with its `runType`'s current rules | Loaded |
-  | Schema 4–6 Classic | Carried unchanged, rewritten as 7 |
+  | Schema 8 with its `runType`'s current rules | Loaded |
+  | Schema 4–7 Classic | Carried unchanged, rewritten as 8 |
+  | Schema 7 Campaign with current rules | Carried unchanged, rewritten as 8 |
   | Schema 4–6 Campaign, or a wrong rules version | Quarantined: `incompatible-game-rules` |
   | Schema 1–3, unknown or future | Quarantined: `unsupported-save-version` |
   | Malformed | Quarantined: `invalid-save` |
 
+- Carried Classic saves keep their `pendingEvent` (version 4 or older), read as `standard-52`;
+  later clashes commit version-6 events.
+- Current Classic fixtures: `run-save-v8.json`, `run-save-paused-v8.json` and
+  `run-save-terminal-v8.json`, plus the short-deck `run-save-short-deck-v8.json`,
+  `run-save-short-deck-paused-v8.json` and `run-save-short-deck-terminal-v8.json`.
+  `tests/unit/run-schema.test.js` regenerates them. Older schemas stay as carry and quarantine
+  samples.
+- Rollback: builds before schema 8 quarantine schema-8 saves as `unsupported-save-version`, so
+  once schema 8 ships only forward fixes are safe.
 - `src/persistence/run-repository.js`: IndexedDB `soulcard-runs` v1, store `active-runs`, keys
   `active` and `quarantine`. `load()` returns `empty`, `resumable`, `recovery-required` or
   `storage-unavailable`. Quarantined records need an explicit discard; without storage, play is
@@ -377,7 +419,7 @@ Accessibility (`tests/unit/accessibility-baseline.test.js`):
 
 Done means:
 
-- `npm test` and `npm run build` pass; the simulation fixture changes only with intended rules.
+- `npm test` and `npm run build` pass; the simulation fixtures change only with intended rules.
 - Rendering, HUD and PWA changes pass the browser check; releases follow
   [ROADMAP.md](ROADMAP.md).
 - This file, and CAMPAIGN.md where relevant, change in the same PR.

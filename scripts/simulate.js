@@ -1,3 +1,4 @@
+import { BUILT_IN_RULESETS } from '../src/domain/ruleset.js'
 import {
   CANONICAL_SIMULATION_SEEDS,
   MAX_SIMULATION_CLASHES,
@@ -6,13 +7,16 @@ import {
 } from '../src/domain/simulation.js'
 
 const UINT32_MAX = 0xffffffff
+const RULESETS = new Map(BUILT_IN_RULESETS.map((ruleset) => [ruleset.id, ruleset]))
 
 function usage() {
   return [
     'Usage: npm run simulate -- [--seed UINT32 | --start UINT32 --count INTEGER]',
-    '                          [--max-clashes INTEGER]',
+    '                          [--max-clashes INTEGER] [--ruleset ID]',
     '',
     'Without seed options, runs the canonical seed corpus 0 through 999.',
+    'The ruleset defaults to mvp-baseline-v2. Built-in Classic ruleset IDs:',
+    `  ${[...RULESETS.keys()].join(', ')}`,
   ].join('\n')
 }
 
@@ -58,7 +62,7 @@ function parseArguments(args) {
       }
       return { help: true }
     }
-    if (!['--seed', '--start', '--count', '--max-clashes'].includes(name)) {
+    if (!['--seed', '--start', '--count', '--max-clashes', '--ruleset'].includes(name)) {
       throw new TypeError(`Unknown option: ${name}`)
     }
     parsed[name] = readOption(args, index, seen)
@@ -105,6 +109,12 @@ function parseArguments(args) {
       '--max-clashes',
       { allowZero: false, maximum: MAX_SIMULATION_CLASHES },
     )
+  }
+  if (Object.hasOwn(parsed, '--ruleset')) {
+    if (!RULESETS.has(parsed['--ruleset'])) {
+      throw new TypeError('--ruleset must be a built-in Classic ruleset ID')
+    }
+    options.ruleset = RULESETS.get(parsed['--ruleset'])
   }
   return options
 }

@@ -191,7 +191,7 @@ async function mount(name) {
 
 async function run() {
   const report = []
-  for (const name of ['campaign-save-modifiers-v7.json', 'run-save-v7.json']) {
+  for (const name of ['campaign-save-modifiers-v8.json', 'run-save-v8.json']) {
     const { app, controller, failSave } = await mount(name)
     try {
       report.push(...await matrix(name))

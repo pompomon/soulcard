@@ -16,6 +16,7 @@ import {
 import {
   BASELINE_RULESET,
   NO_BURN_RULESET,
+  SHORT_DECK_NO_BURN_RULESET,
 } from '../../src/domain/ruleset.js'
 
 const UINT32_SIZE = 0x100000000
@@ -25,6 +26,17 @@ const REPORT_FIXTURE = JSON.parse(readFileSync(
   new URL('../fixtures/simulation-report.json', import.meta.url),
   'utf8',
 ))
+const SHORT_DECK_REPORT_URL = new URL(
+  '../fixtures/simulation-report-short-deck.json',
+  import.meta.url,
+)
+
+function runCli(...args) {
+  return spawnSync(process.execPath, [CLI_PATH, ...args], {
+    cwd: REPOSITORY_ROOT,
+    encoding: 'utf8',
+  })
+}
 
 function allObjects(value) {
   if (value === null || typeof value !== 'object') {
@@ -119,6 +131,18 @@ test('canonical baseline corpus matches the statistical fixture exactly', () => 
     (_, seed) => seed,
   ))
   assert.deepEqual(createSimulationReport({}), REPORT_FIXTURE)
+})
+
+test('the short-deck corpus regenerates its fixture byte for byte', () => {
+  const result = runCli('--ruleset', 'short-deck-baseline-v1')
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout, readFileSync(SHORT_DECK_REPORT_URL, 'utf8'))
+
+  const report = JSON.parse(result.stdout)
+  assert.equal(report.rulesetId, 'short-deck-baseline-v1')
+  assert.deepEqual(report.seeds, CANONICAL_SIMULATION_SEEDS)
+  assert.equal(report.runCounts.truncated, 0)
+  assert.ok(report.metrics.clashCount.max <= 36)
 })
 
 test('uint32 boundary seeds work without hidden Math.random calls', (t) => {
@@ -281,4 +305,34 @@ test('CLI emits stable JSON and rejects malformed arguments', () => {
   assert.equal(malformed.status, 1)
   assert.match(malformed.stderr, /--seed must be a base-10 integer/)
   assert.equal(malformed.stdout, '')
+})
+
+test('CLI --ruleset accepts only built-in Classic rulesets', () => {
+  for (const [args, options] of [
+    [['--seed', '7', '--max-clashes', '5', '--ruleset', 'mvp-no-burn-v2'], {
+      seeds: [7],
+      maxClashes: 5,
+      ruleset: NO_BURN_RULESET,
+    }],
+    [['--ruleset', 'short-deck-no-burn-v1', '--seed', '7'], {
+      seeds: [7],
+      ruleset: SHORT_DECK_NO_BURN_RULESET,
+    }],
+  ]) {
+    const result = runCli(...args)
+    assert.equal(result.status, 0, result.stderr)
+    assert.deepEqual(JSON.parse(result.stdout), createSimulationReport(options))
+  }
+
+  for (const [args, message] of [
+    [['--ruleset', 'test-simulation-disabled-v1'], /^--ruleset must be a built-in Classic/],
+    [['--ruleset', 'toString'], /^--ruleset must be a built-in Classic/],
+    [['--seed', '7', '--ruleset'], /^--ruleset requires a value/],
+    [['--ruleset', 'mvp-baseline-v2', '--ruleset', 'mvp-no-burn-v2'], /^--ruleset may be/],
+  ]) {
+    const rejected = runCli(...args)
+    assert.equal(rejected.status, 1, args.join(' '))
+    assert.equal(rejected.stdout, '')
+    assert.match(rejected.stderr, message)
+  }
 })

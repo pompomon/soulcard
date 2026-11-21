@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CARD_IDS } from '../../src/domain/cards.js'
+import { CARD_IDS, SHORT_DECK_CARD_IDS } from '../../src/domain/cards.js'
 import { createSourceDeck } from '../../src/domain/deck.js'
 import { createRng, restoreRng } from '../../src/domain/rng.js'
 
@@ -39,6 +39,21 @@ test('source deck consumes exactly 51 draws', () => {
   }
 
   assert.deepEqual(actual.snapshot(), control.snapshot())
+})
+
+test('a short source deck shuffles its 36 cards with exactly 35 draws', () => {
+  const actual = createRng(0x80000000)
+  const control = createRng(0x80000000)
+
+  const deck = createSourceDeck(actual, SHORT_DECK_CARD_IDS)
+  for (let draw = 0; draw < 35; draw += 1) {
+    control.next()
+  }
+
+  assert.deepEqual(actual.snapshot(), control.snapshot())
+  assert.equal(deck.length, 36)
+  assert.deepEqual([...deck].sort(), [...SHORT_DECK_CARD_IDS].sort())
+  assert.notDeepEqual(deck, SHORT_DECK_CARD_IDS)
 })
 
 test('identical RNG seed or state creates identical decks and continuations', () => {

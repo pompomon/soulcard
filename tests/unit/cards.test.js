@@ -3,11 +3,14 @@ import test from 'node:test'
 import {
   CARDS,
   CARD_IDS,
+  DECKS,
   RANKS,
+  SHORT_DECK_CARD_IDS,
   SUITS,
   compareCards,
   getCard,
   isCardId,
+  isDeckId,
 } from '../../src/domain/cards.js'
 
 const EXPECTED_SUITS = ['S', 'H', 'D', 'C']
@@ -92,10 +95,47 @@ test('canonical comparison makes 2 beat only Ace without changing card values', 
   assert.ok(compareCards('c-2H', 'c-3D') < 0)
   assert.ok(compareCards('c-KS', 'c-2D') > 0)
   assert.equal(compareCards('c-7S', 'c-7C'), 0)
+  assert.ok(compareCards('c-6S', 'c-AH') < 0)
+  assert.equal(compareCards('c-2S', 'c-AH', 'standard-52'), compareCards('c-2S', 'c-AH'))
 
   for (const cards of [
     ['unknown', 'c-AS'],
     ['c-2S', undefined],
+  ]) {
+    assert.throws(() => compareCards(...cards), RangeError)
+  }
+})
+
+test('the short deck keeps ranks 6 to Ace in canonical order', () => {
+  const expected = EXPECTED_SUITS.flatMap((suit) =>
+    EXPECTED_RANKS.filter(([, value]) => value >= 6).map(([rank]) => `c-${rank}${suit}`))
+
+  assert.equal(SHORT_DECK_CARD_IDS.length, 36)
+  assert.deepEqual(SHORT_DECK_CARD_IDS, expected)
+  assert.deepEqual(Object.keys(DECKS), ['standard-52', 'short-36'])
+  assert.equal(DECKS['standard-52'], CARD_IDS)
+  assert.equal(DECKS['short-36'], SHORT_DECK_CARD_IDS)
+  assert.ok(Object.isFrozen(DECKS))
+  assert.ok(Object.isFrozen(SHORT_DECK_CARD_IDS))
+  assert.equal(isDeckId('short-36'), true)
+  for (const invalid of [undefined, null, '', 'short-32', 'toString', CARD_IDS]) {
+    assert.equal(isDeckId(invalid), false)
+  }
+})
+
+test('on the short deck 6 beats only Ace', () => {
+  assert.ok(compareCards('c-6S', 'c-AH', 'short-36') > 0)
+  assert.ok(compareCards('c-AD', 'c-6C', 'short-36') < 0)
+  assert.ok(compareCards('c-6H', 'c-7D', 'short-36') < 0)
+  assert.ok(compareCards('c-KS', 'c-6D', 'short-36') > 0)
+  assert.ok(compareCards('c-AS', 'c-KC', 'short-36') > 0)
+  assert.equal(compareCards('c-6S', 'c-6C', 'short-36'), 0)
+
+  for (const cards of [
+    ['c-2S', 'c-AH', 'short-36'],
+    ['c-AH', 'c-5S', 'short-36'],
+    ['c-6S', 'c-AH', 'short-32'],
+    ['c-6S', 'c-AH', null],
   ]) {
     assert.throws(() => compareCards(...cards), RangeError)
   }

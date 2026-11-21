@@ -682,7 +682,7 @@ test('Campaign reward drafts unlock after their save and hold the next encounter
         return write.promise
       },
     },
-    initialMatch: restoredFixture('campaign-save-reward-v7.json'),
+    initialMatch: restoredFixture('campaign-save-reward-v8.json'),
   })
   const presented = []
   const screen = createGameScreen({
@@ -908,7 +908,7 @@ test('Targeted campaign rewards list eligible deck cards and return with Back', 
     globalThis.document = previousDocument
   })
 
-  const draft = restoredFixture('campaign-save-reward-v7.json')
+  const draft = restoredFixture('campaign-save-reward-v8.json')
   const controller = createRunController({
     repository: {
       load: async () => ({ status: 'resumable', savedAt: CAMPAIGN_SAVED_AT, match: draft }),
@@ -970,7 +970,7 @@ test('Informed Hold choices show both next cards and Run details stays read-only
     globalThis.document = previousDocument
   })
 
-  const informed = restoredFixture('campaign-save-informed-v7.json')
+  const informed = restoredFixture('campaign-save-informed-v8.json')
   const cardText = (instanceId) => {
     const { cardId } = informed.cards.find((card) => card.instanceId === instanceId)
     return cardId.slice(2)
@@ -1126,7 +1126,7 @@ test('Campaign route maps list every node and hold a route choice until it saves
   installFakeDocument(t)
   let mainMenuCalls = 0
   const { controller, screen, presented, writes, parts } = await restoredCampaignScreen(
-    restoredFixture('campaign-save-route-v7.json'),
+    restoredFixture('campaign-save-route-v8.json'),
     { onMainMenu: () => { mainMenuCalls += 1 } },
   )
   const status = descendants(screen.element).find(
@@ -1234,7 +1234,7 @@ test('Campaign route maps list every node and hold a route choice until it saves
 
 test('Campaign shops price every item, explain blocked items, and buy with a deck target', async (t) => {
   installFakeDocument(t)
-  const shop = restoredFixture('campaign-save-shop-v7.json')
+  const shop = restoredFixture('campaign-save-shop-v8.json')
   const { controller, screen, writes, parts } = await restoredCampaignScreen(shop)
   const status = descendants(screen.element).find(
     (element) => Object.hasOwn(element.dataset, 'statusHost'),
@@ -1324,7 +1324,7 @@ test('Campaign shops price every item, explain blocked items, and buy with a dec
 
 test('Campaign events state each cost and gain, explain blocked options, and pick targets', async (t) => {
   installFakeDocument(t)
-  const event = restoredFixture('campaign-save-event-v7.json')
+  const event = restoredFixture('campaign-save-event-v8.json')
   const { controller, screen, writes, parts } = await restoredCampaignScreen(event)
   const back = byAction(screen, 'campaign-back')
   const options = () => parts.withData('eventOption')
@@ -1365,7 +1365,7 @@ test('Campaign events state each cost and gain, explain blocked options, and pic
   await controller.destroy()
 
   const vault = chooseRoute(
-    claimReward(winEncounter(passThrough(restoredFixture('campaign-save-route-v7.json'), 'shrine', 'court')), 'mend'),
+    claimReward(winEncounter(passThrough(restoredFixture('campaign-save-route-v8.json'), 'shrine', 'court')), 'mend'),
     'vault',
   )
   const second = await restoredCampaignScreen(vault)
@@ -1385,7 +1385,7 @@ test('Campaign events state each cost and gain, explain blocked options, and pic
 
 test('Campaign rest sites list cost-free options, pick training targets, and rest to the next stage', async (t) => {
   installFakeDocument(t)
-  const rest = restoredFixture('campaign-save-rest-v7.json')
+  const rest = restoredFixture('campaign-save-rest-v8.json')
   const { controller, screen, writes, parts } = await restoredCampaignScreen(rest)
   const status = descendants(screen.element).find(
     (element) => Object.hasOwn(element.dataset, 'statusHost'),
@@ -1564,7 +1564,7 @@ test('Rest site saves retry after a failure, and a refused rest option keeps the
         return write.promise
       },
     },
-    initialMatch: restoredFixture('campaign-save-rest-v7.json'),
+    initialMatch: restoredFixture('campaign-save-rest-v8.json'),
   })
   const screen = createGameScreen({
     runController: controller,
@@ -1644,7 +1644,7 @@ test('Rest site saves retry after a failure, and a refused rest option keeps the
       load: async () => ({
         status: 'resumable',
         savedAt: CAMPAIGN_SAVED_AT,
-        match: restoredFixture('campaign-save-rest-v7.json'),
+        match: restoredFixture('campaign-save-rest-v8.json'),
       }),
       save: async () => ({ status: 'saved', savedAt: CAMPAIGN_SAVED_AT }),
     },
@@ -1761,7 +1761,7 @@ test('Campaign rest overlays explain blocked options and wait for the rest site 
 test('Elite reward drafts offer Greater Mend and log it with the elite bounty', async (t) => {
   installFakeDocument(t)
   const { controller, screen, writes, parts } = await restoredCampaignScreen(
-    restoredFixture('campaign-save-elite-reward-v7.json'),
+    restoredFixture('campaign-save-elite-reward-v8.json'),
   )
   assert.equal(parts.heading.textContent, 'Encounter won')
   assert.equal(
@@ -1801,7 +1801,7 @@ test('Elite reward drafts offer Greater Mend and log it with the elite bounty', 
 
 test('Elite fights explain their Hold restriction in Hold capture and list traits in Run details', async (t) => {
   installFakeDocument(t)
-  const choice = restoredFixture('campaign-save-elite-choice-v7.json')
+  const choice = restoredFixture('campaign-save-elite-choice-v8.json')
   const traitText = 'Court Etiquette: Opponent trait. In this encounter, an empty Hold can capture only a 2–10, and an occupied Hold can be replaced only by a 2–10.'
   for (const nodeId of ['high-court', 'court']) {
     const fight = advanceClash(advanceClash(chooseRoute(choice, nodeId)))
@@ -1863,7 +1863,7 @@ test('Elite fights explain their Hold restriction in Hold capture and list trait
 test('Campaign victory names the defeated Ace Sovereign', async (t) => {
   installFakeDocument(t)
   const { controller, screen, parts } = await restoredCampaignScreen(
-    restoredFixture('campaign-save-victory-v7.json'),
+    restoredFixture('campaign-save-victory-v8.json'),
   )
   const status = descendants(screen.element).find(
     (element) => Object.hasOwn(element.dataset, 'statusHost'),
@@ -1998,7 +1998,7 @@ test('Campaign shop overlays announce an emptied shop and keep Leave shop availa
 
 test('A restored sold-out Campaign shop explains every sold item and leaves to the stage-5 fights', async (t) => {
   installFakeDocument(t)
-  const exhausted = restoredFixture('campaign-save-shop-exhausted-v7.json')
+  const exhausted = restoredFixture('campaign-save-shop-exhausted-v8.json')
   const { controller, screen, writes, parts } = await restoredCampaignScreen(exhausted)
   const leave = byAction(screen, 'campaign-leave')
   const items = () => parts.withData('shopItem')
@@ -2124,21 +2124,21 @@ test('Restored Campaign boundaries lead to fights that wait for a manual first r
     ruleset: BASELINE_RULESET,
   }))
   const boundaries = [
-    ['route', restoredFixture('campaign-save-route-v7.json'), [
+    ['route', restoredFixture('campaign-save-route-v8.json'), [
       ['route', 'shrine'],
       ['event', 'walk-on'],
       ['route', 'court'],
     ]],
-    ['shop', restoredFixture('campaign-save-shop-v7.json'), [['leave'], ['route', 'court']]],
-    ['sold-out shop', restoredFixture('campaign-save-shop-exhausted-v7.json'), [
+    ['shop', restoredFixture('campaign-save-shop-v8.json'), [['leave'], ['route', 'court']]],
+    ['sold-out shop', restoredFixture('campaign-save-shop-exhausted-v8.json'), [
       ['leave'],
       ['route', 'watch'],
     ]],
-    ['event', restoredFixture('campaign-save-event-v7.json'), [
+    ['event', restoredFixture('campaign-save-event-v8.json'), [
       ['event', 'walk-on'],
       ['route', 'court'],
     ]],
-    ['rest', restoredFixture('campaign-save-rest-v7.json'), [
+    ['rest', restoredFixture('campaign-save-rest-v8.json'), [
       ['rest', 'rest'],
       ['route', 'night-watch'],
     ]],
@@ -2749,7 +2749,7 @@ test('update preparation disarms Auto-reveal through the mounted notice event', 
 test('Campaign HUD recomputes inert when an update stops blocking the Game screen', async (t) => {
   installFakeDocument(t)
   const { controller, screen, writes, parts } = await restoredCampaignScreen(
-    restoredFixture('campaign-save-elite-choice-v7.json'),
+    restoredFixture('campaign-save-elite-choice-v8.json'),
   )
   const hud = descendants(screen.element).find(
     (element) => element.className === 'game-hud',

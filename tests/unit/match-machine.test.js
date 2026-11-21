@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CARD_IDS } from '../../src/domain/cards.js'
+import { DECKS, SHORT_DECK_CARD_IDS } from '../../src/domain/cards.js'
 import {
   createMatch,
   pauseMatch,
@@ -10,10 +10,13 @@ import {
 } from '../../src/domain/match-machine.js'
 import { assertStableBoundary } from '../../src/domain/invariants.js'
 import { EVENT_VERSION } from '../../src/domain/events.js'
-import { restoreRng, shuffle } from '../../src/domain/rng.js'
+import { createRng, restoreRng, shuffle } from '../../src/domain/rng.js'
 import {
   BASELINE_RULESET,
   NO_BURN_RULESET,
+  SHORT_DECK_BASELINE_RULESET,
+  SHORT_DECK_NO_BURN_RULESET,
+  rulesetDeck,
 } from '../../src/domain/ruleset.js'
 
 function clone(value) {
@@ -65,7 +68,10 @@ function createFixture({
       wonPile: [...opponentWon],
     },
     contestedPile: clone(contestedPile),
-    burnPile: [...burnPile, ...CARD_IDS.filter((cardId) => !suppliedSet.has(cardId))],
+    burnPile: [
+      ...burnPile,
+      ...DECKS[rulesetDeck(ruleset)].filter((cardId) => !suppliedSet.has(cardId)),
+    ],
     inPlay: [],
   }
   validateMatchState(match)
@@ -121,6 +127,28 @@ test('new matches require explicit inputs and produce deterministic immutable re
   for (const input of invalid) {
     assert.throws(() => createMatch(input))
   }
+})
+
+test('short-deck matches deal the 36-card deck with 35 setup draws', () => {
+  for (const ruleset of [SHORT_DECK_BASELINE_RULESET, SHORT_DECK_NO_BURN_RULESET]) {
+    const match = createMatch({ runId: 'short-setup', seed: 12345, ruleset })
+    const control = createRng(12345)
+    for (let draw = 0; draw < 35; draw += 1) {
+      control.next()
+    }
+
+    assert.equal(match.zones.sourceDeck.length, 36)
+    assert.deepEqual([...match.zones.sourceDeck].sort(), [...SHORT_DECK_CARD_IDS].sort())
+    assert.deepEqual(match.rng, control.snapshot())
+    assert.equal(validateMatchState(match), match)
+  }
+
+  const standard = createMatch({ runId: 'deck-swap', seed: 1, ruleset: BASELINE_RULESET })
+  const shortRules = { ...clone(standard), ruleset: clone(SHORT_DECK_BASELINE_RULESET) }
+  assert.throws(() => validateMatchState(shortRules), /outside the 36-card deck/)
+  const short = createMatch({ runId: 'deck-swap', seed: 1, ruleset: SHORT_DECK_NO_BURN_RULESET })
+  const standardRules = { ...clone(short), ruleset: clone(NO_BURN_RULESET) }
+  assert.throws(() => validateMatchState(standardRules), /must contain all 52 cards/)
 })
 
 test('pause and resume preserve a stable match without replaying RNG or committed events', () => {
@@ -203,6 +231,7 @@ test('source-stage clashes resolve both winners and preserve the input snapshot'
       type: 'clashSettled',
       turn: 1,
       stage: 'source',
+      deck: 'standard-52',
       winner: fixture.winner,
       reveals: [
         { cardId: fixture.sourceDeck[0], suppliedBy: 'player', from: 'sourceDeck' },
@@ -249,6 +278,48 @@ test('2 beats Ace in source and personal clashes but keeps normal ordering other
     opponentDraw: ['c-3C', 'c-5C'],
   }))
   assert.equal(ordinary.event.winner, 'opponent')
+})
+
+test('6 beats only Ace in source and personal clashes of a short-deck game', () => {
+  const source = revealOrContinue(createFixture({
+    runId: 'source-six-over-ace',
+    ruleset: SHORT_DECK_BASELINE_RULESET,
+    stage: 'source',
+    sourceDeck: ['c-6S', 'c-AH', 'c-7S', 'c-8H'],
+  }))
+  assert.equal(source.event.deck, 'short-36')
+  assert.equal(source.event.winner, 'player')
+  assert.deepEqual(source.event.transfers, [{ cardId: 'c-6S', to: 'player.wonPile' }])
+  assert.deepEqual(source.event.burned, ['c-AH'])
+
+  const personal = revealOrContinue(createFixture({
+    runId: 'personal-ace-under-six',
+    ruleset: SHORT_DECK_NO_BURN_RULESET,
+    stage: 'personal',
+    playerDraw: ['c-AS', 'c-7S'],
+    opponentDraw: ['c-6H', 'c-8H'],
+  }))
+  assert.equal(personal.event.winner, 'opponent')
+  assert.deepEqual(personal.event.transfers, [
+    { cardId: 'c-AS', to: 'opponent.wonPile' },
+    { cardId: 'c-6H', to: 'opponent.wonPile' },
+  ])
+
+  const ordinary = revealOrContinue(createFixture({
+    runId: 'personal-six-under-seven',
+    ruleset: SHORT_DECK_BASELINE_RULESET,
+    stage: 'personal',
+    playerDraw: ['c-6D', 'c-9D'],
+    opponentDraw: ['c-7C', 'c-10C'],
+  }))
+  assert.equal(ordinary.event.winner, 'opponent')
+
+  const standard = revealOrContinue(createFixture({
+    runId: 'standard-ace-over-six',
+    stage: 'source',
+    sourceDeck: ['c-6S', 'c-AH', 'c-7S', 'c-8H'],
+  }))
+  assert.equal(standard.event.winner, 'opponent')
 })
 
 test('one action resolves multiple source ties in chronological order', () => {
@@ -407,6 +478,7 @@ test('source-to-personal inability produces a terminal winner or retained draw',
     type: 'clashDrawn',
     turn: 1,
     stage: 'personal',
+    deck: 'standard-52',
     reason: 'mutualInability',
     reveals: [
       { cardId: 'c-10S', suppliedBy: 'player', from: 'sourceDeck' },
@@ -676,6 +748,58 @@ test('bounded seeded runs remain deterministic and conserve all cards at every b
       }
     }
   }
+})
+
+test('short-deck games end under both burn settings, within 36 clashes under burn', () => {
+  for (const [ruleset, seeds] of [
+    [SHORT_DECK_BASELINE_RULESET, 100],
+    [SHORT_DECK_NO_BURN_RULESET, 8],
+  ]) {
+    for (let seed = 0; seed < seeds; seed += 1) {
+      let match = createMatch({ runId: `${ruleset.id}-${seed}`, seed, ruleset })
+      while (match.status === 'active') {
+        const { match: next, event } = revealOrContinue(match)
+        match = next
+        assert.equal(event.eventVersion, 6)
+        assert.equal(event.deck, 'short-36')
+        if (ruleset.burn.enabled && match.status === 'active') {
+          assert.ok(event.burned.length > 0, 'every non-terminal burn clash burns a card')
+        }
+        assert.ok(match.turn <= 10_000, 'short-deck game must end')
+      }
+      assert.equal(validateMatchState(match), match)
+      if (ruleset.burn.enabled) {
+        assert.ok(match.turn <= 36, `seed ${seed} took ${match.turn} clashes`)
+      }
+    }
+  }
+})
+
+test('the pending event must use the deck of the match ruleset', () => {
+  const short = revealOrContinue(createFixture({
+    runId: 'short-deck-event',
+    ruleset: SHORT_DECK_BASELINE_RULESET,
+    stage: 'source',
+    sourceDeck: ['c-AS', 'c-KH', 'c-7S', 'c-8H'],
+  })).match
+  const legacyEvent = clone(short)
+  delete legacyEvent.pendingEvent.deck
+  legacyEvent.pendingEvent.eventVersion = 4
+  assert.throws(() => validateMatchState(legacyEvent), /deck of the match ruleset/)
+
+  const standard = revealOrContinue(createFixture({
+    runId: 'standard-deck-event',
+    stage: 'source',
+    sourceDeck: ['c-AS', 'c-KH', 'c-7S', 'c-8H'],
+  })).match
+  const shortEvent = clone(standard)
+  shortEvent.pendingEvent.deck = 'short-36'
+  assert.throws(() => validateMatchState(shortEvent), /deck of the match ruleset/)
+
+  const legacyStandard = clone(standard)
+  delete legacyStandard.pendingEvent.deck
+  legacyStandard.pendingEvent.eventVersion = 4
+  assert.equal(validateMatchState(legacyStandard), legacyStandard)
 })
 
 test('seed 12345 has a locked complete baseline result and exact event count', () => {

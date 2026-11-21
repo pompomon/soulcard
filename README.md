@@ -31,13 +31,17 @@ There is no lint command.
 ## Seeded simulations
 
 `npm run simulate` prints the deterministic baseline report for seeds 0–999. Select a seed or a
-corpus, and optionally lower the per-run clash guard:
+corpus, optionally lower the per-run clash guard, or pick another built-in Classic ruleset:
+`mvp-no-burn-v2`, `short-deck-baseline-v1` or `short-deck-no-burn-v1`.
 
 ```sh
 npm run simulate -- --seed 12345
 npm run simulate -- --start 1000 --count 100
 npm run simulate -- --seed 7 --max-clashes 100
-npm run simulate --silent > tests/fixtures/simulation-report.json   # regenerate the fixture
+npm run simulate -- --seed 7 --ruleset short-deck-no-burn-v1
+npm run simulate --silent > tests/fixtures/simulation-report.json   # regenerate the fixtures
+npm run simulate --silent -- --ruleset short-deck-baseline-v1 \
+  > tests/fixtures/simulation-report-short-deck.json
 ```
 
 The report contains no wall-clock or environment data. Its duration estimate is a versioned

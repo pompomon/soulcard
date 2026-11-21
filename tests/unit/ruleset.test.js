@@ -2,13 +2,19 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   BASELINE_RULESET,
+  BUILT_IN_RULESETS,
   NO_BURN_RULESET,
+  SHORT_DECK_BASELINE_RULESET,
+  SHORT_DECK_NO_BURN_RULESET,
+  rulesetDeck,
   validateRuleset,
 } from '../../src/domain/ruleset.js'
 import {
   BASELINE_RULESET_FIXTURE,
   NO_BURN_RULESET_FIXTURE,
   PRECEDENCE_RULESET_FIXTURE,
+  SHORT_DECK_BASELINE_RULESET_FIXTURE,
+  SHORT_DECK_NO_BURN_RULESET_FIXTURE,
 } from '../fixtures/rulesets.js'
 
 function clone(value) {
@@ -25,8 +31,9 @@ function allObjects(value) {
 test('built-in rulesets match the independent canonical fixtures and are deeply immutable', () => {
   assert.deepEqual(BASELINE_RULESET, BASELINE_RULESET_FIXTURE)
   assert.deepEqual(NO_BURN_RULESET, NO_BURN_RULESET_FIXTURE)
-  assert.ok(allObjects(BASELINE_RULESET).every(Object.isFrozen))
-  assert.ok(allObjects(NO_BURN_RULESET).every(Object.isFrozen))
+  assert.deepEqual(SHORT_DECK_BASELINE_RULESET, SHORT_DECK_BASELINE_RULESET_FIXTURE)
+  assert.deepEqual(SHORT_DECK_NO_BURN_RULESET, SHORT_DECK_NO_BURN_RULESET_FIXTURE)
+  assert.ok(allObjects(BUILT_IN_RULESETS).every(Object.isFrozen))
   assert.throws(() => {
     BASELINE_RULESET.burn.enabled = false
   }, TypeError)
@@ -39,6 +46,8 @@ test('canonical and custom rulesets validate unchanged through JSON round trips'
   for (const fixture of [
     BASELINE_RULESET_FIXTURE,
     NO_BURN_RULESET_FIXTURE,
+    SHORT_DECK_BASELINE_RULESET_FIXTURE,
+    SHORT_DECK_NO_BURN_RULESET_FIXTURE,
     PRECEDENCE_RULESET_FIXTURE,
   ]) {
     const ruleset = clone(fixture)
@@ -69,10 +78,38 @@ test('built-in IDs cannot be reused with altered definitions', () => {
       ...clone(NO_BURN_RULESET),
       burn: { enabled: true },
     },
+    { ...clone(SHORT_DECK_BASELINE_RULESET), burn: { enabled: false } },
+    {
+      ...clone(SHORT_DECK_BASELINE_RULESET),
+      burn: { ...clone(SHORT_DECK_BASELINE_RULESET).burn, extra: true },
+    },
+    {
+      ...clone(SHORT_DECK_BASELINE_RULESET),
+      burn: { ...clone(SHORT_DECK_BASELINE_RULESET).burn, eligibleScope: 'everything' },
+    },
+    { ...clone(SHORT_DECK_NO_BURN_RULESET), burn: clone(BASELINE_RULESET).burn },
+    {
+      ...clone(SHORT_DECK_NO_BURN_RULESET),
+      burn: { enabled: false, defaultOutcome: 'burn' },
+    },
   ]
 
   for (const ruleset of variants) {
     assert.throws(() => validateRuleset(ruleset), TypeError)
+  }
+})
+
+test('only the short-deck built-ins play the 36-card deck', () => {
+  assert.equal(rulesetDeck(SHORT_DECK_BASELINE_RULESET), 'short-36')
+  assert.equal(rulesetDeck(SHORT_DECK_NO_BURN_RULESET), 'short-36')
+  for (const ruleset of [
+    BASELINE_RULESET,
+    NO_BURN_RULESET,
+    PRECEDENCE_RULESET_FIXTURE,
+    { id: 'test-no-burn-v2', burn: { enabled: false } },
+    { id: 'short-deck-custom-v1', burn: { enabled: false } },
+  ]) {
+    assert.equal(rulesetDeck(ruleset), 'standard-52')
   }
 })
 

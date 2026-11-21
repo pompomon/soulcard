@@ -123,7 +123,7 @@ function createUpdateController() {
 }
 
 async function loadRewardDraft() {
-  const response = await fetch(new URL('../fixtures/campaign-save-reward-v7.json', import.meta.url))
+  const response = await fetch(new URL('../fixtures/campaign-save-reward-v8.json', import.meta.url))
   if (!response.ok) throw new Error('The saved reward draft fixture could not be loaded')
   return restoreRunSave(await response.json())
 }

@@ -2,9 +2,15 @@ import { CARD_ART_LABELS } from '../app/card-art.js'
 import {
   ANIMATION_SPEEDS,
   CARD_ART_OPTIONS,
+  CLASSIC_DECKS,
   QUALITY_PRESETS,
   RENDER_SCALE_CAPS,
 } from '../app/settings.js'
+
+const CLASSIC_DECK_LABELS = Object.freeze({
+  'standard-52': '52 cards',
+  'short-36': '36 cards (6 to Ace)',
+})
 
 function assertCallback(callback, name) {
   if (typeof callback !== 'function') {
@@ -17,6 +23,7 @@ function assertSettingsController(settingsController) {
     'getSnapshot',
     'subscribe',
     'setBurnEnabled',
+    'setClassicDeck',
     'setQuality',
     'setRenderScaleCap',
     'setAnimationSpeed',
@@ -360,11 +367,23 @@ export function createSettingsScreen({ onBack, settingsController, cardArt } = {
     onChange: handleBurnEnabled,
   })
 
+  const handleClassicDeck = (event) => {
+    settingsController.setClassicDeck(event.currentTarget.value)
+  }
+  const classicDeck = createSelectField({
+    id: 'classic-deck-setting',
+    label: 'Classic deck',
+    setting: 'classic-deck',
+    options: CLASSIC_DECKS.map((value) => ({ value, text: CLASSIC_DECK_LABELS[value] })),
+    onChange: handleClassicDeck,
+  })
+
   const gameplayNote = document.createElement('p')
   gameplayNote.className = 'settings-note'
-  gameplayNote.textContent = 'Applies to newly started or restarted games. Resumed games keep their saved rules.'
+  gameplayNote.textContent = 'Applies to newly started or restarted games. '
+    + 'Resumed games keep their saved rules. The deck applies to Classic only.'
 
-  gameplayControls.append(burnEnabled.field)
+  gameplayControls.append(burnEnabled.field, classicDeck.field)
   gameplayHost.append(gameplayHeading, gameplayControls, gameplayNote)
 
   const presentationHost = document.createElement('section')
@@ -565,6 +584,7 @@ export function createSettingsScreen({ onBack, settingsController, cardArt } = {
 
   const unsubscribe = settingsController.subscribe((settings) => {
     burnEnabled.select.value = settings.burnEnabled ? 'enabled' : 'disabled'
+    classicDeck.select.value = settings.classicDeck
     cardArtField.select.value = settings.cardArt
     quality.select.value = settings.quality
     renderScale.select.value = String(settings.renderScaleCap)
@@ -593,6 +613,7 @@ export function createSettingsScreen({ onBack, settingsController, cardArt } = {
       unsubscribe()
       unsubscribeCardArt()
       burnEnabled.select.removeEventListener('change', handleBurnEnabled)
+      classicDeck.select.removeEventListener('change', handleClassicDeck)
       cardArtField.select.removeEventListener('change', handleCardArt)
       retryButton.removeEventListener('click', handleRetry)
       removeButton.removeEventListener('click', handleRemove)

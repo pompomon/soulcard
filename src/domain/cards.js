@@ -27,6 +27,18 @@ export const CARDS = Object.freeze(
 
 export const CARD_IDS = Object.freeze(CARDS.map(({ id }) => id))
 
+export const SHORT_DECK_CARD_IDS = Object.freeze(
+  CARDS.filter(({ value }) => value >= 6).map(({ id }) => id),
+)
+
+export const STANDARD_DECK = 'standard-52'
+export const SHORT_DECK = 'short-36'
+
+export const DECKS = Object.freeze({
+  [STANDARD_DECK]: CARD_IDS,
+  [SHORT_DECK]: SHORT_DECK_CARD_IDS,
+})
+
 const CARD_BY_ID = new Map(CARDS.map((card) => [card.id, card]))
 
 export function isCardId(cardId) {
@@ -37,13 +49,31 @@ export function getCard(cardId) {
   return CARD_BY_ID.get(cardId)
 }
 
-export function compareCards(firstCardId, secondCardId) {
+export function isDeckId(deck) {
+  return typeof deck === 'string' && Object.hasOwn(DECKS, deck)
+}
+
+// The deck's lowest rank beats Ace, and only Ace: 2 on standard-52, 6 on short-36.
+const DECK_RULES = new Map(Object.entries(DECKS).map(([deck, cardIds]) => {
+  const cards = cardIds.map(getCard)
+  const lowest = cards.reduce((low, card) => (card.value < low.value ? card : low))
+  return [deck, Object.freeze({ cardIds: new Set(cardIds), upsetRank: lowest.rank })]
+}))
+
+export function compareCards(firstCardId, secondCardId, deck = STANDARD_DECK) {
   const first = getCard(firstCardId)
   const second = getCard(secondCardId)
   if (!first || !second) {
     throw new RangeError('compareCards requires two canonical card IDs')
   }
-  if (first.rank === '2' && second.rank === 'A') return 1
-  if (first.rank === 'A' && second.rank === '2') return -1
+  const rules = DECK_RULES.get(deck)
+  if (!rules) {
+    throw new RangeError('compareCards requires a known deck')
+  }
+  if (!rules.cardIds.has(first.id) || !rules.cardIds.has(second.id)) {
+    throw new RangeError(`compareCards requires two cards of the ${deck} deck`)
+  }
+  if (first.rank === rules.upsetRank && second.rank === 'A') return 1
+  if (first.rank === 'A' && second.rank === rules.upsetRank) return -1
   return first.value - second.value
 }

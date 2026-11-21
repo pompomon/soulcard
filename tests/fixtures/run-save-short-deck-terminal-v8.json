@@ -1,0 +1,138 @@
+{
+  "saveSchemaVersion": 8,
+  "gameRulesVersion": 2,
+  "runType": "classic",
+  "savedAt": "2026-09-21T08:05:00.000Z",
+  "runId": "fixture-short-deck-terminal",
+  "rng": {
+    "algorithm": "mulberry32",
+    "seed": 62,
+    "state": 120306156
+  },
+  "ruleset": {
+    "id": "short-deck-baseline-v1",
+    "burn": {
+      "enabled": true,
+      "eligibleScope": "all-losing-side-cards-in-resolved-contested-pile",
+      "decisiveWinningCard": "winner.wonPile"
+    }
+  },
+  "match": {
+    "stage": "personal",
+    "machineState": "ended",
+    "turn": 27,
+    "status": "ended",
+    "outcome": {
+      "result": "win",
+      "winner": "opponent",
+      "reason": "playerUnableToReveal"
+    },
+    "sourceDeck": [],
+    "player": {
+      "drawPile": [],
+      "wonPile": []
+    },
+    "opponent": {
+      "drawPile": [],
+      "wonPile": [
+        "c-JD",
+        "c-AC",
+        "c-8D",
+        "c-AD",
+        "c-KS",
+        "c-JC"
+      ]
+    },
+    "contestedPile": [],
+    "inPlay": [],
+    "burnPile": [
+      "c-AH",
+      "c-6D",
+      "c-7H",
+      "c-10D",
+      "c-6S",
+      "c-10C",
+      "c-7D",
+      "c-JH",
+      "c-9S",
+      "c-9H",
+      "c-8H",
+      "c-10S",
+      "c-6H",
+      "c-9C",
+      "c-7C",
+      "c-7S",
+      "c-10H",
+      "c-QS",
+      "c-QC",
+      "c-9D",
+      "c-QD",
+      "c-8S",
+      "c-6C",
+      "c-KH",
+      "c-KC",
+      "c-8C",
+      "c-JS",
+      "c-QH",
+      "c-AS",
+      "c-KD"
+    ],
+    "futureModifiers": []
+  },
+  "pendingEvent": {
+    "eventVersion": 6,
+    "id": "fixture-short-deck-terminal:clash-27",
+    "type": "clashSettled",
+    "turn": 27,
+    "stage": "personal",
+    "deck": "short-36",
+    "winner": "opponent",
+    "reveals": [
+      {
+        "cardId": "c-AS",
+        "suppliedBy": "player",
+        "from": "player.drawPile"
+      },
+      {
+        "cardId": "c-AD",
+        "suppliedBy": "opponent",
+        "from": "opponent.drawPile"
+      },
+      {
+        "cardId": "c-KD",
+        "suppliedBy": "player",
+        "from": "player.drawPile"
+      },
+      {
+        "cardId": "c-KS",
+        "suppliedBy": "opponent",
+        "from": "opponent.drawPile"
+      },
+      {
+        "cardId": "c-JC",
+        "suppliedBy": "opponent",
+        "from": "opponent.drawPile"
+      }
+    ],
+    "transfers": [
+      {
+        "cardId": "c-AD",
+        "to": "opponent.wonPile"
+      },
+      {
+        "cardId": "c-KS",
+        "to": "opponent.wonPile"
+      },
+      {
+        "cardId": "c-JC",
+        "to": "opponent.wonPile"
+      }
+    ],
+    "burned": [
+      "c-AS",
+      "c-KD"
+    ],
+    "stateFingerprint": "[\"fixture-short-deck-terminal\",{\"burn\":{\"decisiveWinningCard\":\"winner.wonPile\",\"eligibleScope\":\"all-losing-side-cards-in-resolved-contested-pile\",\"enabled\":true},\"id\":\"short-deck-baseline-v1\"},\"mulberry32\",62,120306156,\"personal\",\"ended\",27,\"ended\",[\"win\",\"opponent\",\"playerUnableToReveal\"],[],[],[],[],[\"c-JD\",\"c-AC\",\"c-8D\",\"c-AD\",\"c-KS\",\"c-JC\"],[],[\"c-AH\",\"c-6D\",\"c-7H\",\"c-10D\",\"c-6S\",\"c-10C\",\"c-7D\",\"c-JH\",\"c-9S\",\"c-9H\",\"c-8H\",\"c-10S\",\"c-6H\",\"c-9C\",\"c-7C\",\"c-7S\",\"c-10H\",\"c-QS\",\"c-QC\",\"c-9D\",\"c-QD\",\"c-8S\",\"c-6C\",\"c-KH\",\"c-KC\",\"c-8C\",\"c-JS\",\"c-QH\",\"c-AS\",\"c-KD\"],[],[\"clashSettled\",\"opponent\",[[\"c-AS\",\"player\",\"player.drawPile\"],[\"c-AD\",\"opponent\",\"opponent.drawPile\"],[\"c-KD\",\"player\",\"player.drawPile\"],[\"c-KS\",\"opponent\",\"opponent.drawPile\"],[\"c-JC\",\"opponent\",\"opponent.drawPile\"]],[[\"c-AD\",\"opponent.wonPile\"],[\"c-KS\",\"opponent.wonPile\"],[\"c-JC\",\"opponent.wonPile\"]],[\"c-AS\",\"c-KD\"]]]",
+    "pendingPresentation": "settlement-v1"
+  }
+}

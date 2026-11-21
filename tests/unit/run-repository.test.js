@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   createMatch,
   pauseMatch,
+  resumeMatch,
   revealOrContinue,
 } from '../../src/domain/match-machine.js'
 import { BASELINE_RULESET } from '../../src/domain/ruleset.js'
@@ -308,7 +309,7 @@ test('save, load, and replacement atomically preserve valid stable snapshots', a
     status: 'saved',
     savedAt: SAVED_AT,
   })
-  assert.equal(indexedDB.read(ACTIVE_RUN_KEY).saveSchemaVersion, 7)
+  assert.equal(indexedDB.read(ACTIVE_RUN_KEY).saveSchemaVersion, 8)
   assert.equal(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
 
   const loaded = await repository.load()
@@ -342,12 +343,31 @@ test('paused snapshots save and restore without changing RNG or the pending even
     status: 'saved',
     savedAt: SAVED_AT,
   })
-  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-paused-v7.json'))
+  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-paused-v8.json'))
   const loaded = await repository.load()
   assert.equal(loaded.status, 'resumable')
   assert.deepEqual(loaded.match, paused)
   assert.deepEqual(loaded.match.rng, ready.rng)
   assert.deepEqual(loaded.match.pendingEvent, ready.pendingEvent)
+})
+
+test('short-deck saves load and resume their 36-card game', async () => {
+  const indexedDB = new FakeIndexedDB()
+  const saved = fixture('run-save-short-deck-paused-v8.json')
+  indexedDB.seed(ACTIVE_RUN_KEY, saved)
+  const repository = createRunRepository({ indexedDB, now: () => new Date(SAVED_AT) })
+
+  const loaded = await repository.load()
+  assert.equal(loaded.status, 'resumable')
+  assert.equal(loaded.migratedFrom, null)
+  assert.deepEqual(loaded.match, restoreRunSave(saved))
+  assert.equal(loaded.match.ruleset.id, 'short-deck-baseline-v1')
+
+  const { match, event } = revealOrContinue(resumeMatch(loaded.match))
+  assert.equal(event.eventVersion, 6)
+  assert.equal(event.deck, 'short-36')
+  assert.deepEqual(await repository.save(match), { status: 'saved', savedAt: SAVED_AT })
+  assert.deepEqual((await repository.load()).match, match)
 })
 
 test('load deliberately quarantines legacy schema versions', async () => {
@@ -369,7 +389,7 @@ test('load deliberately quarantines legacy schema versions', async () => {
   }
 })
 
-test('schema 4, 5, and 6 Classic saves load unchanged and are rewritten as schema 7', async () => {
+test('schema 4 to 7 Classic saves load unchanged and are rewritten as schema 8', async () => {
   for (const name of [
     'run-save-v4.json',
     'run-save-paused-v4.json',
@@ -380,8 +400,14 @@ test('schema 4, 5, and 6 Classic saves load unchanged and are rewritten as schem
     'run-save-v6.json',
     'run-save-paused-v6.json',
     'run-save-terminal-v6.json',
+    'run-save-v7.json',
+    'run-save-paused-v7.json',
+    'run-save-terminal-v7.json',
   ]) {
-    const current = fixture(name.replace(/-v[456]\.json$/, '-v7.json'))
+    const current = {
+      ...fixture(name.replace(/-v[4567]\.json$/, '-v7.json')),
+      saveSchemaVersion: 8,
+    }
     const indexedDB = new FakeIndexedDB()
     indexedDB.seed(ACTIVE_RUN_KEY, fixture(name))
     const repository = createRunRepository({
@@ -468,7 +494,25 @@ test('schema 6 Campaign saves from the five-stage expedition stay quarantined un
   assert.deepEqual(await repository.load(), { status: 'empty' })
 })
 
-test('schema 7 Campaign saves load without migration', async () => {
+test('schema 7 Campaign saves load unchanged and are rewritten as schema 8', async () => {
+  for (const [name] of CAMPAIGN_SAVE_FIXTURES) {
+    const legacy = fixture(name.replace(/-v8\.json$/, '-v7.json'))
+    const indexedDB = new FakeIndexedDB()
+    indexedDB.seed(ACTIVE_RUN_KEY, legacy)
+    const repository = createRunRepository({ indexedDB, now: () => SAVED_AT })
+
+    const loaded = await repository.load()
+    assert.equal(loaded.status, 'resumable', name)
+    assert.equal(loaded.migratedFrom, 7, name)
+    assert.equal(loaded.savedAt, legacy.savedAt, name)
+    assert.deepEqual(loaded.match, restoreRunSave(fixture(name)), name)
+    assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture(name), name)
+    assert.equal(indexedDB.read(QUARANTINED_RUN_KEY), undefined, name)
+    assert.equal((await repository.load()).migratedFrom, null, name)
+  }
+})
+
+test('schema 8 Campaign saves load without migration', async () => {
   for (const [name] of CAMPAIGN_SAVE_FIXTURES) {
     const indexedDB = new FakeIndexedDB()
     indexedDB.seed(ACTIVE_RUN_KEY, fixture(name))
@@ -484,7 +528,7 @@ test('schema 7 Campaign saves load without migration', async () => {
 
 test('invalid saves are quarantined once and require explicit discard', async () => {
   const indexedDB = new FakeIndexedDB()
-  const corrupt = fixture('run-save-v7.json')
+  const corrupt = fixture('run-save-v8.json')
   corrupt.match.sourceDeck.pop()
   indexedDB.seed(ACTIVE_RUN_KEY, corrupt)
   const repository = createRunRepository({
@@ -510,7 +554,8 @@ test('invalid saves are quarantined once and require explicit discard', async ()
 
 test('future, incompatible, and malformed legacy saves expose distinct recovery reasons', async () => {
   for (const [fixtureName, field, value, reason] of [
-    ['run-save-v7.json', 'saveSchemaVersion', 99, 'unsupported-save-version'],
+    ['run-save-v8.json', 'saveSchemaVersion', 99, 'unsupported-save-version'],
+    ['run-save-v8.json', 'gameRulesVersion', 1, 'incompatible-game-rules'],
     ['run-save-v7.json', 'gameRulesVersion', 1, 'incompatible-game-rules'],
     ['run-save-v6.json', 'gameRulesVersion', 1, 'incompatible-game-rules'],
     ['run-save-v5.json', 'gameRulesVersion', 1, 'incompatible-game-rules'],
@@ -619,7 +664,7 @@ test('an unexpected close invalidates the cached connection for reopening', asyn
 
 test('quota and abort failures never report success or partially replace a save', async () => {
   const indexedDB = new FakeIndexedDB()
-  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v7.json'))
+  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v8.json'))
   indexedDB.seed(QUARANTINED_RUN_KEY, {
     quarantinedAt: SAVED_AT,
     reason: 'invalid-save',
@@ -634,7 +679,7 @@ test('quota and abort failures never report success or partially replace a save'
     operation: 'save',
     reason: 'quota-exceeded',
   })
-  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v7.json'))
+  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v8.json'))
   assert.notEqual(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
 
   indexedDB.abortNextTransaction()
@@ -643,13 +688,13 @@ test('quota and abort failures never report success or partially replace a save'
     operation: 'save',
     reason: 'transaction-aborted',
   })
-  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v7.json'))
+  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v8.json'))
   assert.notEqual(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
 })
 
 test('synchronous execution failures abort queued transaction writes', async () => {
   const indexedDB = new FakeIndexedDB()
-  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v7.json'))
+  indexedDB.seed(ACTIVE_RUN_KEY, fixture('run-save-v8.json'))
   indexedDB.seed(QUARANTINED_RUN_KEY, {
     quarantinedAt: SAVED_AT,
     reason: 'invalid-save',
@@ -665,13 +710,13 @@ test('synchronous execution failures abort queued transaction writes', async () 
     operation: 'save',
     reason: 'storage-error',
   })
-  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v7.json'))
+  assert.deepEqual(indexedDB.read(ACTIVE_RUN_KEY), fixture('run-save-v8.json'))
   assert.notEqual(indexedDB.read(QUARANTINED_RUN_KEY), undefined)
 })
 
 test('failed reads and quarantine writes preserve the original active record', async () => {
   const indexedDB = new FakeIndexedDB()
-  const corrupt = fixture('run-save-v7.json')
+  const corrupt = fixture('run-save-v8.json')
   corrupt.match.sourceDeck.pop()
   indexedDB.seed(ACTIVE_RUN_KEY, corrupt)
   const repository = createRunRepository({

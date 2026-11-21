@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CARD_IDS } from '../../src/domain/cards.js'
+import { CARD_IDS, SHORT_DECK_CARD_IDS } from '../../src/domain/cards.js'
 import {
   assertStableBoundary,
   assertZoneInvariants,
@@ -107,6 +107,33 @@ test('missing, duplicate, and unknown cards are rejected', () => {
     name: 'TypeError',
     message: 'sourceDeck contains an unknown card ID',
   })
+})
+
+test('the short deck conserves its own 36 cards', () => {
+  const zones = createInitialZones(createRng(1), SHORT_DECK_CARD_IDS)
+  assert.doesNotThrow(() => assertZoneInvariants(zones, SHORT_DECK_CARD_IDS))
+  assert.equal(getCardOwnership(zones, zones.sourceDeck[0], SHORT_DECK_CARD_IDS), 'unowned')
+  assert.throws(() => getCardOwnership(zones, 'c-2S', SHORT_DECK_CARD_IDS), {
+    name: 'TypeError',
+    message: 'cardId must belong to the deck',
+  })
+
+  const missing = createInitialZones(createRng(1), SHORT_DECK_CARD_IDS)
+  const missingId = missing.sourceDeck.pop()
+  assert.throws(() => assertZoneInvariants(missing, SHORT_DECK_CARD_IDS), {
+    message: `Zones must contain all 36 cards; missing: ${missingId}`,
+  })
+
+  const outside = createInitialZones(createRng(1), SHORT_DECK_CARD_IDS)
+  outside.burnPile.push('c-5H')
+  assert.throws(() => assertZoneInvariants(outside, SHORT_DECK_CARD_IDS), {
+    name: 'TypeError',
+    message: 'burnPile contains a card outside the 36-card deck',
+  })
+  assert.throws(
+    () => assertZoneInvariants(createInitialZones(createRng(1)), SHORT_DECK_CARD_IDS),
+    /sourceDeck contains a card outside the 36-card deck/,
+  )
 })
 
 test('malformed zone containers and piles are rejected', () => {

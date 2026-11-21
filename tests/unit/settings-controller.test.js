@@ -109,25 +109,30 @@ test('system mode follows live media changes and adopts changes made under an ov
   unsubscribe()
 })
 
-test('burning, quality, render cap, and speed updates persist and notify subscribers', () => {
-  const { controller } = createController()
+test('burning, deck, quality, render cap, and speed updates persist and notify subscribers', () => {
+  const storage = createStorage()
+  const { controller } = createController({ storage })
   const snapshots = []
   controller.subscribe((settings) => snapshots.push(settings))
 
   controller.setBurnEnabled(false)
+  controller.setClassicDeck('short-36')
   controller.setQuality('high')
   controller.setRenderScaleCap(1.5)
   controller.setAnimationSpeed(2)
 
-  assert.deepEqual(controller.getSnapshot(), {
+  const expected = {
     ...DEFAULT_SETTINGS,
     burnEnabled: false,
+    classicDeck: 'short-36',
     quality: 'high',
     renderScaleCap: 1.5,
     animationSpeed: 2,
     reducedMotion: false,
-  })
-  assert.equal(snapshots.length, 5)
+  }
+  assert.deepEqual(controller.getSnapshot(), expected)
+  assert.equal(snapshots.length, 6)
+  assert.deepEqual(createController({ storage }).controller.getSnapshot(), expected)
 })
 
 test('card art choice persists across reloads and notifies subscribers', () => {
@@ -152,6 +157,8 @@ test('invalid updates and subscribers are rejected without changing settings', (
 
   assert.throws(() => controller.subscribe(null), TypeError)
   assert.throws(() => controller.setBurnEnabled('off'), TypeError)
+  assert.throws(() => controller.setClassicDeck('short-32'), TypeError)
+  assert.throws(() => controller.setClassicDeck(undefined), TypeError)
   assert.throws(() => controller.setQuality('ultra'), TypeError)
   assert.throws(() => controller.setRenderScaleCap(Number.NaN), TypeError)
   assert.throws(() => controller.setAnimationSpeed(3), TypeError)
@@ -188,6 +195,7 @@ test('destroy removes media and subscriber listeners and prevents later updates'
   assert.equal(media.listenerCount, 0)
   assert.equal(calls, 1)
   assert.throws(() => controller.setBurnEnabled(false), /has been destroyed/)
+  assert.throws(() => controller.setClassicDeck('short-36'), /has been destroyed/)
   assert.throws(() => controller.setQuality('high'), /has been destroyed/)
   assert.throws(() => controller.setCardArt('tarot-hd'), /has been destroyed/)
   assert.throws(() => controller.subscribe(() => {}), /has been destroyed/)

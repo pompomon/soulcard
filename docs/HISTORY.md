@@ -1,9 +1,10 @@
 # History
 
-Retired plans, condensed. The full texts stay in git, and each section links the plan's last version
-at commit `46a3577`. Binding contracts were moved into [ARCHITECTURE.md](ARCHITECTURE.md) and
-[CAMPAIGN.md](CAMPAIGN.md), and open items into [ROADMAP.md](ROADMAP.md). Read an archived plan only
-when you need its rationale or measured evidence.
+Retired plans, condensed. The full texts stay in git, and each section links the plan's last
+version: commit `46a3577` up to Tarot card art, and `84dde50` for the short-deck setting. Binding
+contracts were moved into [ARCHITECTURE.md](ARCHITECTURE.md) and [CAMPAIGN.md](CAMPAIGN.md), and
+open items into [ROADMAP.md](ROADMAP.md). Read an archived plan only when you need its rationale or
+measured evidence.
 
 ## MVP roadmap, milestones 1–20 ([roadmap][roadmap-1-20], [checklist][milestones])
 
@@ -89,6 +90,19 @@ persistence, PWA, test pyramid) now live in ARCHITECTURE.md. Milestones and thei
 - "Plan §10, question 7" in `tools/card-art/hd-compose.mjs` refers to the 8 MB HD pack budget.
 - The plan has the art direction, the alternatives, and the refine-latency and heap measurements.
 
+## Classic short deck ([plan][short-deck-plan]), #52
+
+- A Classic deck setting: 52 cards (the default) or 36 cards, 6 to Ace. It applies to new and
+  restarted Classic games only; Campaign ignores it.
+- Rulesets `short-deck-baseline-v1` and `short-deck-no-burn-v1`. On 36 cards 6 beats Ace, and only
+  Ace. Classic `GAME_RULES_VERSION` stays 2.
+- Classic events v6 name their deck, and saves moved to schema 8. Schema-7 saves of both modes
+  carry over.
+- The deck, event, setting and save contracts are in ARCHITECTURE.md; the Campaign notes are in
+  CAMPAIGN.md.
+- The plan has the research figures for seeds 0–9,999: with Auto-reveal, the longest burn game
+  drops from 103.6 to 71.6 s, while no-burn games keep a median of 188 clashes.
+
 [roadmap-1-20]: https://github.com/pompomon/soulcard/blob/46a3577f72b5799845ff188af5cdbfa35e69c94c/docs/IMPLEMENTATION_ROADMAP.md
 [milestones]: https://github.com/pompomon/soulcard/blob/46a3577f72b5799845ff188af5cdbfa35e69c94c/docs/MILESTONES.md
 [m19-qa]: https://github.com/pompomon/soulcard/blob/46a3577f72b5799845ff188af5cdbfa35e69c94c/docs/MILESTONE_19_QA.md
@@ -98,3 +112,4 @@ persistence, PWA, test pyramid) now live in ARCHITECTURE.md. Milestones and thei
 [m21-4-plan]: https://github.com/pompomon/soulcard/blob/46a3577f72b5799845ff188af5cdbfa35e69c94c/docs/MILESTONE_21_4_IMPLEMENTATION_PLAN.md
 [phone-plan]: https://github.com/pompomon/soulcard/blob/46a3577f72b5799845ff188af5cdbfa35e69c94c/docs/PHONE_VISUALS_IMPLEMENTATION_PLAN.md
 [tarot-plan]: https://github.com/pompomon/soulcard/blob/46a3577f72b5799845ff188af5cdbfa35e69c94c/docs/TAROT_CARD_ART_PLAN.md
+[short-deck-plan]: https://github.com/pompomon/soulcard/blob/84dde5006f13792824deeeab7a9c7fe476a62e90/docs/plans/short-deck-setting.md

@@ -43,7 +43,9 @@ to GitHub Pages. Keep changes focused; update the docs in the same pull request 
 - Use the Node version in `.nvmrc` (CI uses the same file).
 - Run `npm ci`, `npm test`, `npm run build` and `npm run dev`. There is no lint command.
 - `npm run simulate --silent` must keep `tests/fixtures/simulation-report.json`
-  byte-identical unless a rules change is intended.
+  byte-identical unless a rules change is intended. The same holds for
+  `npm run simulate --silent -- --ruleset short-deck-baseline-v1` and
+  `tests/fixtures/simulation-report-short-deck.json`.
 
 ## Validation
 

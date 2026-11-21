@@ -1,11 +1,16 @@
+import { SHORT_DECK, STANDARD_DECK } from '../domain/cards.js'
+
 export const QUALITY_PRESETS = Object.freeze(['low', 'balanced', 'high'])
 export const RENDER_SCALE_CAPS = Object.freeze([1, 1.5, 2])
 export const ANIMATION_SPEEDS = Object.freeze([0.5, 1, 1.5, 2])
 // Option IDs, not theme IDs: src/app/card-art.js maps each to its versioned themes.
 export const CARD_ART_OPTIONS = Object.freeze(['tarot-pixel', 'tarot-hd'])
+// Classic games only: src/app/run-rulesets.js maps each deck to its built-in rulesets.
+export const CLASSIC_DECKS = Object.freeze([STANDARD_DECK, SHORT_DECK])
 
 export const DEFAULT_SETTINGS = Object.freeze({
   burnEnabled: true,
+  classicDeck: STANDARD_DECK,
   quality: 'balanced',
   renderScaleCap: 2,
   animationSpeed: 1,
@@ -23,6 +28,8 @@ export function isSettingValue(field, value) {
   switch (field) {
     case 'burnEnabled':
       return typeof value === 'boolean'
+    case 'classicDeck':
+      return CLASSIC_DECKS.includes(value)
     case 'quality':
       return QUALITY_PRESETS.includes(value)
     case 'renderScaleCap':
@@ -67,6 +74,7 @@ export function createSettingsPreferences(values = DEFAULT_SETTINGS) {
 
   return Object.freeze({
     burnEnabled: values.burnEnabled,
+    classicDeck: values.classicDeck,
     quality: values.quality,
     renderScaleCap: values.renderScaleCap,
     animationSpeed: values.animationSpeed,

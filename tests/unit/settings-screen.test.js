@@ -159,7 +159,7 @@ function createStorage() {
   }
 }
 
-test('Settings screen renders six semantic controls and applies changes immediately', (t) => {
+test('Settings screen renders seven semantic controls and applies changes immediately', (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
     createElement: (tagName) => new FakeElement(tagName),
@@ -182,6 +182,7 @@ test('Settings screen renders six semantic controls and applies changes immediat
   })
 
   const burnEnabled = setting(screen, 'burn-enabled')
+  const classicDeck = setting(screen, 'classic-deck')
   const cardArt = setting(screen, 'card-art')
   const quality = setting(screen, 'quality')
   const renderScale = setting(screen, 'render-scale-cap')
@@ -190,26 +191,42 @@ test('Settings screen renders six semantic controls and applies changes immediat
   assert.deepEqual(
     [
       burnEnabled.value,
+      classicDeck.value,
       cardArt.value,
       quality.value,
       renderScale.value,
       animationSpeed.value,
       reducedMotion.value,
     ],
-    ['enabled', 'tarot-pixel', 'balanced', '2', '1', 'system'],
+    ['enabled', 'standard-52', 'tarot-pixel', 'balanced', '2', '1', 'system'],
   )
   assert.equal(
     descendants(screen.element).filter((element) => element.tagName === 'SELECT').length,
-    6,
+    7,
+  )
+  const gameplay = withDataset(screen, 'gameplaySettingsHost')
+  assert.deepEqual(
+    descendants(gameplay)
+      .filter((element) => element.tagName === 'LABEL')
+      .map((label) => [label.textContent, label.htmlFor]),
+    [['Turn burning', 'burn-enabled-setting'], ['Classic deck', 'classic-deck-setting']],
+  )
+  assert.equal(classicDeck.id, 'classic-deck-setting')
+  assert.deepEqual(
+    classicDeck.children.map((option) => [option.value, option.textContent]),
+    [['standard-52', '52 cards'], ['short-36', '36 cards (6 to Ace)']],
+  )
+  assert.equal(
+    descendants(gameplay).find((element) => element.className === 'settings-note').textContent,
+    'Applies to newly started or restarted games. Resumed games keep their saved rules. '
+      + 'The deck applies to Classic only.',
   )
   assert.equal(cardArtBlock(screen).hidden, true)
-  assert.match(
-    descendants(screen.element).map((element) => element.textContent).join(' '),
-    /newly started or restarted games/,
-  )
 
   burnEnabled.value = 'disabled'
   burnEnabled.dispatch('change')
+  classicDeck.value = 'short-36'
+  classicDeck.dispatch('change')
   cardArt.value = 'tarot-hd'
   cardArt.dispatch('change')
   quality.value = 'high'
@@ -223,6 +240,7 @@ test('Settings screen renders six semantic controls and applies changes immediat
 
   assert.deepEqual(controller.getSnapshot(), {
     burnEnabled: false,
+    classicDeck: 'short-36',
     quality: 'high',
     renderScaleCap: 1.5,
     animationSpeed: 2,
@@ -238,10 +256,13 @@ test('Settings screen renders six semantic controls and applies changes immediat
   screen.teardown()
   quality.value = 'low'
   quality.dispatch('change')
+  classicDeck.value = 'standard-52'
+  classicDeck.dispatch('change')
   back.dispatch('click')
   controller.setQuality('low')
   assert.equal(backCalls, 1)
   assert.equal(quality.value, 'low')
+  assert.equal(controller.getSnapshot().classicDeck, 'short-36')
 
   const remounted = createSettingsScreen({
     settingsController: controller,
@@ -249,12 +270,13 @@ test('Settings screen renders six semantic controls and applies changes immediat
   })
   assert.deepEqual([
     setting(remounted, 'burn-enabled').value,
+    setting(remounted, 'classic-deck').value,
     setting(remounted, 'card-art').value,
     setting(remounted, 'quality').value,
     setting(remounted, 'render-scale-cap').value,
     setting(remounted, 'animation-speed').value,
     setting(remounted, 'reduced-motion').value,
-  ], ['disabled', 'tarot-hd', 'low', '1.5', '2', 'full'])
+  ], ['disabled', 'short-36', 'tarot-hd', 'low', '1.5', '2', 'full'])
   remounted.teardown()
   controller.destroy()
 })
