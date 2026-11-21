@@ -3,6 +3,7 @@ import { bindCardArt } from './card-art.js'
 import { createRunController } from './run-controller.js'
 import { createNewMatch } from './new-match.js'
 import { createNewCampaign } from './new-campaign.js'
+import { campaignRuleset, classicRuleset } from './run-rulesets.js'
 import { createRunRepository } from '../persistence/run-repository.js'
 import { createSettingsRepository } from '../persistence/settings-repository.js'
 import { createPageLifecycle } from '../pwa/lifecycle.js'
@@ -13,7 +14,6 @@ import { createSettingsController } from '../ui/settings-controller.js'
 import { createGameScreen } from '../ui/hud.js'
 import { createUpdateNotice } from '../ui/update-notice.js'
 import { mountBattlefield as mountResponsiveBattlefield } from '../presentation/battlefield.js'
-import { BASELINE_RULESET, NO_BURN_RULESET } from '../domain/ruleset.js'
 import { isCampaignState } from '../domain/run-state.js'
 
 const START_OVER_MESSAGE = 'Start a new game? Your current saved game will be replaced.'
@@ -244,14 +244,12 @@ export function bootstrap({
     )
   }
 
-  const startNewRun = (factory) => {
+  const startNewRun = (factory, chooseRuleset) => {
     if (requiresReplacementConfirmation() && !confirmStartOver()) {
       return false
     }
 
-    const ruleset = settingsController.getSnapshot().burnEnabled
-      ? BASELINE_RULESET
-      : NO_BURN_RULESET
+    const ruleset = chooseRuleset(settingsController.getSnapshot())
     const match = factory({ ruleset })
     activeRunController.discardPendingRestore()
     if (coordinator?.activeScreen === 'game') {
@@ -264,8 +262,8 @@ export function bootstrap({
     void save
     return true
   }
-  const startNewGame = () => startNewRun(newMatchFactory)
-  const startNewCampaign = () => startNewRun(newCampaignFactory)
+  const startNewGame = () => startNewRun(newMatchFactory, classicRuleset)
+  const startNewCampaign = () => startNewRun(newCampaignFactory, campaignRuleset)
   const restartCurrentRun = () => (
     isCampaignState(activeRunController.currentMatch)
       ? startNewCampaign()

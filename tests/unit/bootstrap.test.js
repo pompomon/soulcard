@@ -5,7 +5,12 @@ import { bootstrap } from '../../src/app/bootstrap.js'
 import { createRunController } from '../../src/app/run-controller.js'
 import { createMatch } from '../../src/domain/match-machine.js'
 import { createCampaignRun } from '../../src/domain/campaign-machine.js'
-import { BASELINE_RULESET, NO_BURN_RULESET } from '../../src/domain/ruleset.js'
+import {
+  BASELINE_RULESET,
+  NO_BURN_RULESET,
+  SHORT_DECK_BASELINE_RULESET,
+  SHORT_DECK_NO_BURN_RULESET,
+} from '../../src/domain/ruleset.js'
 import { restoreRunSave } from '../../src/persistence/run-schema.js'
 import { createSettingsRepository } from '../../src/persistence/settings-repository.js'
 import { createCardArtController } from '../../src/ui/card-art-controller.js'
@@ -488,7 +493,7 @@ test('Resume continues saved Campaign reward drafts and informed Hold choices', 
   await informed.app.destroy()
 })
 
-test('Start New applies the current burn-off preference', async (t) => {
+test('Start New applies the burn and deck preferences; Campaign ignores the deck', async (t) => {
   const previousDocument = globalThis.document
   globalThis.document = {
     createElement: (tagName) => new FakeElement(tagName),
@@ -497,44 +502,115 @@ test('Start New applies the current burn-off preference', async (t) => {
     globalThis.document = previousDocument
   })
 
-  const settingsRepository = createSettingsRepository({ storage: null })
-  settingsRepository.setBurnEnabled(false)
-  let selectedRuleset = null
-  const root = new FakeElement('div')
-  const app = bootstrap({
-    root,
-    runRepository: {
+  for (const [burnEnabled, classicDeck, classicRuleset, campaignRuleset, sourceCards] of [
+    [true, 'standard-52', BASELINE_RULESET, BASELINE_RULESET, 52],
+    [false, 'standard-52', NO_BURN_RULESET, NO_BURN_RULESET, 52],
+    [true, 'short-36', SHORT_DECK_BASELINE_RULESET, BASELINE_RULESET, 36],
+    [false, 'short-36', SHORT_DECK_NO_BURN_RULESET, NO_BURN_RULESET, 36],
+  ]) {
+    const settingsRepository = createSettingsRepository({ storage: null })
+    settingsRepository.setBurnEnabled(burnEnabled)
+    settingsRepository.setClassicDeck(classicDeck)
+    const selected = []
+    const root = new FakeElement('div')
+    const app = bootstrap({
+      root,
+      runRepository: {
+        load: async () => ({ status: 'empty' }),
+        save: async () => ({
+          status: 'saved',
+          savedAt: '2026-09-23T10:00:00.000Z',
+        }),
+      },
+      settingsRepository,
+      matchMedia: null,
+      pageLifecycleFactory: () => ({ destroy() {} }),
+      mountBattlefield: () => undefined,
+      confirmStartOver: () => true,
+      newMatchFactory({ ruleset }) {
+        selected.push(ruleset)
+        return createMatch({ runId: `start-${classicDeck}`, seed: 7, ruleset })
+      },
+      newCampaignFactory({ ruleset }) {
+        selected.push(ruleset)
+        return createCampaignRun({ runId: `campaign-${classicDeck}`, seed: 7, ruleset })
+      },
+      eventPlayerFactory: () => ({
+        present: async () => ({ status: 'synchronized', eventId: null, reason: null }),
+        setPaused() {},
+        destroy() {},
+      }),
+    })
+    await app.ready
+
+    byAction(root, 'start').dispatch('click')
+    assert.deepEqual(app.runSnapshot.match.ruleset, classicRuleset)
+    assert.equal(app.runSnapshot.match.zones.sourceDeck.length, sourceCards)
+
+    app.navigate('main')
+    byAction(root, 'campaign').dispatch('click')
+    assert.equal(app.runSnapshot.match.mode, 'campaign')
+    assert.deepEqual(app.runSnapshot.match.ruleset, campaignRuleset)
+    assert.deepEqual(selected, [classicRuleset, campaignRuleset])
+    await app.destroy()
+  }
+})
+
+test('Restart picks up the deck preference while Resume keeps the saved deck', async (t) => {
+  const previousDocument = globalThis.document
+  globalThis.document = {
+    createElement: (tagName) => new FakeElement(tagName),
+  }
+  t.after(() => {
+    globalThis.document = previousDocument
+  })
+
+  const controller = createRunController({
+    repository: {
       load: async () => ({ status: 'empty' }),
       save: async () => ({
         status: 'saved',
-        savedAt: '2026-09-23T10:00:00.000Z',
+        savedAt: '2026-09-23T01:10:00.000Z',
       }),
     },
+    initialMatch: createMatch({
+      runId: 'deck-saved',
+      seed: 1,
+      ruleset: BASELINE_RULESET,
+    }),
+  })
+  const settingsRepository = createSettingsRepository({ storage: null })
+  settingsRepository.setClassicDeck('short-36')
+  const root = new FakeElement('div')
+  const app = bootstrap({
+    root,
+    runController: controller,
     settingsRepository,
     matchMedia: null,
     pageLifecycleFactory: () => ({ destroy() {} }),
     mountBattlefield: () => undefined,
-    newMatchFactory({ ruleset }) {
-      selectedRuleset = ruleset
-      return createMatch({
-        runId: 'burn-off-start',
-        seed: 7,
-        ruleset,
-      })
-    },
-    eventPlayerFactory: () => ({
-      present: async () => ({ status: 'synchronized', eventId: null, reason: null }),
-      setPaused() {},
-      destroy() {},
+    confirmStartOver: () => true,
+    newMatchFactory: ({ ruleset }) => createMatch({
+      runId: 'deck-restarted',
+      seed: 2,
+      ruleset,
     }),
   })
-  await app.ready
 
-  byAction(root, 'start').dispatch('click')
+  byAction(root, 'resume').dispatch('click')
+  assert.equal(app.activeScreen, 'game')
+  assert.deepEqual(controller.currentMatch.ruleset, BASELINE_RULESET)
+  assert.equal(controller.currentMatch.zones.sourceDeck.length, 52)
 
-  assert.equal(selectedRuleset, NO_BURN_RULESET)
-  assert.deepEqual(app.runSnapshot.match.ruleset, NO_BURN_RULESET)
-  assert.equal(app.runSnapshot.match.ruleset.burn.enabled, false)
+  byAction(root, 'pause').dispatch('click')
+  await controller.whenIdle()
+  await waitFor(() => byAction(root, 'restart').disabled === false)
+  byAction(root, 'restart').dispatch('click')
+  await waitFor(() => controller.currentMatch.runId === 'deck-restarted')
+  assert.equal(app.activeScreen, 'game')
+  assert.deepEqual(controller.currentMatch.ruleset, SHORT_DECK_BASELINE_RULESET)
+  assert.equal(controller.currentMatch.zones.sourceDeck.length, 36)
+  await controller.whenIdle()
   await app.destroy()
 })
 

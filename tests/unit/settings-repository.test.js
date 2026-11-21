@@ -30,6 +30,7 @@ test('settings repository exposes versioned independent keys and immutable defau
 
   assert.deepEqual(SETTINGS_STORAGE_KEYS, {
     burnEnabled: 'soulcard.settings.v1.burnEnabled',
+    classicDeck: 'soulcard.settings.v1.classicDeck',
     quality: 'soulcard.settings.v1.quality',
     renderScaleCap: 'soulcard.settings.v1.renderScaleCap',
     animationSpeed: 'soulcard.settings.v1.animationSpeed',
@@ -37,6 +38,7 @@ test('settings repository exposes versioned independent keys and immutable defau
     cardArt: 'soulcard.settings.v1.cardArt',
   })
   assert.deepEqual(repository.load(), DEFAULT_SETTINGS)
+  assert.equal(DEFAULT_SETTINGS.classicDeck, 'standard-52')
   assert.equal(DEFAULT_SETTINGS.cardArt, 'tarot-pixel')
   assert.equal(repository.persistent, true)
   assert.equal(Object.isFrozen(repository.load()), true)
@@ -50,6 +52,7 @@ test('each setting persists independently and reloads with explicit false intact
   const repository = createSettingsRepository({ storage })
 
   repository.setBurnEnabled(false)
+  repository.setClassicDeck('short-36')
   repository.setQuality('high')
   repository.setRenderScaleCap(1.5)
   repository.setAnimationSpeed(2)
@@ -58,6 +61,7 @@ test('each setting persists independently and reloads with explicit false intact
 
   assert.deepEqual(Object.fromEntries(storage.values), {
     [SETTINGS_STORAGE_KEYS.burnEnabled]: 'false',
+    [SETTINGS_STORAGE_KEYS.classicDeck]: '"short-36"',
     [SETTINGS_STORAGE_KEYS.quality]: '"high"',
     [SETTINGS_STORAGE_KEYS.renderScaleCap]: '1.5',
     [SETTINGS_STORAGE_KEYS.animationSpeed]: '2',
@@ -66,12 +70,17 @@ test('each setting persists independently and reloads with explicit false intact
   })
   assert.deepEqual(createSettingsRepository({ storage }).load(), {
     burnEnabled: false,
+    classicDeck: 'short-36',
     quality: 'high',
     renderScaleCap: 1.5,
     animationSpeed: 2,
     reducedMotionOverride: false,
     cardArt: 'tarot-hd',
   })
+
+  repository.setClassicDeck('standard-52')
+  assert.equal(storage.values.get(SETTINGS_STORAGE_KEYS.classicDeck), '"standard-52"')
+  assert.equal(createSettingsRepository({ storage }).load().classicDeck, 'standard-52')
 
   repository.setCardArt('tarot-pixel')
   assert.equal(storage.values.get(SETTINGS_STORAGE_KEYS.cardArt), '"tarot-pixel"')
@@ -85,6 +94,7 @@ test('each setting persists independently and reloads with explicit false intact
 test('missing and malformed values fall back independently without disabling storage', () => {
   const storage = createStorage([
     [SETTINGS_STORAGE_KEYS.burnEnabled, '"false"'],
+    [SETTINGS_STORAGE_KEYS.classicDeck, '"short-32"'],
     [SETTINGS_STORAGE_KEYS.quality, '"high"'],
     [SETTINGS_STORAGE_KEYS.renderScaleCap, '1.25'],
     [SETTINGS_STORAGE_KEYS.animationSpeed, '{'],
@@ -95,6 +105,7 @@ test('missing and malformed values fall back independently without disabling sto
 
   assert.deepEqual(repository.load(), {
     burnEnabled: DEFAULT_SETTINGS.burnEnabled,
+    classicDeck: DEFAULT_SETTINGS.classicDeck,
     quality: 'high',
     renderScaleCap: DEFAULT_SETTINGS.renderScaleCap,
     animationSpeed: DEFAULT_SETTINGS.animationSpeed,
@@ -107,6 +118,18 @@ test('missing and malformed values fall back independently without disabling sto
     const cardArtOnly = createStorage([[SETTINGS_STORAGE_KEYS.cardArt, malformed]])
     assert.equal(createSettingsRepository({ storage: cardArtOnly }).load().cardArt, 'tarot-pixel')
   }
+  for (const malformed of ['"36"', '36', '"Short-36"', 'null', '{']) {
+    const deckOnly = createStorage([[SETTINGS_STORAGE_KEYS.classicDeck, malformed]])
+    assert.equal(
+      createSettingsRepository({ storage: deckOnly }).load().classicDeck,
+      'standard-52',
+    )
+  }
+  const shortOnly = createStorage([[SETTINGS_STORAGE_KEYS.classicDeck, '"short-36"']])
+  assert.deepEqual(createSettingsRepository({ storage: shortOnly }).load(), {
+    ...DEFAULT_SETTINGS,
+    classicDeck: 'short-36',
+  })
   const hdOnly = createStorage([[SETTINGS_STORAGE_KEYS.cardArt, '"tarot-hd"']])
   assert.deepEqual(createSettingsRepository({ storage: hdOnly }).load(), {
     ...DEFAULT_SETTINGS,
@@ -119,6 +142,7 @@ test('unavailable storage retains validated changes for the current session', ()
 
   assert.equal(repository.persistent, false)
   repository.setBurnEnabled(false)
+  repository.setClassicDeck('short-36')
   repository.setQuality('low')
   repository.setRenderScaleCap(1)
   repository.setAnimationSpeed(0.5)
@@ -127,6 +151,7 @@ test('unavailable storage retains validated changes for the current session', ()
 
   assert.deepEqual(repository.load(), {
     burnEnabled: false,
+    classicDeck: 'short-36',
     quality: 'low',
     renderScaleCap: 1,
     animationSpeed: 0.5,
@@ -188,6 +213,9 @@ test('invalid updates are rejected atomically', () => {
 
   for (const [method, value] of [
     ['setBurnEnabled', 'off'],
+    ['setClassicDeck', 'short-32'],
+    ['setClassicDeck', 36],
+    ['setClassicDeck', null],
     ['setQuality', 'ultra'],
     ['setRenderScaleCap', 3],
     ['setAnimationSpeed', 0],

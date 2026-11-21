@@ -20,6 +20,7 @@ function assertRepository(repository) {
   const methods = [
     'load',
     'setBurnEnabled',
+    'setClassicDeck',
     'setQuality',
     'setRenderScaleCap',
     'setAnimationSpeed',
@@ -146,6 +147,7 @@ export function createSettingsController({
       value,
       repository.setBurnEnabled,
     ),
+    setClassicDeck: (value) => update('classicDeck', value, repository.setClassicDeck),
     setQuality: (value) => update('quality', value, repository.setQuality),
     setRenderScaleCap: (value) => update(
       'renderScaleCap',

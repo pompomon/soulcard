@@ -9,6 +9,7 @@ const STORAGE_PREFIX = 'soulcard.settings.v1'
 
 export const SETTINGS_STORAGE_KEYS = Object.freeze({
   burnEnabled: `${STORAGE_PREFIX}.burnEnabled`,
+  classicDeck: `${STORAGE_PREFIX}.classicDeck`,
   quality: `${STORAGE_PREFIX}.quality`,
   renderScaleCap: `${STORAGE_PREFIX}.renderScaleCap`,
   animationSpeed: `${STORAGE_PREFIX}.animationSpeed`,
@@ -88,6 +89,7 @@ export function createSettingsRepository({ storage = undefined } = {}) {
   return Object.freeze({
     load,
     setBurnEnabled: (value) => save('burnEnabled', value),
+    setClassicDeck: (value) => save('classicDeck', value),
     setQuality: (value) => save('quality', value),
     setRenderScaleCap: (value) => save('renderScaleCap', value),
     setAnimationSpeed: (value) => save('animationSpeed', value),
