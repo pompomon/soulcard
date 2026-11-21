@@ -103,8 +103,8 @@ Milestone 21 (post-MVP expansion) closes when 21.6 is signed off. Presentation w
 - **Build:** the main chunk exceeds Vite's 500 kB advisory. It isn't a release blocker; code-split
   it if load time matters.
 - **Match length:** a Classic game takes about 95 s with Auto-reveal under burn rules and about
-  13 min under no-burn rules. [plans/faster-matches.md](plans/faster-matches.md) proposes five ways
-  to finish a game in under a minute; choose one before scheduling it.
+  13 min under no-burn rules. [plans/faster-matches.md](plans/faster-matches.md) proposes four ways
+  to shorten a game toward one minute; choose one before scheduling it.
 
 ## Release checklist
 
