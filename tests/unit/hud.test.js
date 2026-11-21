@@ -3337,6 +3337,21 @@ test('Game gates committed presentation on save completion and publishes live pr
   assert.equal(status.textContent, 'Revealing committed card.')
   assert.equal(comparisonProgress.textContent, 'Revealing cards · 1 of 3')
   assert.equal(reveal.disabled, true)
+  for (const [stepKind, statusText, progressText] of [
+    ['stake', 'Staking face-down cards.', 'Staking cards · 2 of 3'],
+    ['attrition', 'Burning attrition cards.', 'Burning attrition cards · 2 of 3'],
+  ]) {
+    presentationState({
+      status: 'playing',
+      eventId: controller.currentMatch.pendingEvent.id,
+      stepIndex: 1,
+      stepCount: 3,
+      stepKind,
+      reason: null,
+    })
+    assert.equal(status.textContent, statusText)
+    assert.equal(comparisonProgress.textContent, progressText)
+  }
   presentationState({
     status: 'skipped',
     eventId: controller.currentMatch.pendingEvent.id,

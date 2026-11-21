@@ -282,8 +282,10 @@ function presentationStatusText(state) {
   if (state.status === 'failed') return 'Presentation skipped after a rendering error.'
   if (state.status !== 'playing') return null
   if (state.stepKind === 'reveal') return 'Revealing committed card.'
+  if (state.stepKind === 'stake') return 'Staking face-down cards.'
   if (state.stepKind === 'transfer') return 'Transferring committed cards.'
   if (state.stepKind === 'burn') return 'Burning committed cards.'
+  if (state.stepKind === 'attrition') return 'Burning attrition cards.'
   if (state.stepKind === 'retain') return 'The unresolved contest is retained.'
   return 'Presenting committed clash.'
 }
@@ -299,8 +301,10 @@ function presentationProgressText(state) {
   const step = state.stepIndex === null ? 0 : state.stepIndex + 1
   const labels = {
     reveal: 'Revealing cards',
+    stake: 'Staking cards',
     transfer: 'Transferring won cards',
     burn: 'Burning cards',
+    attrition: 'Burning attrition cards',
     retain: 'Retaining the unresolved contest',
   }
   return `${labels[state.stepKind] ?? 'Presenting clash'} · ${step} of ${state.stepCount}`

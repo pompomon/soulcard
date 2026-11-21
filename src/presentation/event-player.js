@@ -9,6 +9,8 @@ export const EVENT_PRESENTATION_TIMING = Object.freeze({
   burnMs: 200,
 })
 
+const SIDES = Object.freeze(['player', 'opponent'])
+
 const FALLBACK_MOTION_SETTINGS = Object.freeze({
   animationSpeed: 1,
   reducedMotion: false,
@@ -137,26 +139,63 @@ function roundIsTied(reveals, round) {
   return second !== undefined && compareCards(first.cardId, second.cardId) === 0
 }
 
+function revealStep(event, reveal, index, timing) {
+  const round = Math.floor(index / 2)
+  return {
+    kind: 'reveal',
+    cardId: reveal.cardId,
+    ...(reveal.instanceId === undefined
+      ? {}
+      : { instanceId: reveal.instanceId, visualKey: reveal.instanceId }),
+    suppliedBy: reveal.suppliedBy,
+    from: reveal.from ?? null,
+    revealIndex: index,
+    round,
+    tied: roundIsTied(event.reveals, round),
+    durationMs: timing.revealMs,
+  }
+}
+
+// Stakes and Attrition cards move as one pile per side, drawn as its last card with a count.
+function pileValues(records) {
+  return {
+    count: records.length,
+    cardId: records.at(-1).cardId,
+    visualKeys: records.map(runVisualKey),
+  }
+}
+
+function stakeStep(stakes, timing) {
+  return {
+    kind: 'stake',
+    piles: SIDES.flatMap((side) => {
+      const records = stakes.filter(({ suppliedBy }) => suppliedBy === side)
+      if (records.length === 0) return []
+      return [{
+        side,
+        ...pileValues(records),
+        visualKey: `stake:${side}`,
+        from: records[0].from,
+      }]
+    }),
+    durationMs: timing.revealMs,
+  }
+}
+
+// One stake step and one Attrition step price like the campaign probe's eventDurationMs:
+// a stake takes one reveal, and every burned card, staked or not, takes one burn.
 export function createEventTimeline(event, timing = EVENT_PRESENTATION_TIMING) {
   validateCommittedEvent(event)
   assertTimingProfile(timing)
 
-  const steps = event.reveals.map((reveal, index) => {
-    const round = Math.floor(index / 2)
-    return {
-      kind: 'reveal',
-      cardId: reveal.cardId,
-      ...(reveal.instanceId === undefined
-        ? {}
-        : { instanceId: reveal.instanceId, visualKey: reveal.instanceId }),
-      suppliedBy: reveal.suppliedBy,
-      from: reveal.from ?? null,
-      revealIndex: index,
-      round,
-      tied: roundIsTied(event.reveals, round),
-      durationMs: timing.revealMs,
-    }
-  })
+  const stakes = event.stakes ?? []
+  const steps = event.reveals
+    .slice(0, 2)
+    .map((reveal, index) => revealStep(event, reveal, index, timing))
+  if (stakes.length > 0) steps.push(stakeStep(stakes, timing))
+  steps.push(...event.reveals
+    .slice(2)
+    .map((reveal, index) => revealStep(event, reveal, index + 2, timing)))
 
   if (event.type === 'clashSettled') {
     const transfers = new Map(
@@ -166,8 +205,7 @@ export function createEventTimeline(event, timing = EVENT_PRESENTATION_TIMING) {
     const transferDuration = event.transfers.length === 0
       ? 0
       : timing.settlementMs / event.transfers.length
-
-    for (const reveal of event.reveals) {
+    const settleReveal = (reveal) => {
       const visualKey = runVisualKey(reveal)
       const transfer = transfers.get(visualKey)
       if (transfer) {
@@ -192,13 +230,56 @@ export function createEventTimeline(event, timing = EVENT_PRESENTATION_TIMING) {
         })
       }
     }
+    const settleStakes = (side) => {
+      const records = stakes.filter(({ suppliedBy }) => suppliedBy === side)
+      const won = records.filter((record) => transfers.has(runVisualKey(record)))
+      const lost = records.filter((record) => burned.has(runVisualKey(record)))
+      const pile = { pile: 'stake', side, visualKey: `stake:${side}` }
+      if (won.length > 0) {
+        steps.push({
+          kind: 'transfer',
+          ...pile,
+          ...pileValues(won),
+          to: transfers.get(runVisualKey(won[0])).to,
+          durationMs: won.length * transferDuration,
+        })
+      }
+      if (lost.length > 0) {
+        steps.push({
+          kind: 'burn',
+          ...pile,
+          ...pileValues(lost),
+          to: 'burnPile',
+          durationMs: lost.length * timing.burnMs,
+        })
+      }
+    }
+
+    event.reveals.slice(0, 2).forEach(settleReveal)
+    SIDES.forEach(settleStakes)
+    event.reveals.slice(2).forEach(settleReveal)
+
+    const attrition = event.attrition ?? []
+    if (attrition.length > 0) {
+      const side = event.winner === 'player' ? 'opponent' : 'player'
+      steps.push({
+        kind: 'attrition',
+        side,
+        ...pileValues(attrition),
+        visualKey: `attrition:${side}`,
+        from: attrition[0].from,
+        to: 'burnPile',
+        durationMs: attrition.length * timing.burnMs,
+      })
+    }
   } else {
+    const contest = [...event.reveals.slice(0, 2), ...stakes, ...event.reveals.slice(2)]
     steps.push({
       kind: 'retain',
       reason: event.reason,
-      cardIds: event.reveals.map(({ cardId }) => cardId),
+      cardIds: contest.map(({ cardId }) => cardId),
       ...(isCampaignEventVersion(event.eventVersion)
-        ? { visualKeys: event.reveals.map(runVisualKey) }
+        ? { visualKeys: contest.map(runVisualKey) }
         : {}),
       durationMs: 0,
     })

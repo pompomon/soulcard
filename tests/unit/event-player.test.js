@@ -17,8 +17,11 @@ import {
   createEventPlayer,
   createEventTimeline,
 } from '../../src/presentation/event-player.js'
+import { runVisualKey } from '../../src/domain/run-state.js'
 import {
   attritionFixtureRun,
+  gateFightUntil,
+  resolvePrepared,
   stakesDrawFixtureRun,
   stakesFixtureRun,
   startCampaign,
@@ -506,35 +509,175 @@ test('same-turn Campaign Hold replacements synchronize distinct fingerprints', a
   assert.equal((await player.present(second)).status, 'duplicate')
 })
 
-test('stakes and attrition settle without steps of their own', async () => {
-  for (const run of [stakesFixtureRun(), attritionFixtureRun(), stakesDrawFixtureRun()]) {
-    const event = run.pendingEvent
-    assert.ok(event.stakes.length + (event.attrition ?? []).length > 0, event.id)
+// The campaign probe prices an event as reveals, one reveal for a stake, the settlement, and one
+// burn for every burned or Attrition card (scripts/campaign-probe.js eventDurationMs).
+function probeDurationMs(event, timing = EVENT_PRESENTATION_TIMING) {
+  const settled = event.type === 'clashSettled'
+  return event.reveals.length * timing.revealMs
+    + (event.stakes.length > 0 ? timing.revealMs : 0)
+    + (settled
+      ? timing.settlementMs + (event.burned.length + event.attrition.length) * timing.burnMs
+      : 0)
+}
+
+// Seed 4 stakes 7 cards a side at the gate, then ties once more before the clash settles.
+function largeStakesRun(runId = 'event-player-large-stakes') {
+  return gateFightUntil(4, runId, (run) => (
+    run.machineState === 'ready' && run.pendingEvent.stakes.length >= 14
+  ))
+}
+
+test('stake and Attrition steps follow contest order and price like the campaign probe', () => {
+  const large = largeStakesRun().pendingEvent
+  assert.equal(large.reveals.length, 4)
+  const runs = [largeStakesRun(), stakesFixtureRun(), attritionFixtureRun(), stakesDrawFixtureRun()]
+  for (const event of runs.map((run) => run.pendingEvent)) {
     const timeline = createEventTimeline(event)
-    const revealed = new Set(event.reveals.map(({ instanceId }) => instanceId))
-    assert.equal(
-      timeline.filter(({ kind }) => kind === 'reveal').length,
-      event.reveals.length,
-    )
-    for (const step of timeline) {
-      const keys = step.visualKeys ?? [step.visualKey]
-      assert.ok(keys.every((key) => revealed.has(key)), `${event.id} ${step.kind}`)
-    }
-    assert.ok(
-      timeline.reduce((total, step) => total + step.durationMs, 0)
-        <= event.reveals.length * EVENT_PRESENTATION_TIMING.revealMs
-          + EVENT_PRESENTATION_TIMING.settlementMs
-          + (event.burned ?? []).length * EVENT_PRESENTATION_TIMING.burnMs,
+    const stakeKeys = (side) => event.stakes
+      .filter(({ suppliedBy }) => suppliedBy === side)
+      .map(runVisualKey)
+    const contest = [
+      ...event.reveals.slice(0, 2),
+      ...event.stakes,
+      ...event.reveals.slice(2),
+    ].map(runVisualKey)
+    const presented = [
+      ...event.reveals.slice(0, 2).map(runVisualKey),
+      ...(event.stakes.length > 0 ? ['stake'] : []),
+      ...event.reveals.slice(2).map(runVisualKey),
+    ]
+    assert.deepEqual(
+      timeline.slice(0, presented.length).map((step) => (
+        step.kind === 'reveal' ? step.visualKey : step.kind
+      )),
+      presented,
+      event.id,
     )
 
+    if (event.stakes.length > 0) {
+      const stake = timeline[2]
+      assert.deepEqual(
+        stake.piles.map(({ side, count, visualKeys, from }) => [side, count, visualKeys, from]),
+        ['player', 'opponent'].map((side) => [
+          side,
+          stakeKeys(side).length,
+          stakeKeys(side),
+          event.stakes.find(({ suppliedBy }) => suppliedBy === side).from,
+        ]),
+      )
+      assert.equal(stake.piles[0].count, stake.piles[1].count)
+      assert.equal(stake.durationMs, EVENT_PRESENTATION_TIMING.revealMs)
+      assert.equal(stake.cardId, undefined)
+    }
+
+    const settlement = timeline.slice(presented.length)
+    if (event.type === 'clashSettled') {
+      const moves = settlement.filter(({ kind }) => kind === 'transfer' || kind === 'burn')
+      assert.deepEqual(moves.flatMap((step) => step.visualKeys ?? [step.visualKey]), contest)
+      for (const step of moves.filter(({ pile }) => pile === 'stake')) {
+        const staked = event.stakes.filter(({ suppliedBy }) => suppliedBy === step.side)
+        assert.equal(step.visualKey, `stake:${step.side}`)
+        assert.equal(step.count, staked.length)
+        assert.equal(step.cardId, staked.at(-1).cardId)
+      }
+      const attrition = settlement.filter(({ kind }) => kind === 'attrition')
+      if (event.attrition.length === 0) {
+        assert.deepEqual(attrition, [])
+      } else {
+        const loser = event.winner === 'player' ? 'opponent' : 'player'
+        assert.deepEqual(settlement.at(-1), {
+          kind: 'attrition',
+          side: loser,
+          count: event.attrition.length,
+          cardId: event.attrition.at(-1).cardId,
+          visualKeys: event.attrition.map(runVisualKey),
+          visualKey: `attrition:${loser}`,
+          from: event.attrition[0].from,
+          to: 'burnPile',
+          durationMs: event.attrition.length * EVENT_PRESENTATION_TIMING.burnMs,
+        })
+      }
+    } else {
+      assert.deepEqual(settlement.map(({ kind }) => kind), ['retain'])
+      assert.deepEqual(settlement[0].visualKeys, contest)
+    }
+
+    const total = timeline.reduce((sum, { durationMs }) => sum + durationMs, 0)
+    assert.ok(Math.abs(total - probeDurationMs(event)) < 1e-6, `${event.id} ${total}`)
+  }
+})
+
+test('stake and Attrition steps scale with speed and skip under reduced motion', async () => {
+  for (const run of [largeStakesRun('event-player-speed'), attritionFixtureRun()]) {
+    const event = run.pendingEvent
+    const timeline = createEventTimeline(event)
     const adapter = createAdapter()
-    const player = createEventPlayer({ adapter, timing: ZERO_TIMING })
-    assert.equal((await player.present(run)).status, 'completed')
+    const clock = new FakeClock()
+    const player = createEventPlayer({
+      adapter,
+      settingsController: createSettings({ animationSpeed: 2 }),
+      clock,
+    })
+    const playing = player.present(run)
+    for (let step = 0; step < timeline.length; step += 1) {
+      await flushMicrotasks()
+      clock.advance(10_000)
+    }
+    assert.equal((await playing).status, 'completed')
     assert.deepEqual(
-      adapter.calls.filter(([kind]) => kind === 'sync').map(([, id]) => id),
-      [event.id],
+      adapter.calls
+        .filter(([kind]) => kind === 'step')
+        .map(([, stepKind, , durationMs]) => [stepKind, durationMs]),
+      timeline.map(({ kind, durationMs }) => [kind, durationMs / 2]),
+    )
+    assert.ok(adapter.calls.some(([kind, stepKind]) => (
+      kind === 'step' && ['stake', 'attrition'].includes(stepKind)
+    )))
+
+    const skipped = createAdapter()
+    const reduced = createEventPlayer({
+      adapter: skipped,
+      settingsController: createSettings({ reducedMotion: true }),
+    })
+    assert.equal((await reduced.present(run)).status, 'skipped')
+    assert.deepEqual(
+      skipped.calls.filter(([kind]) => kind !== 'paused'),
+      [['sync', event.id, 'skipped']],
     )
   }
+})
+
+test('unruled, Classic, and version 5 events add no stake or Attrition steps', async () => {
+  const unruled = resolvePrepared(startCampaign({
+    runId: 'event-player-unruled',
+    seed: 8,
+    ruleset: BASELINE_RULESET,
+  }))
+  assert.deepEqual([unruled.event.stakes, unruled.event.attrition], [[], []])
+  const legacy = clone(unruled.event)
+  legacy.eventVersion = 5
+  delete legacy.stakes
+  delete legacy.attrition
+  const classic = transitionAt(0, 26).event
+  for (const event of [unruled.event, legacy, classic]) {
+    const timeline = createEventTimeline(event)
+    assert.ok(timeline.every(({ kind }) => ['reveal', 'transfer', 'burn', 'retain'].includes(kind)))
+    assert.equal(
+      timeline.reduce((sum, { durationMs }) => sum + durationMs, 0),
+      event.reveals.length * EVENT_PRESENTATION_TIMING.revealMs
+        + EVENT_PRESENTATION_TIMING.settlementMs
+        + event.burned.length * EVENT_PRESENTATION_TIMING.burnMs,
+    )
+  }
+  assert.deepEqual(createEventTimeline(legacy), createEventTimeline(unruled.event))
+
+  const adapter = createAdapter()
+  const player = createEventPlayer({ adapter, timing: ZERO_TIMING })
+  assert.equal((await player.present(unruled.match)).status, 'completed')
+  assert.deepEqual(
+    adapter.calls.filter(([kind]) => kind === 'step').map(([, kind]) => kind),
+    createEventTimeline(legacy).map(({ kind }) => kind),
+  )
 })
 
 test('player validates adapters, settings, timing, and committed snapshots', async () => {

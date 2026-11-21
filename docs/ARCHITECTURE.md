@@ -333,6 +333,15 @@ AI (`src/domain/ai-controller.js` `createAiController`): `chooseEncounterAction(
   doesn't block. Duplicates are dropped per Game mount; a new mount replays a restored event.
 - `EVENT_PRESENTATION_TIMING`: reveal 400, settlement 600, burn 200 ms, divided by
   `animationSpeed`. Reduced motion jumps straight to the committed state.
+- `createEventTimeline` follows the contest order: the first reveal round, a `stake` step (one
+  reveal long) when the event has stakes, the tie rounds, then settlement, where each side's
+  stakes move as one pile, and an `attrition` step last. A burned pile takes one burn per card
+  and transferred cards share the settlement time, so totals match the Campaign probe's
+  `eventDurationMs`. Empty lists, Classic and version 5 events add no steps.
+- The battlefield draws a stake or Attrition pile as one transient card per side with a `×N`
+  count label (canvas from the `createLabelCanvas` mount option), disposed with its card. A
+  settling card trimmed during a long tie is re-created, so settlement can briefly hold one
+  transient card over `MAX_TRANSIENT_CARDS`.
 
 ### WebGL context recovery (`battlefield.js` `handleContextLost`, `handleContextRestored`)
 

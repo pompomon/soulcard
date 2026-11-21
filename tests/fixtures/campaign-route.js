@@ -434,7 +434,7 @@ export const victoryFixtureRun = buildOnce(() => {
 })
 
 // Gate fights stopped once their encounter rule has shown its effect.
-function gateFightUntil(seed, runId, reached, ruleset = BASELINE_RULESET) {
+export function gateFightUntil(seed, runId, reached, ruleset = BASELINE_RULESET) {
   let run = fixtureCampaign(seed, runId, ruleset)
   while (run.machineState === 'ready') {
     run = advanceClash(run)

@@ -18,6 +18,7 @@ import {
   validateRunState,
 } from '../domain/run-state.js'
 import { createTextureCache } from './texture-cache.js'
+import { createBrowserCanvas } from './themes/canvas.js'
 import { createThemeRegistry } from './themes/registry.js'
 import { createInputController } from './input.js'
 
@@ -31,6 +32,18 @@ const DECK_DRAG_LIFT = 0.35
 const DEFAULT_CARD_COLOR = 0xffffff
 const ACTIVE_DECK_COLOR = 0xd9fbff
 const PILE_SCALE_MODE = 'pile'
+// A stake pile tucks under its side's first reveal (z 0.08+) and shows toward its owner.
+const STAKE_PILE_OFFSETS = Object.freeze({
+  player: Object.freeze({ x: -0.195, y: -0.7, z: 0.04 }),
+  opponent: Object.freeze({ x: -0.195, y: 0.7, z: 0.04 }),
+})
+const ORIGIN_OFFSET = Object.freeze({ x: 0, y: 0, z: 0.1 })
+const SETTLED_OFFSET = Object.freeze({ x: 0, y: 0, z: 0.14 })
+const COUNT_LABEL_CANVAS = Object.freeze({ width: 128, height: 64 })
+const COUNT_LABEL_SIZE = Object.freeze({ width: 0.62, height: 0.31 })
+// A count label sits on the pile edge nearest its owner, above any reveal covering the pile.
+const COUNT_LABEL_EDGE_Y = (CARD_SIZE.height - COUNT_LABEL_SIZE.height) / 2 - 0.04
+const COUNT_LABEL_Z = 0.3
 const TEXTURE_SCALE_BY_QUALITY = Object.freeze({
   low: 1,
   balanced: 2,
@@ -173,6 +186,25 @@ function decisiveWinningCardId(event) {
   return null
 }
 
+// Every card a committed event moves stays out of the snapshot piles until a step places it.
+function eventVisualKeys(event) {
+  return new Set([
+    ...event.reveals,
+    ...(event.stakes ?? []),
+    ...(event.attrition ?? []),
+  ].map(runVisualKey))
+}
+
+function supplyZone(from) {
+  if (from === 'sourceDeck') return 'sourceDeck'
+  if (from === 'player.sourcePile') return 'playerSourcePile'
+  if (from === 'opponent.sourcePile') return 'opponentSourcePile'
+  if (from === 'player.hold') return 'hold'
+  if (from === 'player.drawPile') return 'playerDrawPile'
+  if (from === 'opponent.drawPile') return 'opponentDrawPile'
+  return null
+}
+
 function parsePixel(value) {
   const parsed = Number.parseFloat(value)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
@@ -251,6 +283,7 @@ export function mountBattlefield(host, {
   themeSelection = undefined,
   themeSource = undefined,
   textureCacheFactory = createTextureCache,
+  createLabelCanvas = createBrowserCanvas,
 } = {}) {
   assertHost(host)
   assertSettingsController(settingsController)
@@ -276,6 +309,9 @@ export function mountBattlefield(host, {
   }
   if (typeof textureCacheFactory !== 'function') {
     throw new TypeError('textureCacheFactory must be a function')
+  }
+  if (typeof createLabelCanvas !== 'function') {
+    throw new TypeError('createLabelCanvas must be a function')
   }
   let selectedThemes = themeRegistry.resolveSelection(
     themeSource?.getSelection() ?? themeSelection ?? {
@@ -334,6 +370,10 @@ export function mountBattlefield(host, {
   activeDeckHalo.visible = false
   zoneGroups.get(BATTLEFIELD_ZONE_IDS[0]).add(activeDeckHalo)
   const cardGeometry = new THREE.PlaneGeometry(CARD_SIZE.width, CARD_SIZE.height)
+  const countLabelGeometry = new THREE.PlaneGeometry(
+    COUNT_LABEL_SIZE.width,
+    COUNT_LABEL_SIZE.height,
+  )
   const deckPointer = new THREE.Vector2()
   const deckRaycaster = new THREE.Raycaster()
   const deckCenter = new THREE.Vector3()
@@ -732,11 +772,19 @@ export function mountBattlefield(host, {
     renderCurrentFrame()
   }
 
+  function releaseCountLabel(label) {
+    label.mesh.parent?.remove(label.mesh)
+    label.material.map = null
+    label.material.dispose()
+    label.texture.dispose()
+  }
+
   function releaseVisual(visual) {
     tweens.delete(visual)
     visual.parent.remove(visual.mesh)
     visual.material.map = null
     visual.material.dispose()
+    if (visual.label !== null) releaseCountLabel(visual.label)
     visual.lease.release()
   }
 
@@ -761,6 +809,7 @@ export function mountBattlefield(host, {
     zoneId,
     offset = Object.freeze({ x: 0, y: 0, z: 0 }),
     transient = false,
+    scaleMode = null,
   }) {
     const lease = acquireVisualLease({ cardId, faceUp })
     let material
@@ -789,11 +838,54 @@ export function mountBattlefield(host, {
       mesh,
       material,
       lease,
-      scaleMode: null,
+      label: null,
+      scaleMode,
       tween: null,
     }
     applyVisualAppearance(visual)
     return visual
+  }
+
+  function createCountLabel(count, side) {
+    const canvas = createLabelCanvas(COUNT_LABEL_CANVAS.width, COUNT_LABEL_CANVAS.height)
+    if (canvas === null || typeof canvas !== 'object' || typeof canvas.getContext !== 'function') {
+      throw new TypeError('createLabelCanvas must return a canvas-like object')
+    }
+    canvas.width = COUNT_LABEL_CANVAS.width
+    canvas.height = COUNT_LABEL_CANVAS.height
+    const context = canvas.getContext('2d')
+    if (context === null || typeof context !== 'object') {
+      throw new Error('Canvas 2D context is unavailable')
+    }
+    context.fillStyle = 'rgba(18, 13, 43, 0.88)'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.fillStyle = '#ffffff'
+    context.font = '700 40px system-ui, sans-serif'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.fillText(`×${count}`, canvas.width / 2, canvas.height / 2)
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    let material
+    try {
+      material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      })
+    } catch (error) {
+      texture.dispose()
+      throw error
+    }
+    const mesh = new THREE.Mesh(countLabelGeometry, material)
+    mesh.name = `battlefield-count:${count}`
+    mesh.position.set(
+      0,
+      side === 'opponent' ? COUNT_LABEL_EDGE_Y : -COUNT_LABEL_EDGE_Y,
+      COUNT_LABEL_Z,
+    )
+    return { count, mesh, material, texture }
   }
 
   function firstVisibleCard(pile, excluded) {
@@ -1026,6 +1118,33 @@ export function mountBattlefield(host, {
     return visual
   }
 
+  // Stake and Attrition piles are one transient card per side with a count label.
+  function ensurePileCard(step, { faceUp, zoneId, offset, trim }) {
+    const existing = transientVisuals.get(step.visualKey)
+    if (existing) return existing
+    if (trim) trimTransientCards()
+    const visual = createCardVisual({
+      cardId: step.cardId,
+      visualKey: step.visualKey,
+      faceUp,
+      parent: scene,
+      zoneId,
+      offset,
+      transient: true,
+      scaleMode: PILE_SCALE_MODE,
+    })
+    try {
+      visual.label = createCountLabel(step.count, step.side)
+    } catch (error) {
+      releaseVisual(visual)
+      throw error
+    }
+    visual.mesh.add(visual.label.mesh)
+    transientVisuals.set(step.visualKey, visual)
+    placeTransient(visual)
+    return visual
+  }
+
   function rescaleTweens(previousSpeed, nextSpeed) {
     if (Object.is(previousSpeed, nextSpeed)) return
     for (const visual of tweens) {
@@ -1211,7 +1330,7 @@ export function mountBattlefield(host, {
       if (retainedMatch !== null) {
         const excluded = retainedEvent === null
           ? new Set()
-          : new Set(retainedEvent.reveals.map(runVisualKey))
+          : eventVisualKeys(retainedEvent)
         renderSnapshotCards(retainedMatch, excluded)
         for (const step of retainedSteps) applyPresentationStep(step, 0)
       }
@@ -1406,7 +1525,7 @@ export function mountBattlefield(host, {
     currentMatch = match
     currentEvent = event
     currentDecisiveCardId = decisiveWinningCardId(event)
-    renderSnapshotCards(match, new Set(event.reveals.map(runVisualKey)))
+    renderSnapshotCards(match, eventVisualKeys(event))
     publishPresentation('prepared')
     renderCurrentFrame()
   }
@@ -1421,23 +1540,10 @@ export function mountBattlefield(host, {
   function applyPresentationStep(step, durationMs) {
     if (step.kind === 'reveal') {
       const visual = ensureTransientCard(step.visualKey ?? step.cardId, step.cardId, step.suppliedBy)
-      const originZone = step.from === 'sourceDeck'
-        ? 'sourceDeck'
-        : step.from === 'player.sourcePile'
-          ? 'playerSourcePile'
-          : step.from === 'opponent.sourcePile'
-            ? 'opponentSourcePile'
-            : step.from === 'player.hold'
-              ? 'hold'
-        : step.from === 'player.drawPile'
-          ? 'playerDrawPile'
-          : step.from === 'opponent.drawPile'
-            ? 'opponentDrawPile'
-            : currentEvent.stage === 'source'
-              ? 'sourceDeck'
-              : LEGACY_REVEAL_ORIGIN_ZONE
-      visual.zoneId = originZone
-      visual.offset = Object.freeze({ x: 0, y: 0, z: 0.1 })
+      visual.zoneId = supplyZone(step.from) ?? (
+        currentEvent.stage === 'source' ? 'sourceDeck' : LEGACY_REVEAL_ORIGIN_ZONE
+      )
+      visual.offset = ORIGIN_OFFSET
       placeTransient(visual)
       startTween(
         visual,
@@ -1446,6 +1552,28 @@ export function mountBattlefield(host, {
         durationMs,
       )
       publishPresentation(step.tied ? 'tie-reveal' : 'reveal', step.cardId)
+    } else if (step.kind === 'stake') {
+      for (const pile of step.piles) {
+        const visual = ensurePileCard(pile, {
+          faceUp: false,
+          zoneId: supplyZone(pile.from) ?? LEGACY_REVEAL_ORIGIN_ZONE,
+          offset: ORIGIN_OFFSET,
+          trim: true,
+        })
+        startTween(visual, `${pile.side}Reveal`, STAKE_PILE_OFFSETS[pile.side], durationMs)
+      }
+      publishPresentation('stake')
+    } else if ((step.kind === 'transfer' || step.kind === 'burn') && step.pile === 'stake') {
+      releaseSettledVisuals()
+      const visual = ensurePileCard(step, {
+        faceUp: false,
+        zoneId: `${step.side}Reveal`,
+        offset: STAKE_PILE_OFFSETS[step.side],
+        trim: false,
+      })
+      startTween(visual, destinationZone(step.to), SETTLED_OFFSET, durationMs)
+      settledVisuals.add(visual)
+      publishPresentation(step.kind)
     } else if (step.kind === 'transfer' || step.kind === 'burn') {
       const stepKey = step.visualKey ?? step.cardId
       const reveal = currentEvent.reveals.find((record) => runVisualKey(record) === stepKey)
@@ -1455,7 +1583,7 @@ export function mountBattlefield(host, {
       startTween(
         visual,
         destinationZone(step.to),
-        Object.freeze({ x: 0, y: 0, z: 0.14 }),
+        SETTLED_OFFSET,
         durationMs,
         step.kind === 'transfer' && stepKey === currentDecisiveCardId
           ? PILE_SCALE_MODE
@@ -1463,6 +1591,17 @@ export function mountBattlefield(host, {
       )
       settledVisuals.add(visual)
       publishPresentation(step.kind, step.cardId)
+    } else if (step.kind === 'attrition') {
+      releaseSettledVisuals()
+      const visual = ensurePileCard(step, {
+        faceUp: true,
+        zoneId: supplyZone(step.from) ?? LEGACY_REVEAL_ORIGIN_ZONE,
+        offset: ORIGIN_OFFSET,
+        trim: true,
+      })
+      startTween(visual, destinationZone(step.to), SETTLED_OFFSET, durationMs)
+      settledVisuals.add(visual)
+      publishPresentation('attrition', step.cardId)
     } else if (step.kind === 'retain') {
       publishPresentation('retained-draw')
     } else {
@@ -1562,6 +1701,7 @@ export function mountBattlefield(host, {
       attempt(() => activeDeckHaloGeometry.dispose())
       attempt(() => activeDeckHaloMaterial.dispose())
       attempt(() => cardGeometry.dispose())
+      attempt(() => countLabelGeometry.dispose())
       attempt(disposeRenderer)
       scene.clear()
       if (firstError) throw firstError
