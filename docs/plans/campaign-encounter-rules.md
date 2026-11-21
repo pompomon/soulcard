@@ -173,9 +173,10 @@ is set up or retried. `activeClashes` counts clashes that settled while the rule
 
 ## Probe and balance gate
 
-- Commit `scripts/campaign-probe.js`, with an npm script. It drives the domain functions directly,
-  not the test fixtures. For each fight, rule, burn setting and Hold policy (never, blind,
-  informed) it reports:
+- `scripts/campaign-probe.js` (`npm run probe:campaign`) is committed for today's rules; the rules
+  pull request adds the rule dimension and the race-target share. It drives the domain functions
+  directly, not the test fixtures. For each fight, rule, burn setting and Hold policy (never,
+  blind, informed) it reports:
   - first-attempt win and draw rates and the race-target share
   - clash count and estimated time: median, p95 and maximum
 - Time uses `DEFAULT_TIMING_PROFILE` (`simulation.js`), with stake steps priced as reveals, plus

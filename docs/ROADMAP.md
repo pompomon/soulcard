@@ -64,8 +64,7 @@ rules in place.
 - Builds on the [Campaign encounter rules](plans/campaign-encounter-rules.md): the generator assigns
   each generated fight a rule, and the campaign simulation extends that plan's fight probe.
 - Build simulation and report tooling for complete campaigns, including route choices and
-  deterministic partial outcomes, separate from the single-match simulator. No campaign probe
-  harness is committed yet.
+  deterministic partial outcomes, separate from the single-match simulator.
 - Tune balance with that tooling. The inputs are in [CAMPAIGN.md](CAMPAIGN.md).
 
 **Acceptance:**

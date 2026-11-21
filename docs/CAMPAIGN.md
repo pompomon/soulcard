@@ -211,12 +211,21 @@ must satisfy them or revise them explicitly:
 
 ## 11. Balance and tuning inputs
 
-- Probe: first-attempt win rate with the starter deck under three Hold policies: never hold,
-  informed (Hold Insight) and blind. The harness was never committed, and `scripts/simulate.js`
-  has no Campaign support.
+- Probe: `npm run probe:campaign` (`scripts/campaign-probe.js`) plays first-attempt fights with
+  the starter deck through the Campaign machine. It reaches a fight by winning the fights before
+  it at once (their opponents' undealt cards move to the player's won pile), taking Mend and
+  walking on, then deals the fight from the seed's initial RNG state, as if it were the run's
+  first fight. It reports win, loss and draw rates, clashes, and Auto-reveal time
+  (`DEFAULT_TIMING_PROFILE` plus 0.4 s per clash), and it reproduces the 21.4 probe results.
+  Hold policies:
+  - never: no captures
+  - blind: capture the highest eligible card into an empty Hold; play it when the normal card
+    is 7 or lower and the held card outranks it
+  - informed (Hold Insight): the same capture; play the held card when it beats the opponent's
+    next card and the normal card doesn't
 - Starter-deck target bands (measured results: [HISTORY.md](HISTORY.md)): High Court 60–75% under
   every policy; Night Watch 40–55% without Hold and at least 90% with Hold Insight; Ace Sovereign
   20–35% without Hold and 75–90% with it.
 - The strongest end-of-route deck lifts the Sovereign to 54% without Hold. Spoils of War doesn't
-  help against the High Court. Under no-burn rules elite and boss fights average 210–361
-  clashes.
+  help against the High Court. Under no-burn rules, without Hold, elite and boss fights average
+  210–361 clashes (seeds 0–99).

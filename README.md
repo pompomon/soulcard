@@ -47,6 +47,20 @@ npm run simulate --silent -- --ruleset short-deck-baseline-v1 \
 The report contains no wall-clock or environment data. Its duration estimate is a versioned
 content-planning metric.
 
+## Campaign fight probe
+
+`npm run probe:campaign` plays first-attempt Campaign fights with the starter deck. For each fight
+and Hold policy it reports win, loss and draw rates, clash counts and estimated Auto-reveal time.
+Without options it covers every fight and policy under burn rules for seeds 0–199, which takes a
+few minutes. Filter by fight, policy, ruleset or seeds:
+
+```sh
+npm run probe:campaign -- --fight night-watch --policy informed --start 0 --count 1000
+npm run probe:campaign -- --fight high-court --ruleset mvp-no-burn-v2 --seed 7
+```
+
+[CAMPAIGN.md](docs/CAMPAIGN.md) §11 describes the policies and the target bands.
+
 ## Browser checks
 
 With `npm run dev` running, open a harness page. Each one plays or restores the real app and reports
