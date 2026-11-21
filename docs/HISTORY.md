@@ -1,10 +1,10 @@
 # History
 
 Retired plans, condensed. The full texts stay in git, and each section links the plan's last
-version: commit `46a3577` up to Tarot card art, and `84dde50` for the short-deck setting. Binding
-contracts were moved into [ARCHITECTURE.md](ARCHITECTURE.md) and [CAMPAIGN.md](CAMPAIGN.md), and
-open items into [ROADMAP.md](ROADMAP.md). Read an archived plan only when you need its rationale or
-measured evidence.
+version: commit `46a3577` up to Tarot card art, and `84dde50` for the short-deck setting and the
+Campaign encounter rules. Binding contracts were moved into [ARCHITECTURE.md](ARCHITECTURE.md) and
+[CAMPAIGN.md](CAMPAIGN.md), and open items into [ROADMAP.md](ROADMAP.md). Read an archived plan
+only when you need its rationale or measured evidence.
 
 ## MVP roadmap, milestones 1–20 ([roadmap][roadmap-1-20], [checklist][milestones])
 
@@ -103,6 +103,28 @@ persistence, PWA, test pyramid) now live in ARCHITECTURE.md. Milestones and thei
 - The plan has the research figures for seeds 0–9,999: with Auto-reveal, the longest burn game
   drops from 103.6 to 71.6 s, while no-burn games keep a median of 188 clashes.
 
+## Campaign encounter rules ([plan][encounter-rules-plan], [research][faster-matches]), #53 and #54
+
+- Each fight plays one of three encounter rules, drawn per fight node from the seed when the run
+  starts (stream `campaign-encounter-rules-v1`, no run-RNG draw). The map names it, and a retry
+  keeps it.
+- Race to 10 and Attrition start once both sides replay their own cards. Double or nothing starts
+  once either side does at normal fights, and once both do at elites and the boss.
+- Tuning departed from the plan in three ways. Double or nothing stakes match what the shorter side
+  can supply: one-sided short stakes drew 18.5% of Suit Opposition fights with Hold Insight and
+  slowed the Watch of Tens. Its elite and boss starts wait for both sides: with `either`, Hold
+  Insight won at most 53% of boss fights (band 75–90%) and the High Court fell to 13–19.5%.
+  Attrition burns 2 cards: with 3, the player won 37.2% of boss fights without Hold (band 20–35%).
+- Campaign rules 8, campaign version 5, Campaign events v7 (`stakes`, `attrition`, reason
+  `raceTargetReached`), and save schema 9, which quarantines Campaign saves of schemas 4–8.
+- The fight probe (`npm run probe:campaign`) landed in #53, and #54 tuned the rules with it: the
+  boss keeps its bands, the elites got per-rule bands, no fight draws more than 15%, and no median
+  Auto-reveal time grew. Under no-burn rules without Hold, medians fell from 97–905 s to 35–90 s.
+- The contracts are in CAMPAIGN.md (rules §3, catalogue §7, versions §8, bands §11) and
+  ARCHITECTURE.md (events, saves, stake and Attrition steps). The research compares Classic
+  options A, C, E and G on seeds 0–9,999 and says why B, D and F were dropped; the plan has the
+  scratch-probe figures behind the starts.
+
 [roadmap-1-20]: https://github.com/pompomon/soulcard/blob/46a3577f72b5799845ff188af5cdbfa35e69c94c/docs/IMPLEMENTATION_ROADMAP.md
 [milestones]: https://github.com/pompomon/soulcard/blob/46a3577f72b5799845ff188af5cdbfa35e69c94c/docs/MILESTONES.md
 [m19-qa]: https://github.com/pompomon/soulcard/blob/46a3577f72b5799845ff188af5cdbfa35e69c94c/docs/MILESTONE_19_QA.md
@@ -113,3 +135,5 @@ persistence, PWA, test pyramid) now live in ARCHITECTURE.md. Milestones and thei
 [phone-plan]: https://github.com/pompomon/soulcard/blob/46a3577f72b5799845ff188af5cdbfa35e69c94c/docs/PHONE_VISUALS_IMPLEMENTATION_PLAN.md
 [tarot-plan]: https://github.com/pompomon/soulcard/blob/46a3577f72b5799845ff188af5cdbfa35e69c94c/docs/TAROT_CARD_ART_PLAN.md
 [short-deck-plan]: https://github.com/pompomon/soulcard/blob/84dde5006f13792824deeeab7a9c7fe476a62e90/docs/plans/short-deck-setting.md
+[encounter-rules-plan]: https://github.com/pompomon/soulcard/blob/84dde5006f13792824deeeab7a9c7fe476a62e90/docs/plans/campaign-encounter-rules.md
+[faster-matches]: https://github.com/pompomon/soulcard/blob/84dde5006f13792824deeeab7a9c7fe476a62e90/docs/plans/faster-matches.md

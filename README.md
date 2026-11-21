@@ -78,7 +78,7 @@ These pages aren't production entry points or service-worker assets.
 | `milestone-21-1-campaign.html` | Campaign entry, first route choice, semantic Hold choices, presentation states |
 | `milestone-21-2-rewards.html` | A saved reward draft, offers, the route map, informed Hold, Run details |
 | `milestone-21-3-expedition.html` | Route locks, shop prices and purchases, node reloads, a failed save and its retry, an event with a target, a sold-out shop |
-| `milestone-21-4-campaign.html` | Elite choice and traits, Greater Mend, rest options, a failed rest save, the boss route, the victory summary |
+| `milestone-21-4-campaign.html` | Elite choice and traits, each fight's rule on the map, Greater Mend, rest options, a failed rest save, the boss route, the victory summary |
 | `phone-hud-layout.html` | Footer bounds, wrapping, text sizes, targets and save warnings for phone (including the Fold4 cover screen), tablet, desktop and letterboxed layouts |
 | `card-art.html` | Downloading HD art with SHA-256 checks, offline relaunch, live switching, retry, the texture-cache bound |
 
