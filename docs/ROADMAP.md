@@ -13,11 +13,15 @@ Status, open work and delivery rules. Contracts live in [ARCHITECTURE.md](ARCHIT
 | 21.2 Reward Drafts and Hold Upgrades | Done |
 | 21.3 Branching Expedition | Done (#40, #41; signed off in #49) |
 | 21.4 Encounter Archetypes and Elite Ladder | Done (#42; signed off in #49, keeping Plunder suspends Spoils of War) |
-| 21.5 Seeded Procedural Campaign | Next |
+| Faster matches: Classic short-deck setting ([plan](plans/short-deck-setting.md)) | Next |
+| Faster matches: Campaign encounter rules ([plan](plans/campaign-encounter-rules.md)) | After the short-deck setting |
+| 21.5 Seeded Procedural Campaign | After the Campaign encounter rules |
 | 21.6 First-class Keyboard Support | After 21.5 |
 
 Milestone 21 (post-MVP expansion) closes when 21.6 is signed off. Presentation work outside the
-21.x line (uniform piles and phone footer, Tarot card art) is complete.
+21.x line (uniform piles and phone footer, Tarot card art) is complete. The faster-matches plans
+sit outside the 21.x line and come first, so that 21.5 tunes generated content with the encounter
+rules in place.
 
 ## Delivery rules
 
@@ -57,6 +61,8 @@ Milestone 21 (post-MVP expansion) closes when 21.6 is signed off. Presentation w
   - recycle order
   - card-value effects, which need a Campaign event-version bump
   - traits on normal and boss fights, and procedural traits
+- Builds on the [Campaign encounter rules](plans/campaign-encounter-rules.md): the generator assigns
+  each generated fight a rule, and the campaign simulation extends that plan's fight probe.
 - Build simulation and report tooling for complete campaigns, including route choices and
   deterministic partial outcomes, separate from the single-match simulator. No campaign probe
   harness is committed yet.
@@ -102,6 +108,10 @@ Milestone 21 (post-MVP expansion) closes when 21.6 is signed off. Presentation w
   - Commit an automated offline-reload and app-update browser check.
 - **Build:** the main chunk exceeds Vite's 500 kB advisory. It isn't a release blocker; code-split
   it if load time matters.
+- **Match length:** the [short-deck setting](plans/short-deck-setting.md) and the
+  [Campaign encounter rules](plans/campaign-encounter-rules.md) are scheduled above, from the
+  research in [plans/faster-matches.md](plans/faster-matches.md). Still open: faster pacing, and
+  bounding Classic no-burn games, which stay long on 36 cards.
 
 ## Release checklist
 
