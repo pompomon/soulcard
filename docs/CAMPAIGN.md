@@ -295,6 +295,21 @@ must satisfy them or revise them explicitly:
 - Starter-deck target bands (measured results: [HISTORY.md](HISTORY.md)): High Court 60–75% under
   every policy; Night Watch 40–55% without Hold and at least 90% with Hold Insight; Ace Sovereign
   20–35% without Hold and 75–90% with it.
-- The strongest end-of-route deck lifts the Sovereign to 54% without Hold. Spoils of War doesn't
-  help against the High Court. Under no-burn rules, without Hold, elite and boss fights average
-  210–361 clashes (seeds 0–99).
+- Encounter rules keep the Ace Sovereign within these bands under every rule (burn rules, seeds
+  0–999). The elites have per-rule bands, set when the rules landed (#54 reports the measured
+  rates):
+  - High Court: 60–75% under Race to 10 and 30–50% under Double or nothing; under Attrition
+    50–65% without Hold and 60–75% with it.
+  - Night Watch: at least 90% with Hold Insight under every rule. Without Hold, the rules end
+    fights before Plunder's captured cards add up: at least 95% under Race to 10, 60–75% under
+    Double or nothing and 70–85% under Attrition.
+- Under every rule, each fight ends in a draw at most 15% of the time, and no fight's median
+  Auto-reveal time (seeds 0–199) is longer than in the #53 report.
+- Tuning levers, in order: a rule's start or parameter, a per-tier override (§7), then which
+  fights may draw the rule. Double or nothing stakes are matched (§3): with one-sided short
+  stakes, Suit Opposition ended in a draw 18.5% of the time with Hold Insight.
+- Before encounter rules, the strongest end-of-route deck lifted the Sovereign to 54% without
+  Hold, Spoils of War didn't help against the High Court, and under no-burn rules, without Hold,
+  elite and boss fights averaged 210–361 clashes (seeds 0–99). Under no-burn rules every
+  encounter rule now ends those fights in a median of 59–78 s of Auto-reveal without Hold (seeds
+  0–199).
